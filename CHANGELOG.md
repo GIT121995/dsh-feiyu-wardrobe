@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.2.0 — 2026-10-30
+
+「换装是视觉性的」：补齐出图能力，可直接发 QQ 群 / 评论区。
+
+### 新增
+
+- `/fish png [尺寸]`：渲染当前穿搭的 PNG（默认 768，可选 256–1600）
+- `dsh-feiyu-report --png <path>` / `--size <像素>`：CLI 直接出图
+- PNG 合成：360×360 场景 + 底部水印条（repo 地址 + 鱼名 + 饲养天数）
+- 依赖 `@resvg/resvg-js`（预编译二进制，本地渲染，无浏览器/无网络）
+- 新增 `screenshots.json`（插件市场 / awesome 列表详情页展示卡图）
+- README 增加「接 QQ / 聊天机器人」章节
+
+### 验证
+
+- `npm run verify`：tsc --checkJs + 53 tests
+
 ## 0.1.0 — 2026-10-30
 
 第一个公开版本：把 DSH 的 token 花销变成大肥鱼的衣柜。

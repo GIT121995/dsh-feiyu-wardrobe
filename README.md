@@ -6,7 +6,7 @@
 
 > 把 DSH 的 token 账单，变成一条鱼的衣柜。
 
-当前版本：`0.1.0`
+当前版本：`0.2.0`
 
 DeepSeek Harness 插件：agent 每花掉一次 token，你的大肥鱼就**吃一顿饭**；一顿顿饭攒成**鱼粮币**，鱼粮币解锁 **21 件原创 SVG 穿搭**；`/fish report` 生成一张 **1080×1440 的饲养报告卡**，可以直接发小红书 / QQ 群。
 
@@ -14,10 +14,13 @@ DeepSeek Harness 插件：agent 每花掉一次 token，你的大肥鱼就**吃�
 - 🎨 **原创形象**：胖鲸 + 21 件手绘 SVG 单品（帽子 / 面部 / 颈部 / 身体 / 手持 / 背景），不打包任何画师二创素材
 - 🔒 **纯本地**：零额外模型调用、零网络请求、不存聊天原文，只存聚合数字
 - 📸 **可晒卡**：饲养天数、投喂金额、吃掉 token、亲密度、心情、近 7 天伙食、今日穿搭
+- 🖼️ **可视化出图**：`/fish png` 或 `dsh-feiyu-report --png` 直接渲染 PNG（默认 768，带 repo 水印），无需浏览器，可直接发 QQ 群 / B站评论区 / 小红书
 
 ![饲养报告示例](https://raw.githubusercontent.com/GIT121995/dsh-feiyu-wardrobe/main/docs/preview/card.png)
 
 ![衣柜目录](https://raw.githubusercontent.com/GIT121995/dsh-feiyu-wardrobe/main/docs/preview/wardrobe.png)
+
+![出图示例](https://raw.githubusercontent.com/GIT121995/dsh-feiyu-wardrobe/main/docs/preview/fish-demo.png)
 
 > 名字与形象都是原创，属于社区玩梗项目，**不是 DeepSeek 官方产品**；「大肥鱼」一词来自社区对 DeepSeek 蓝色鲸鱼标识的可爱误认。
 
@@ -51,6 +54,7 @@ dsh --profile web
 | `/fish wear <名字\|id>` | 换上已拥有的单品 |
 | `/fish takeoff <部位>` | 脱掉某个部位（`bg` / `body` / `neck` / `face` / `hand` / `hat`） |
 | `/fish rename <名字>` | 给鱼改名 |
+| `/fish png [尺寸]` | 渲染当前穿搭的 PNG（默认 768；可直接发群） |
 | `/fish report` | 生成饲养报告卡（HTML，1080×1440） |
 | `/fish help` | 帮助 |
 
@@ -67,12 +71,16 @@ dsh --profile web
 ## 报告卡 CLI
 
 ```sh
-dsh-feiyu-report                    # 用本机 state 生成卡片
-dsh-feiyu-report --demo             # 没有鱼也能预览一张演示卡
+dsh-feiyu-report                    # 用本机 state 生成 HTML 卡片
+dsh-feiyu-report --png fish.png     # 直接出 PNG（QQ 群 / 评论区可用）
+dsh-feiyu-report --png fish.png --size 1024
+dsh-feiyu-report --demo --png demo.png
 dsh-feiyu-report --open             # 生成后用默认浏览器打开
-dsh-feiyu-report --out card.html    # 自定义输出路径
+dsh-feiyu-report --out card.html    # 自定义 HTML 输出路径
 dsh-feiyu-report --sheet            # 渲染整个衣柜目录页
 ```
+
+出图是纯本地 SVG → PNG（`@resvg/resvg-js`，预编译二进制），不调用浏览器、不联网。
 
 ## 配置
 
@@ -99,11 +107,22 @@ dsh-feiyu-report --sheet            # 渲染整个衣柜目录页
 - **非官方**：本项目是社区插件，不属于 DeepSeek 官方项目；「大肥鱼」相关梗的归属属于社区。
 - 后续开放「皮肤包」格式时，同样只支持**本地加载**用户自己的素材，不代分发未授权作品。
 
+## 接 QQ / 聊天机器人（出图能力）
+
+「换装」是视觉性的，所以核心能力是**出图**而不是出文字：
+
+- 任何能执行命令的 QQ 机器人（LangBot、DSH + QQ 适配器等）都可以在 `wear` 之后调一次
+  `dsh-feiyu-report --png /tmp/fish.png`，把 PNG 直接发到群里；
+- DSH 内也可以用 `/fish png` 生成文件，再由机器人发送；
+- 图片带仓库水印，别人转发一次就是一次曝光。
+
+> 注意：本项目只负责「渲染并给出 PNG 文件」，QQ 平台的接入、账号风控由你选用的机器人框架负责。
+
 ## 兼容性与测试
 
 - DSH `>= 0.1.0`（本版在 `0.2.1-rc.2` 实测）
 - Node.js `>= 22.5`，零运行时依赖
-- `npm run verify` = `tsc --checkJs` 类型检查 + 49 个单元/集成测试（定价、经济、状态迁移、渲染、命令、CLI）
+- `npm run verify` = `tsc --checkJs` 类型检查 + 53 个单元/集成测试（定价、经济、状态迁移、渲染、PNG、命令、CLI）
 
 ```sh
 npm run verify
@@ -111,7 +130,7 @@ npm run verify
 
 ## 路线图
 
-- **v0.2**：DSH Web 面板（页内衣橱 UI）、皮肤包格式（`.dshskin`，本地加载）、心情联动穿搭
+- **v0.3**：DSH Web 面板（页内衣橱 UI）、皮肤包格式（`.dshskin`，本地加载）、心情联动穿搭
 - **v0.3**：多鱼塘（多会话鱼）、每日小任务、社区衣服交换码
 - 更远：把 `dsh-memory-gate` 的记忆做成「鱼记得你说过什么」，但依然只读聚合摘要
 

@@ -13,12 +13,13 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
+import { renderFishPng } from '../lib/image.js';
 import { renderWardrobeSheetHtml } from '../lib/render.js';
 import { createDemoState } from '../lib/demo.js';
 import { validateConfig } from '../lib/config.js';
 import { loadState } from '../lib/state.js';
 import { defaultReportPath, writeReportCard } from '../lib/report.js';
-import { atomicWriteFile } from '../lib/util.js';
+import { atomicWriteBuffer, atomicWriteFile } from '../lib/util.js';
 
 const PACKAGE = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const VERSION = PACKAGE.version ?? '0.0.0';
@@ -29,7 +30,9 @@ const HELP = `dsh-feiyu-report — 大肥鱼衣橱饲养报告卡
   dsh-feiyu-report                 从本机 state 生成报告卡
   dsh-feiyu-report --demo          用演示鱼生成一张预览卡
   dsh-feiyu-report --sheet         渲染整个衣柜目录页
-  dsh-feiyu-report --out <path>    指定输出路径
+  dsh-feiyu-report --png <path>    渲染当前穿搭的 PNG（可直接发 QQ 群）
+  dsh-feiyu-report --size <像素>   PNG 边长（256–1600，默认 768）
+  dsh-feiyu-report --out <path>    指定 HTML 输出路径
   dsh-feiyu-report --state <path>  指定 state.json
   dsh-feiyu-report --open          生成后用默认浏览器打开
   dsh-feiyu-report --version       版本号
@@ -47,6 +50,8 @@ function parseArgs(argv) {
 		help: false,
 		version: false,
 		out: null,
+		png: null,
+		size: null,
 		state: null,
 	};
 	for (let index = 0; index < argv.length; index += 1) {
@@ -71,6 +76,16 @@ function parseArgs(argv) {
 				break;
 			case '--out': {
 				options.out = argv[index + 1] ?? null;
+				index += 1;
+				break;
+			}
+			case '--png': {
+				options.png = argv[index + 1] ?? null;
+				index += 1;
+				break;
+			}
+			case '--size': {
+				options.size = argv[index + 1] ?? null;
 				index += 1;
 				break;
 			}
@@ -133,6 +148,20 @@ function main() {
 		}
 		const loaded = loadState(config.statePath, config);
 		state = loaded.state;
+	}
+	if (options.png) {
+		const sizeValue = options.size == null ? undefined : Number(options.size);
+		if (sizeValue !== undefined && (!Number.isFinite(sizeValue) || sizeValue < 256 || sizeValue > 1600)) {
+			throw new Error('--size 需要 256–1600 之间的整数');
+		}
+		const png = renderFishPng(state, config, {
+			...(sizeValue === undefined ? {} : { size: sizeValue }),
+		});
+		const pngPath = resolve(options.png);
+		atomicWriteBuffer(pngPath, png);
+		process.stdout.write(`${pngPath}\n`);
+		if (options.open) openInBrowser(pngPath);
+		return;
 	}
 	const outPath = writeReportCard(state, config, {
 		...(options.out ? { outPath: resolve(options.out) } : {}),

@@ -1,7 +1,7 @@
 {
   "name": "dsh-feiyu-wardrobe",
-  "version": "0.1.0",
-  "description": "大肥鱼衣橱 — a chubby-whale wardrobe economy for DeepSeek Harness: every token you burn becomes fish food, every meal buys outfits for your fish. Local-only, no extra model calls, no chat text stored.",
+  "version": "0.2.0",
+  "description": "大肥鱼衣橱 — DSH 插件：token 花销变鱼粮，解锁 21 件原创换装，一键出 PNG 可发 QQ 群 / 1080×1440 饲养报告卡（纯本地，零额外模型调用）",
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
@@ -22,7 +22,9 @@
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
-    "docs/preview"
+    "docs/preview",
+    "screenshots.json",
+    "docs/preview/fish-demo.png"
   ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
@@ -32,6 +34,7 @@
     "preview": "node scripts/preview.mjs"
   },
   "keywords": [
+    "qq-bot",
     "deepseek",
     "deepseek-harness",
     "dsh",
@@ -70,5 +73,8 @@
   "homepage": "https://github.com/GIT121995/dsh-feiyu-wardrobe#readme",
   "bugs": {
     "url": "https://github.com/GIT121995/dsh-feiyu-wardrobe/issues"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
   }
 }
