@@ -157,37 +157,37 @@
         "id": "maid",
         "name": "经典女仆装",
         "desc": "她本来的样子。",
-        "thumb": "art/chibi/thumbs/dress-maid.webp"
+        "icon": "art/icons/maid.webp"
       },
       {
         "id": "starry",
         "name": "星空礼服",
         "desc": "把银河穿在身上。",
-        "thumb": "art/chibi/thumbs/dress-starry.webp"
+        "icon": "art/icons/starry.webp"
       },
       {
         "id": "strawberry",
         "name": "草莓蛋糕裙",
         "desc": "三层奶油，一层少女心。",
-        "thumb": "art/chibi/thumbs/dress-strawberry.webp"
+        "icon": "art/icons/strawberry.webp"
       },
       {
         "id": "gothic",
         "name": "黑金哥特",
         "desc": "暗夜玫瑰，黑金蕾丝。",
-        "thumb": "art/chibi/thumbs/dress-gothic.webp"
+        "icon": "art/icons/gothic.webp"
       },
       {
         "id": "forest",
         "name": "森系花仙",
         "desc": "把一整个春天缝进裙摆。",
-        "thumb": "art/chibi/thumbs/dress-forest.webp"
+        "icon": "art/icons/forest.webp"
       },
       {
         "id": "sakura",
         "name": "樱花茶会裙",
         "desc": "花瓣落在蕾丝上，春天来啦。",
-        "thumb": "art/chibi/thumbs/dress-sakura.webp"
+        "icon": "art/icons/sakura.webp"
       }
     ],
     "tops": [
@@ -195,19 +195,19 @@
         "id": "sweater",
         "name": "白色高领毛衣",
         "desc": "软乎乎的，像一条围巾。",
-        "thumb": "art/chibi/thumbs/combo-sweater-plaid.webp"
+        "icon": "art/icons/sweater.webp"
       },
       {
         "id": "hoodie",
         "name": "白色连帽卫衣",
         "desc": "宽宽松松，把自己藏进去。",
-        "thumb": "art/chibi/thumbs/combo-hoodie-plaid.webp"
+        "icon": "art/icons/hoodie.webp"
       },
       {
         "id": "sailor",
         "name": "水手服上衣",
         "desc": "海风味的日常。",
-        "thumb": "art/chibi/thumbs/combo-sailor-plaid.webp"
+        "icon": "art/icons/sailor.webp"
       }
     ],
     "bottoms": [
@@ -215,13 +215,13 @@
         "id": "plaid",
         "name": "格纹百褶裙",
         "desc": "校园里最普通也最好看的那条。",
-        "thumb": "art/chibi/thumbs/combo-sweater-plaid.webp"
+        "icon": "art/icons/plaid.webp"
       },
       {
         "id": "pleated",
         "name": "深蓝百褶裙",
         "desc": "转一圈，裙摆会开成花。",
-        "thumb": "art/chibi/thumbs/combo-sweater-pleated.webp"
+        "icon": "art/icons/pleated.webp"
       }
     ],
     "backgrounds": [
@@ -230,42 +230,48 @@
         "name": "冬夜街道",
         "desc": "暖黄色的路灯，和一直下的雪。",
         "file": "art/bg-snow.webp",
-        "thumb": "art/thumbs/bg-snow.webp"
+        "thumb": "art/thumbs/bg-snow.webp",
+        "floor": 0.86
       },
       {
         "id": "bg-sakura",
         "name": "樱花庭院",
         "desc": "走过小桥，花瓣落了一路。",
         "file": "art/bg-sakura.webp",
-        "thumb": "art/thumbs/bg-sakura.webp"
+        "thumb": "art/thumbs/bg-sakura.webp",
+        "floor": 0.88
       },
       {
         "id": "bg-starry",
         "name": "银河原野",
         "desc": "抬头是整条银河。",
         "file": "art/bg-starry.webp",
-        "thumb": "art/thumbs/bg-starry.webp"
+        "thumb": "art/thumbs/bg-starry.webp",
+        "floor": 0.9
       },
       {
         "id": "bg-forest",
         "name": "晨光森林",
         "desc": "雾还没散，花已经开了。",
         "file": "art/bg-forest.webp",
-        "thumb": "art/thumbs/bg-forest.webp"
+        "thumb": "art/thumbs/bg-forest.webp",
+        "floor": 0.88
       },
       {
         "id": "bg-cyber",
         "name": "霓虹街区",
         "desc": "雨后的路面，倒映着一整条街的灯。",
         "file": "art/bg-cyber.webp",
-        "thumb": "art/thumbs/bg-cyber.webp"
+        "thumb": "art/thumbs/bg-cyber.webp",
+        "floor": 0.86
       },
       {
         "id": "bg-cafe",
         "name": "雪日咖啡馆",
         "desc": "窗外在下雪，热可可刚好。",
         "file": "art/bg-cafe.webp",
-        "thumb": "art/thumbs/bg-cafe.webp"
+        "thumb": "art/thumbs/bg-cafe.webp",
+        "floor": 0.92
       }
     ],
     "effects": [

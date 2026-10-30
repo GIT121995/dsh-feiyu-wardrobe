@@ -56,24 +56,29 @@ test('bounds 覆盖所有套装立绘，且上下边界合理', () => {
 	}
 });
 
-test('背景 / 特效 / 缩略图引用都存在', () => {
+test('右侧衣柜只放「衣服本身」的图标，背景带地面线', () => {
 	for (const item of MANIFEST.items.backgrounds) {
 		assertWebp(item.file, `background ${item.id}`);
 		assertWebp(item.thumb, `background thumb ${item.id}`);
+		assert.ok(
+			typeof item.floor === 'number' && item.floor > 0.5 && item.floor < 1,
+			`background ${item.id} floor 应为 0.5–1 之间`,
+		);
 	}
 	assert.ok(MANIFEST.items.effects.length >= 3);
 	for (const categoryId of ['outfits', 'tops', 'bottoms']) {
 		for (const item of MANIFEST.items[categoryId]) {
 			if (item.id === 'none') continue;
-			assert.ok(item.thumb, `${categoryId}/${item.id} thumb`);
-			assertWebp(item.thumb, `${categoryId}/${item.id} thumb`);
+			assert.ok(item.icon, `${categoryId}/${item.id} 需要只有衣服的 icon`);
+			assertWebp(item.icon, `${categoryId}/${item.id} icon`);
+			assert.ok(!item.thumb, `${categoryId}/${item.id} 不应再用「穿好衣服的人」缩略图`);
 		}
 	}
 });
 
 test('游戏页不再依赖 GitHub Pages，且通过 ESM 模块共享核心逻辑', () => {
 	const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-	assert.ok(html.includes('app.js?v=6'));
+	assert.match(html, /app\.js\?v=\d+/);
 	assert.ok(html.includes('type="module"'));
 	assert.ok(!html.includes('github.io'), 'game page should not hardcode GitHub Pages');
 	const app = readFileSync(join(ROOT, 'app.js'), 'utf8');

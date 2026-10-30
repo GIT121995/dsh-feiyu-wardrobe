@@ -48,14 +48,30 @@ SHAPES = [
     ('girl', '少女版', '六头身的少女比例'),
 ]
 
+# 背景：id, 名字, 描述, 地面线（0–1，人物脚底对齐到这里）
 BACKGROUNDS = [
-    ('bg-snow', '冬夜街道', '暖黄色的路灯，和一直下的雪。'),
-    ('bg-sakura', '樱花庭院', '走过小桥，花瓣落了一路。'),
-    ('bg-starry', '银河原野', '抬头是整条银河。'),
-    ('bg-forest', '晨光森林', '雾还没散，花已经开了。'),
-    ('bg-cyber', '霓虹街区', '雨后的路面，倒映着一整条街的灯。'),
-    ('bg-cafe', '雪日咖啡馆', '窗外在下雪，热可可刚好。'),
+    ('bg-snow', '冬夜街道', '暖黄色的路灯，和一直下的雪。', 0.86),
+    ('bg-sakura', '樱花庭院', '走过小桥，花瓣落了一路。', 0.88),
+    ('bg-starry', '银河原野', '抬头是整条银河。', 0.9),
+    ('bg-forest', '晨光森林', '雾还没散，花已经开了。', 0.88),
+    ('bg-cyber', '霓虹街区', '雨后的路面，倒映着一整条街的灯。', 0.86),
+    ('bg-cafe', '雪日咖啡馆', '窗外在下雪，热可可刚好。', 0.92),
 ]
+
+# 右侧衣柜图标：只用「衣服本身」的白底图（不能出现穿好衣服的人）
+ICON_SOURCES = {
+    'maid': 'maid-dress.png',
+    'starry': 'dress-starry.png',
+    'strawberry': 'dress-strawberry.png',
+    'gothic': 'dress-gothic.png',
+    'forest': 'dress-forest.png',
+    'sakura': 'dress-sakura.png',
+    'sweater': 'top-sweater.png',
+    'hoodie': 'top-hoodie.png',
+    'sailor': 'top-sailor.png',
+    'plaid': 'bottom-plaid.png',
+    'pleated': 'bottom-pleated.png',
+}
 EFFECTS = [
     ('none', '无', '安安静静。', '🌙'),
     ('snow', '飘雪', '一直一直下雪。', '❄️'),
@@ -114,6 +130,18 @@ def bounds_of(im: Image.Image) -> dict:
     return {'top': round(bbox[1] / TARGET[1], 4), 'bottom': round(bbox[3] / TARGET[1], 4)}
 
 
+def make_icon(src_file: Path, out: Path) -> None:
+    im = remove_white(src_file)
+    bbox = im.getbbox()
+    body = im.crop(bbox) if bbox else im
+    ratio = min((THUMB - 18) / body.width, (THUMB - 18) / body.height)
+    body = body.resize((max(1, round(body.width * ratio)), max(1, round(body.height * ratio))), Image.LANCZOS)
+    canvas = Image.new('RGBA', (THUMB, THUMB), (0, 0, 0, 0))
+    canvas.alpha_composite(body, ((THUMB - body.width) // 2, (THUMB - body.height) // 2))
+    out.parent.mkdir(parents=True, exist_ok=True)
+    canvas.save(out, 'WEBP', quality=88, method=6)
+
+
 def build(src: Path, out: Path) -> None:
     art = out / 'art'
     bounds: dict[str, dict] = {}
@@ -142,6 +170,15 @@ def build(src: Path, out: Path) -> None:
                     raise SystemExit(f'missing source: {src_file}')
                 add_layer(shape, f'combo-{top}-{bottom}.webp', src_file)
 
+    # 右侧衣柜图标（只有衣服）
+    icon_root = src.parent
+    for ident, filename in ICON_SOURCES.items():
+        icon_src = icon_root / 'raw3' / filename
+        if not icon_src.exists():
+            raise SystemExit(f'missing icon source: {icon_src}')
+        make_icon(icon_src, art / 'icons' / f'{ident}.webp')
+    print(f'  icons: {len(ICON_SOURCES)}')
+
     manifest = {
         'version': 4,
         'title': '大肥鱼衣橱 · 换装间',
@@ -162,11 +199,12 @@ def build(src: Path, out: Path) -> None:
         ],
         'items': {
             'outfits': [{'id': 'none', 'name': '不穿套装', 'emoji': '🚫', 'desc': '换成上衣 + 下装搭配。'}]
-            + [{'id': i, 'name': n, 'desc': d, 'thumb': f'art/chibi/thumbs/dress-{i}.webp'} for i, n, d in DRESSES],
-            'tops': [{'id': i, 'name': n, 'desc': d, 'thumb': f'art/chibi/thumbs/combo-{i}-plaid.webp'} for i, n, d in TOPS],
-            'bottoms': [{'id': i, 'name': n, 'desc': d, 'thumb': f'art/chibi/thumbs/combo-sweater-{i}.webp'} for i, n, d in BOTTOMS],
-            'backgrounds': [{'id': i, 'name': n, 'desc': d, 'file': f'art/{i}.webp', 'thumb': f'art/thumbs/{i}.webp'}
-                            for i, n, d in BACKGROUNDS],
+            + [{'id': i, 'name': n, 'desc': d, 'icon': f'art/icons/{i}.webp'} for i, n, d in DRESSES],
+            'tops': [{'id': i, 'name': n, 'desc': d, 'icon': f'art/icons/{i}.webp'} for i, n, d in TOPS],
+            'bottoms': [{'id': i, 'name': n, 'desc': d, 'icon': f'art/icons/{i}.webp'} for i, n, d in BOTTOMS],
+            'backgrounds': [{'id': i, 'name': n, 'desc': d, 'file': f'art/{i}.webp',
+                             'thumb': f'art/thumbs/{i}.webp', 'floor': floor}
+                            for i, n, d, floor in BACKGROUNDS],
             'effects': [{'id': i, 'name': n, 'desc': d, 'emoji': e} for i, n, d, e in EFFECTS],
         },
         'defaults': {'shape': 'chibi', 'outfit': 'maid', 'top': 'sweater', 'bottom': 'plaid',
@@ -174,7 +212,7 @@ def build(src: Path, out: Path) -> None:
         'bubbles': BUBBLES,
     }
     # 背景缩略图
-    for bid, _, _ in BACKGROUNDS:
+    for bid, _, _, _ in BACKGROUNDS:
         bg_file = out / 'art' / f'{bid}.webp'
         if not bg_file.exists():
             print(f'  WARN missing background {bg_file}')

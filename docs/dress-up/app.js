@@ -17,7 +17,10 @@ import {
 	const params = new URLSearchParams(location.search);
 
 	const els = {
+		stage: $('#stage'),
 		scene: $('#scene'),
+		figureWrap: $('#figureWrap'),
+		figureShadow: $('#figureShadow'),
 		figure: $('#figure'),
 		figureImg: $('#figureImg'),
 		fx: $('#fx'),
@@ -112,23 +115,27 @@ import {
 		preload(bg.file).then(apply, apply);
 	}
 
-	/** 按当前立绘的内容边界自动定位/缩放。 */
+	/** 按背景地面线站位 + 内容边界自动缩放（人物像站在场景里，而不是浮在壁纸上）。 */
 	function layoutFigure() {
-		const stage = els.figure.parentElement;
+		const stage = els.stage;
 		const H = stage.clientHeight;
 		const W = stage.clientWidth;
 		if (!H || !W) return;
 		const bounds = currentBounds(manifest, state);
+		const floor = (currentBackground() && currentBackground().floor) || 0.86;
 		const usable = Math.max(0.2, bounds.bottom - bounds.top);
-		const TOP = 0.1;
-		const BOTTOM = 0.97;
-		const hf = Math.min(
-			((BOTTOM - TOP) * H) / usable,
-			H * 1.7,
-			(W * 0.98) / 0.5625,
-		);
-		els.figure.style.height = `${Math.round(hf)}px`;
-		els.figure.style.top = `${Math.round(TOP * H - bounds.top * hf)}px`;
+		const topMargin = H * 0.07;
+		const floorY = H * floor;
+		const hf = Math.min((floorY - topMargin) / usable, H * 1.9, W / 0.62);
+		const figW = hf * (9 / 16);
+		const left = W / 2 - figW / 2;
+		const top = floorY - bounds.bottom * hf;
+		els.figureWrap.style.height = `${Math.round(hf)}px`;
+		els.figureWrap.style.width = `${Math.round(figW)}px`;
+		els.figureWrap.style.left = `${Math.round(left)}px`;
+		els.figureWrap.style.top = `${Math.round(top)}px`;
+		els.figureShadow.style.width = `${Math.round(figW * 0.62)}px`;
+		els.figureShadow.style.left = `${Math.round(figW * 0.19)}px`;
 	}
 
 	function renderMeta() {
@@ -215,9 +222,10 @@ import {
 			button.title = item.desc || item.name;
 			button.setAttribute('aria-label', item.name);
 			button.setAttribute('aria-pressed', active ? 'true' : 'false');
-			if (item.thumb) {
+			const pic = item.icon || item.thumb;
+			if (pic) {
 				const img = document.createElement('img');
-				img.src = item.thumb;
+				img.src = pic;
 				img.alt = '';
 				img.loading = 'lazy';
 				button.appendChild(img);
@@ -235,9 +243,17 @@ import {
 		}
 	}
 
+	function popFigure() {
+		els.figure.classList.remove('pop');
+		void els.figure.offsetWidth;
+		els.figure.classList.add('pop');
+		setTimeout(() => els.figure.classList.remove('pop'), 420);
+	}
+
 	function select(catId, itemId) {
 		state = applySelection(manifest, state, catId, itemId);
 		applyState();
+		popFigure();
 		const item = findItem(catId, itemId);
 		say(`换上「${item ? item.name : itemId}」啦！`);
 	}
@@ -340,9 +356,10 @@ import {
 				total += 1;
 				const cell = document.createElement('div');
 				cell.className = 'sheet-item';
-				if (item.thumb) {
+				const pic = item.icon || item.thumb;
+				if (pic) {
 					const img = document.createElement('img');
-					img.src = item.thumb;
+					img.src = pic;
 					img.alt = '';
 					img.loading = 'lazy';
 					cell.appendChild(img);
@@ -481,7 +498,13 @@ import {
 		els.sheet.addEventListener('click', (event) => {
 			if (event.target === els.sheet) els.sheet.hidden = true;
 		});
-		els.figure.addEventListener('click', speakRandom);
+		els.figure.addEventListener('click', () => {
+			els.figure.classList.remove('hop');
+			void els.figure.offsetWidth;
+			els.figure.classList.add('hop');
+			setTimeout(() => els.figure.classList.remove('hop'), 700);
+			speakRandom();
+		});
 		els.figure.addEventListener('keydown', (event) => {
 			if (event.key === 'Enter' || event.key === ' ') {
 				event.preventDefault();
@@ -506,6 +529,33 @@ import {
 			spawnParticles(fx.type);
 			layoutFigure();
 		});
+	}
+
+	/* ---------------- 视差（鼠标移动时场景/人物轻微错位） ---------------- */
+
+	function startParallax() {
+		if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+		let px = 0;
+		let py = 0;
+		let tx = 0;
+		let ty = 0;
+		els.stage.addEventListener('mousemove', (event) => {
+			const rect = els.stage.getBoundingClientRect();
+			tx = (event.clientX - rect.left) / rect.width - 0.5;
+			ty = (event.clientY - rect.top) / rect.height - 0.5;
+		});
+		els.stage.addEventListener('mouseleave', () => {
+			tx = 0;
+			ty = 0;
+		});
+		const tick = () => {
+			px += (tx - px) * 0.06;
+			py += (ty - py) * 0.06;
+			els.scene.style.transform = `translate(${(-px * 12).toFixed(2)}px, ${(-py * 8).toFixed(2)}px) scale(1.05)`;
+			els.figureWrap.style.transform = `translate(${(px * 7).toFixed(2)}px, ${(py * 4).toFixed(2)}px)`;
+			requestAnimationFrame(tick);
+		};
+		requestAnimationFrame(tick);
 	}
 
 	/* ---------------- 启动 ---------------- */
@@ -533,6 +583,7 @@ import {
 		resizeFx();
 		applyState();
 		bind();
+		startParallax();
 		if (params.has('embed')) els.tip.classList.add('gone');
 	}
 
