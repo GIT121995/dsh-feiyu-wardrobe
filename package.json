@@ -1,7 +1,7 @@
 {
   "name": "dsh-feiyu-wardrobe",
-  "version": "0.3.0",
-  "description": "大肥鱼衣橱 — DSH 插件：token 花销变鱼粮，解锁 21 件原创换装，一键出 PNG 可发 QQ 群 / 1080×1440 饲养报告卡（纯本地，零额外模型调用）",
+  "version": "0.4.0",
+  "description": "大肥鱼衣橱 — DSH 插件：token 花销变鱼粮，侧边栏内置「换装间」分层换装小游戏（高清立绘 + 8 套大裙子 + 外套/头饰/背景/特效），悬浮小鲸鱼陪聊，纯本地离线可用；另含 21 件原创 SVG 单品与报告卡出图",
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
@@ -18,6 +18,7 @@
   },
   "files": [
     "lib",
+    "docs/dress-up",
     "bin",
     "cordis.patch.yml",
     "README.md",

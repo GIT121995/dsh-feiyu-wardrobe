@@ -1,42 +1,224 @@
 {
-  "character": "经典女仆鲸鱼娘",
-  "note": "立绘：经典二创形象（上善无形/ZipZipPipe 版权链，源自 1190fasheqi/dafeiyu-pet）· 裙子：AI 生成图层 · CC BY-NC-SA 4.0",
-  "dresses": [
+  "version": 2,
+  "title": "大肥鱼衣橱 · 换装间",
+  "character": "经典女仆鲸鱼娘 · 大肥鱼",
+  "credits": "立绘：YunYueSama/codex-deepseek-pet（「大肥鱼项目署名许可 1.0」，需署名）· 裙子 / 头饰 / 背景：Moss 图像 API 生成 · 角色版权链：上善无形「溟月」→ ZipZipPipe 女仆鲸鱼娘（CC BY-NC-SA 4.0，非官方，禁止商用）",
+  "base": "art/base.webp",
+  "gowns": [
     {
       "id": "classic",
       "name": "经典原装",
       "desc": "她本来的样子。",
-      "file": "dresses/classic-base.webp"
+      "file": null,
+      "thumb": "art/thumbs/gown-classic.webp"
     },
     {
       "id": "starry",
       "name": "星空礼服",
       "desc": "把银河穿在身上。",
-      "file": "dresses/classic-starry.webp"
+      "file": "art/gown-starry.webp",
+      "thumb": "art/thumbs/gown-starry.webp",
+      "bottom": 0.7758
     },
     {
       "id": "strawberry",
       "name": "草莓蛋糕裙",
       "desc": "三层奶油，一层少女心。",
-      "file": "dresses/classic-strawberry.webp"
+      "file": "art/gown-strawberry.webp",
+      "thumb": "art/thumbs/gown-strawberry.webp",
+      "bottom": 0.7867
     },
     {
       "id": "gothic",
       "name": "黑金哥特",
       "desc": "暗夜玫瑰，黑金蕾丝。",
-      "file": "dresses/classic-gothic.webp"
+      "file": "art/gown-gothic.webp",
+      "thumb": "art/thumbs/gown-gothic.webp",
+      "bottom": 0.8383
     },
     {
       "id": "forest",
       "name": "森系花仙",
       "desc": "把一整个春天缝进裙摆。",
-      "file": "dresses/classic-forest.webp"
+      "file": "art/gown-forest.webp",
+      "thumb": "art/thumbs/gown-forest.webp",
+      "bottom": 0.7883
     },
     {
       "id": "cyber",
       "name": "赛博霓虹",
       "desc": "半透明电路，发光的大裙摆。",
-      "file": "dresses/classic-cyber.webp"
+      "file": "art/gown-cyber.webp",
+      "thumb": "art/thumbs/gown-cyber.webp",
+      "bottom": 0.7642
+    },
+    {
+      "id": "sakura",
+      "name": "樱花茶会裙",
+      "desc": "花瓣落在蕾丝上，春天来啦。",
+      "file": "art/gown-sakura.webp",
+      "thumb": "art/thumbs/gown-sakura.webp",
+      "bottom": 0.8383
+    },
+    {
+      "id": "ocean",
+      "name": "深海珍珠裙",
+      "desc": "把整片海穿成裙摆。",
+      "file": "art/gown-ocean.webp",
+      "thumb": "art/thumbs/gown-ocean.webp",
+      "bottom": 0.765
     }
-  ]
+  ],
+  "coats": [
+    {
+      "id": "none",
+      "name": "不穿",
+      "desc": "让裙子自己说话。",
+      "file": null,
+      "thumb": null,
+      "emoji": "🚫"
+    },
+    {
+      "id": "winter",
+      "name": "冬季毛领大衣",
+      "desc": "深蓝呢料，毛茸茸的领子和袖口。",
+      "file": "art/coat-winter.webp",
+      "thumb": "art/thumbs/coat-winter.webp"
+    },
+    {
+      "id": "hoodie",
+      "name": "白色连帽卫衣",
+      "desc": "宽宽松松，把自己藏进去。",
+      "file": "art/coat-hoodie.webp",
+      "thumb": "art/thumbs/coat-hoodie.webp"
+    }
+  ],
+  "hats": [
+    {
+      "id": "none",
+      "name": "不戴",
+      "desc": "清清爽爽，也好看。",
+      "file": null,
+      "thumb": null,
+      "emoji": "🚫"
+    },
+    {
+      "id": "whale",
+      "name": "鲸鱼兜帽",
+      "desc": "把自己装进一条鲸鱼里。",
+      "file": "art/hat-whale.webp",
+      "thumb": "art/thumbs/hat-whale.webp",
+      "top": 0.08
+    },
+    {
+      "id": "snow",
+      "name": "雪花发饰",
+      "desc": "一小片不会化的雪。",
+      "file": "art/hat-snow.webp",
+      "thumb": "art/thumbs/hat-snow.webp",
+      "top": 0.0725
+    },
+    {
+      "id": "berry",
+      "name": "草莓蝴蝶结",
+      "desc": "甜的，别摘下来。",
+      "file": "art/hat-berry.webp",
+      "thumb": "art/thumbs/hat-berry.webp",
+      "top": 0.1033
+    },
+    {
+      "id": "crown",
+      "name": "星月小皇冠",
+      "desc": "今天也是要被宠爱的一天。",
+      "file": "art/hat-crown.webp",
+      "thumb": "art/thumbs/hat-crown.webp",
+      "top": 0.0758
+    }
+  ],
+  "backgrounds": [
+    {
+      "id": "bg-snow",
+      "name": "冬夜街道",
+      "desc": "暖黄色的路灯，和一直下的雪。",
+      "file": "art/bg-snow.webp",
+      "thumb": "art/thumbs/bg-snow.webp"
+    },
+    {
+      "id": "bg-sakura",
+      "name": "樱花庭院",
+      "desc": "走过小桥，花瓣落了一路。",
+      "file": "art/bg-sakura.webp",
+      "thumb": "art/thumbs/bg-sakura.webp"
+    },
+    {
+      "id": "bg-starry",
+      "name": "银河原野",
+      "desc": "抬头是整条银河。",
+      "file": "art/bg-starry.webp",
+      "thumb": "art/thumbs/bg-starry.webp"
+    },
+    {
+      "id": "bg-forest",
+      "name": "晨光森林",
+      "desc": "雾还没散，花已经开了。",
+      "file": "art/bg-forest.webp",
+      "thumb": "art/thumbs/bg-forest.webp"
+    },
+    {
+      "id": "bg-cyber",
+      "name": "霓虹街区",
+      "desc": "雨后的路面，倒映着一整条街的灯。",
+      "file": "art/bg-cyber.webp",
+      "thumb": "art/thumbs/bg-cyber.webp"
+    },
+    {
+      "id": "bg-cafe",
+      "name": "雪日咖啡馆",
+      "desc": "窗外在下雪，热可可刚好。",
+      "file": "art/bg-cafe.webp",
+      "thumb": "art/thumbs/bg-cafe.webp"
+    }
+  ],
+  "effects": [
+    {
+      "id": "none",
+      "name": "无",
+      "desc": "安安静静。",
+      "emoji": "🌙"
+    },
+    {
+      "id": "snow",
+      "name": "飘雪",
+      "desc": "一直一直下雪。",
+      "emoji": "❄️"
+    },
+    {
+      "id": "petals",
+      "name": "花瓣",
+      "desc": "风一吹，花瓣就落下来。",
+      "emoji": "🌸"
+    },
+    {
+      "id": "stars",
+      "name": "星光",
+      "desc": "四周浮着小小的光。",
+      "emoji": "✨"
+    }
+  ],
+  "bubbles": [
+    "这条裙子…会不会太夸张了？不过我喜欢。",
+    "转一圈给你看——怎么样！",
+    "今天的鱼粮，够买新裙子吗？",
+    "唔…不许偷看裙底！",
+    "这个背景好漂亮，像画一样。",
+    "我是不是…又吃多了。",
+    "再换一条嘛，就一条。",
+    "拍立绘卡的时候，记得把我拍得好看一点。",
+    "你看你看，这个头饰是不是很可爱？",
+    "要是每天都能换新衣服就好了。"
+  ],
+  "layout": {
+    "baseTop": 0.1192,
+    "baseBottom": 0.5875
+  }
 }
