@@ -26,6 +26,7 @@
   }
 
   async function load() {
+    if (new URLSearchParams(location.search).has('embed')) document.body.classList.add('embed');
     const res = await fetch('manifest.json');
     manifest = await res.json();
     // warm cache for all dresses

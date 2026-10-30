@@ -60,3 +60,9 @@ body {
   .chip span { font-size: 11px; }
   .info h1 { font-size: 22px; }
 }
+
+/* 嵌入 DSH 面板时：去掉重复的品牌/页脚，铺满面板 */
+body.embed .top, body.embed .foot { display: none; }
+body.embed .stage { max-width: 980px; padding: 8px 20px 14px; }
+body.embed .figure { height: min(60vh, 520px); }
+body.embed .actions { padding: 10px 0 4px; }

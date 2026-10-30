@@ -1,6 +1,6 @@
 {
   "name": "dsh-feiyu-wardrobe",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "大肥鱼衣橱 — DSH 插件：token 花销变鱼粮，解锁 21 件原创换装，一键出 PNG 可发 QQ 群 / 1080×1440 饲养报告卡（纯本地，零额外模型调用）",
   "license": "MIT",
   "type": "module",
@@ -10,7 +10,8 @@
       "import": "./lib/index.js"
     },
     "./catalog": "./lib/catalog.js",
-    "./render": "./lib/render.js"
+    "./render": "./lib/render.js",
+    "./client": "./lib/client.js"
   },
   "bin": {
     "dsh-feiyu-report": "./bin/feiyu-report.mjs"
@@ -34,18 +35,13 @@
     "preview": "node scripts/preview.mjs"
   },
   "keywords": [
-    "qq-bot",
-    "deepseek",
-    "deepseek-harness",
     "dsh",
     "dsh-plugin",
-    "virtual-pet",
-    "wardrobe",
     "dress-up",
-    "bigfish",
+    "wardrobe",
+    "换装",
     "大肥鱼",
-    "token-cost",
-    "token"
+    "mini-game"
   ],
   "engines": {
     "node": ">=22.5"
@@ -59,6 +55,13 @@
       "dshReleases": {
         "0.2.1-rc.2": "compatible"
       }
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
     }
   },
   "devDependencies": {

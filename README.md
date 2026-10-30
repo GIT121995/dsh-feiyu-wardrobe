@@ -8,7 +8,9 @@
 
 当前版本：`0.2.0`
 
-**🆕 在线换装间（免安装试玩）**：https://git121995.github.io/dsh-feiyu-wardrobe/dress-up/
+**🆕 插件内换装间**：装好插件后，DSH 侧边栏会出现 **🎀 换装间**，点开即玩（经典女仆鲸鱼娘 + 6 套 AI 大裙子）。
+
+也可以免安装在线试玩：https://git121995.github.io/dsh-feiyu-wardrobe/dress-up/
 
 ![换装间 demo](https://raw.githubusercontent.com/GIT121995/dsh-feiyu-wardrobe/main/docs/preview/dressup.png)
 
