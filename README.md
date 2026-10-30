@@ -12,7 +12,7 @@
 
 也可以免安装在线试玩：https://git121995.github.io/dsh-feiyu-wardrobe/dress-up/
 
-![换装间 demo](https://raw.githubusercontent.com/GIT121995/dsh-feiyu-wardrobe/main/docs/preview/dressup.png)
+![插件内换装间](https://raw.githubusercontent.com/GIT121995/dsh-feiyu-wardrobe/main/docs/preview/dsh-panel.png)
 
 DeepSeek Harness 插件：agent 每花掉一次 token，你的大肥鱼就**吃一顿饭**；一顿顿饭攒成**鱼粮币**，鱼粮币解锁 **21 件原创 SVG 穿搭**；`/fish report` 生成一张 **1080×1440 的饲养报告卡**，可以直接发小红书 / QQ 群。
 
