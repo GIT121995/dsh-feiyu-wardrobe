@@ -1,0 +1,62 @@
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans CJK SC", "Microsoft YaHei", sans-serif;
+  color: #2b2350; overflow: hidden;
+  background: linear-gradient(160deg, #fdf3ff 0%, #eef4ff 42%, #eaf8ff 100%);
+}
+.sky { position: fixed; inset: 0; background:
+  radial-gradient(900px 500px at 18% 12%, rgba(255,205,235,.55), transparent 60%),
+  radial-gradient(800px 520px at 84% 8%, rgba(190,220,255,.6), transparent 62%),
+  radial-gradient(700px 460px at 70% 92%, rgba(210,245,235,.5), transparent 60%);
+  pointer-events: none; }
+.stage { position: relative; height: 100%; max-width: 520px; margin: 0 auto;
+  display: flex; flex-direction: column; padding: 18px 20px 20px; }
+.top { display: flex; align-items: center; justify-content: space-between; z-index: 2; }
+.brand { font-size: 17px; font-weight: 800; letter-spacing: .5px; }
+.brand span { color: #9a7cf0; }
+.star { text-decoration: none; font-size: 13px; font-weight: 700; color: #6a5acd;
+  background: rgba(255,255,255,.7); border: 1px solid rgba(120,100,220,.25);
+  padding: 7px 12px; border-radius: 999px; backdrop-filter: blur(6px); }
+.showcase { position: relative; flex: 1; display: flex; align-items: center; justify-content: center; min-height: 0; }
+.glow { position: absolute; width: 74%; aspect-ratio: 1; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,.95) 0%, rgba(255,240,255,.6) 40%, transparent 70%);
+  filter: blur(6px); }
+.figure { position: relative; height: min(52vh, 440px); aspect-ratio: 2 / 3; z-index: 1;
+  filter: drop-shadow(0 26px 34px rgba(90,70,160,.22)); animation: floaty 4.6s ease-in-out infinite; }
+.dress { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+  transition: opacity .32s ease, transform .32s ease; }
+.dress.hidden { opacity: 0; transform: scale(.97); }
+@keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+.sparkles { position: absolute; inset: 0; pointer-events: none; }
+.sparkle { position: absolute; width: 7px; height: 7px; border-radius: 50%;
+  background: radial-gradient(circle, #fff, rgba(255,255,255,0)); opacity: 0;
+  animation: twinkle var(--dur) ease-in-out infinite; animation-delay: var(--delay); }
+@keyframes twinkle { 0%,100% { opacity: 0; transform: scale(.5); } 50% { opacity: .95; transform: scale(1.25); } }
+.info { text-align: center; z-index: 2; }
+.info h1 { font-size: 26px; letter-spacing: 1px; margin-bottom: 6px; }
+.info p { font-size: 14px; color: #7a6ea6; min-height: 20px; }
+.chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 14px 2px 4px; z-index: 2; }
+.chips::-webkit-scrollbar { display: none; }
+.chip { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; cursor: pointer;
+  padding: 5px 10px 5px 5px; border-radius: 999px; border: 1.5px solid transparent;
+  background: rgba(255,255,255,.75); box-shadow: 0 4px 14px rgba(120,100,200,.12);
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.chip:hover { transform: translateY(-2px); }
+.chip.active { border-color: #9a7cf0; box-shadow: 0 6px 18px rgba(154,124,240,.35); }
+.chip img { width: 28px; height: 28px; border-radius: 50%; object-fit: cover; object-position: top;
+  background: #f7f2ff; }
+.chip span { font-size: 12px; font-weight: 700; color: #4a3f78; white-space: nowrap; }
+.actions { display: flex; gap: 12px; padding: 12px 0 8px; z-index: 2; }
+.btn { flex: 1; border: 0; border-radius: 16px; padding: 14px 10px; font-size: 15px; font-weight: 800;
+  cursor: pointer; color: #4a3f78; background: rgba(255,255,255,.85); box-shadow: 0 8px 20px rgba(120,100,200,.16);
+  transition: transform .15s ease, box-shadow .15s ease; }
+.btn:hover { transform: translateY(-2px); box-shadow: 0 12px 26px rgba(120,100,200,.24); }
+.btn:active { transform: translateY(0) scale(.99); }
+.btn.primary { color: #fff; background: linear-gradient(135deg, #a58bff, #6fc8ff); }
+.foot { display: flex; justify-content: space-between; gap: 10px; font-size: 11.5px; color: #8b82ad; z-index: 2; }
+@media (max-width: 420px) {
+  .figure { height: min(48vh, 380px); }
+  .chip span { font-size: 11px; }
+  .info h1 { font-size: 22px; }
+}

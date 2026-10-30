@@ -8,6 +8,10 @@
 
 当前版本：`0.2.0`
 
+**🆕 在线换装间（免安装试玩）**：https://git121995.github.io/dsh-feiyu-wardrobe/dress-up/
+
+![换装间 demo](https://raw.githubusercontent.com/GIT121995/dsh-feiyu-wardrobe/main/docs/preview/dressup.png)
+
 DeepSeek Harness 插件：agent 每花掉一次 token，你的大肥鱼就**吃一顿饭**；一顿顿饭攒成**鱼粮币**，鱼粮币解锁 **21 件原创 SVG 穿搭**；`/fish report` 生成一张 **1080×1440 的饲养报告卡**，可以直接发小红书 / QQ 群。
 
 - 🍚 **真实账本**：按 DeepSeek 官方峰谷价把每次模型调用折成人民币，再按 1 元 = 100 鱼粮币发币
@@ -67,6 +71,16 @@ dsh --profile web
 3. **心情** 由「今天吃了几顿 + 聊了几句 + 距上一顿多久 + 连续天数」决定：饿晕了 / 有点饿 / 悠哉 / 满足 / 撑到翻肚。表情会跟着变。
 4. **衣柜** 21 件单品、三个稀有度：普通 / 稀有 / 史诗（王冠 600 币，慢慢攒）。
 5. **晒卡**：`/fish report` 或 `dsh-feiyu-report` 生成竖版卡片，浏览器打开直接截图。
+
+## 换装间（在线 demo）
+
+`docs/dress-up/` 是一个纯前端互动换装页，免安装、可直接在手机/浏览器里玩：
+
+- 同一只蓝发鲸鱼娘，5 套 AI 生成的大裙子（星空 / 草莓蛋糕 / 黑金哥特 / 森系花仙 / 赛博霓虹）
+- 点击裙子即时换装，支持左右键/滑动切换、随机换装、导出立绘卡
+- 素材配方见 [`docs/dress-up/PROMPTS.md`](docs/dress-up/PROMPTS.md)；新增裙子只要按标准出图 → `tools/prepare_dress.py` 去白底 → 更新 `manifest.json`
+
+形象与裙装素材按 CC BY-NC-SA 4.0 免费开源（禁止商用）。
 
 ## 报告卡 CLI
 

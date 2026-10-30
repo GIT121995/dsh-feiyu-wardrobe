@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>大肥鱼衣橱 · 换装间</title>
+<meta name="description" content="给大肥鱼换各种大裙子——纯前端互动换装，开源免费。">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="sky"></div>
+<main class="stage">
+  <header class="top">
+    <div class="brand">🐋 大肥鱼衣橱 <span>·</span> 换装间</div>
+    <a class="star" href="https://github.com/GIT121995/dsh-feiyu-wardrobe" target="_blank" rel="noopener">⭐ GitHub</a>
+  </header>
+
+  <section class="showcase">
+    <div class="glow"></div>
+    <div class="figure">
+      <img id="dressA" class="dress" src="dresses/starry.webp" alt="大裙子" draggable="false">
+      <img id="dressB" class="dress hidden" src="dresses/starry.webp" alt="" draggable="false">
+    </div>
+    <div class="sparkles" id="sparkles"></div>
+  </section>
+
+  <section class="info">
+    <h1 id="dressName">星空礼服</h1>
+    <p id="dressDesc">装进口袋里的银河。</p>
+  </section>
+
+  <nav class="chips" id="chips" aria-label="裙子列表"></nav>
+
+  <div class="actions">
+    <button id="randomBtn" class="btn primary">🎲 随机换一条</button>
+    <button id="saveBtn" class="btn">📸 保存立绘卡</button>
+  </div>
+
+  <footer class="foot">
+    <span>裙子由 AI 生成 · 形象非官方二创 · CC BY-NC-SA 4.0</span>
+    <span id="counter">1 / 5</span>
+  </footer>
+</main>
+<canvas id="exportCanvas" width="900" height="1350" hidden></canvas>
+<script src="app.js"></script>
+</body>
+</html>

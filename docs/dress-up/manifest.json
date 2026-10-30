@@ -1,0 +1,35 @@
+{
+  "character": "蓝发鲸鱼娘",
+  "dresses": [
+    {
+      "id": "starry",
+      "name": "星空礼服",
+      "desc": "装进口袋里的银河。",
+      "file": "dresses/starry.webp"
+    },
+    {
+      "id": "strawberry",
+      "name": "草莓蛋糕裙",
+      "desc": "三层奶油，一层少女心。",
+      "file": "dresses/strawberry.webp"
+    },
+    {
+      "id": "gothic",
+      "name": "黑金哥特",
+      "desc": "暗夜玫瑰，黑金蕾丝。",
+      "file": "dresses/gothic.webp"
+    },
+    {
+      "id": "forest",
+      "name": "森系花仙",
+      "desc": "把一整个春天缝进裙摆。",
+      "file": "dresses/forest.webp"
+    },
+    {
+      "id": "cyber",
+      "name": "赛博霓虹",
+      "desc": "半透明电路，发光的大裙摆。",
+      "file": "dresses/cyber.webp"
+    }
+  ]
+}
