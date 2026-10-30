@@ -1,124 +1,96 @@
-# 大肥鱼衣橱 · 换装间素材配方（分层管线）
+# 大肥鱼衣橱 · 换装间素材管线（整套穿着立绘版）
 
-换装间 2.0 的素材全部是**分层透明 WebP**：背景、底座、裙子、外套、头饰分开画，
-游戏里直接按 `背景 → 底座 → 裙子 → 外套 → 头饰 → 粒子特效` 的顺序叠起来，
-所以任意搭配都对齐，不需要为每种组合重新合成整图。
+换装 2.0 不再用「衣服图层」贴图（比例对不上、会浮在身体前面），改成：
+
+1. 先做一个**素体**（不穿外衣、固定姿势的 Q版 / 少女版角色）；
+2. 用 Seedream 图生图（image-to-image）以素体为参考，直接生成**「同一角色、同一姿势、穿好整套衣服」的完整立绘**；
+3. 游戏里换装 = 换整套立绘（衣服从生成那一刻就是穿在身上的），
+   上衣 / 下装用「预生成组合矩阵」保住混搭手感；背景和特效是独立可叠加项。
+
+所有立绘都在 Seedream 的 1152×2048 画布上生成，构图一致，构建时统一处理成 **675×1200 WebP**。
 
 ## 目录结构
 
-```text
+```
 docs/dress-up/
 ├── index.html / style.css / app.js   换装间前端
-├── manifest.json                     衣柜数据（分类、名字、文件、缩略图、布局锚点）
-├── art/                              图层素材（720×1200 WebP，同一画布）
-│   ├── base.webp                     高清底座
-│   ├── gown-*.webp / coat-*.webp / hat-*.webp / bg-*.webp
-│   └── thumbs/*.webp                 衣柜缩略图
-└── PROMPTS.md                        本文件
+├── wardrobe-core.js                  纯函数核心（穿搭规则 / 立绘解析 / 随机搭配）
+├── manifest.json                     衣柜数据（身形、分类、单品、bounds、气泡台词）
+└── art/
+    ├── bg-*.webp                     6 张场景背景
+    ├── thumbs/bg-*.webp              背景缩略图
+    ├── chibi/                        Q版整套立绘 + thumbs/
+    ├── girl/                         少女版整套立绘 + thumbs/
+    └── ...
 tools/
-├── compose_dress.py                  图层合成（base / gown / hat / full）
-├── make_thumbs.py                    缩略图生成
-└── source/                           未合成的源素材（底座 + 裙子白底图 + 头饰白底图）
+├── build_wardrobe.py                 把生成图处理成游戏素材 + 重建 manifest
+└── (生成脚本见下)
 ```
 
-所有图层都画在 **900×1500 内部画布**（角色 700px 高、顶部 180px、裙子腰部基线 614px），
-导出时统一缩放到 **720×1200**。游戏按 `manifest.json` 里的 `layout` / `bottom` / `top`
-锚点自动缩放定位，裙子长得不一样也能各自铺满舞台。
+## 1. 素体（Q版 / 少女版）
 
-## 高清底座
+参考图：`ref-q3view.jpg`（Q版三视图）、`ref-girl3view.jpg`（少女版三视图）、
+`yys-portrait.png`、`ref-head.png`、`moegirl-original.png`、耳鳍特写。
 
-- 来源：[YunYueSama/codex-deepseek-pet](https://github.com/YunYueSama/codex-deepseek-pet) 的
-  1024px Q 版大肥鱼立绘（`assets/whale/portrait.png`）
-- 许可：**「大肥鱼项目署名许可 1.0」**——使用时必须保留
-  “作者 YunYueSama + https://github.com/YunYueSama/codex-deepseek-pet” 署名
-- 角色版权链：上善无形「溟月」→ ZipZipPipe 女仆鲸鱼娘（CC BY-NC-SA 4.0，非官方二创，禁止商用）
-- 文件：`tools/source/classic-base-hires.png` → `python3 tools/compose_dress.py base ... docs/dress-up/art/base.webp`
+提示词要点（**标志性特征必须写死，尤其耳鳍不是猫耳**）：
 
-## 裙子 / 外套 / 头饰（Moss 图像 API 生成）
-
-生成器：`moss_image_api.py`（凭据在 `~/.config/moss-image/env`），参数一般
-`--size 1024x1536 --seed <固定>`，白底、无人物。
-
-### 裙子配方（每条裙子一张白底图）
-
-```text
-Q版动漫风格，只有一条{主题}的华丽大裙子，{材质/装饰描述}，蓬松多层裙摆，
-正面展示，没有人物，没有身体，没有头，没有腿，深色描边，平涂上色，
-白色背景，居中，干净简洁
+```
+参考图是这个角色的三视图和耳鳍特写。
+注意：她没有猫耳/兽耳，头顶不要长耳朵。
+头两侧（眼睛到脸颊的高度）各有一片鲸鱼鳍形状的耳鳍：水平向外伸出、略微下垂，
+蓝色基部 + 白色羽毛状鳍条，像两片小翅膀。
+保持：蓝色渐变长发、头顶细长呆毛卷成圆环、蓝色大眼睛、圆脸、身后右侧鲸鱼尾巴。
+画她的全身正面站立素体：只穿纯白色无花纹连身打底裙（无袖圆领到膝盖），光脚，
+没有外衣/头饰/鞋子；纯白背景，平涂上色，深色描边。
 ```
 
-| id | 名字 | 主题关键词 |
+（Q版用「Q版三头身」，少女版用「约六头身」。）
+
+## 2. 整套穿着立绘（连衣裙 6 套 + 上衣×下装 6 组）
+
+以对应素体为参考图 1，服装设计参考为图 2，生成「穿好这套衣服的完整立绘」，
+提示词统一要求：**保持同一角色外观、同一姿势、同一比例**；不戴头饰、光脚。
+
+| 类型 | id | 描述 |
 |---|---|---|
-| starry | 星空礼服 | 深蓝星空渐变、星光点缀、缎带蝴蝶结 |
-| strawberry | 草莓蛋糕裙 | 粉白奶油渐变、草莓装饰、层层褶皱 |
-| gothic | 黑金哥特 | 黑色蕾丝、金色镶边、暗红玫瑰 |
-| forest | 森系花仙 | 嫩绿渐变、花瓣层叠、藤蔓小花 |
-| cyber | 赛博霓虹 | 半透明材质、青紫色霓虹光边、几何光纹 |
-| sakura | 樱花茶会裙 | 樱花粉白渐变、花瓣与蕾丝、多层蓬松裙摆 |
-| ocean | 深海珍珠裙 | 深海蓝绿渐变、水波纹与贝壳珍珠、薄纱层叠 |
+| 套装 | maid | 深蓝长袖女仆长裙 + 白色荷叶边围裙（蓝鲸鱼图案）+ 领口蓝蝴蝶结 |
+| 套装 | starry | 深蓝星空渐变抹胸礼服 + 多层蓬松裙摆 + 星光缎带 |
+| 套装 | strawberry | 粉白奶油渐变 + 草莓装饰与粉色蝴蝶结 |
+| 套装 | gothic | 黑色蕾丝抹胸 + 金色镶边 + 暗红玫瑰 + 蓬松黑裙 |
+| 套装 | forest | 嫩绿渐变 + 花瓣层叠 + 藤蔓小花 |
+| 套装 | sakura | 樱花粉白渐变 + 粉色蕾丝 + 多层薄纱裙摆 |
+| 上衣 | sweater | 白色宽松高领毛衣 |
+| 上衣 | hoodie | 白色宽松连帽卫衣（橙色小蝴蝶结） |
+| 上衣 | sailor | 白色水手服上衣（深蓝水手领 + 蓝鲸鱼刺绣） |
+| 下装 | plaid | 蓝白格纹百褶短裙 |
+| 下装 | pleated | 深蓝百褶短裙（白细条纹 + 腰间蝴蝶结） |
 
-### 外套配方（白底，含两只袖子，没有人物/头/腿）
+生成脚本（不在发布包里，需要时从交接文档取）：`gen-base-v4.py`、`gen-wardrobe-worn.py`。
+输出按 `<shape>-dress-<id>.png` / `<shape>-combo-<top>-<bottom>.png` 命名放到源目录。
 
-```text
-Q版动漫风格，只有一件{外套描述}，正面展示，含两只袖子，
-没有人物，没有头，没有腿，深色描边，平涂上色，白色背景，居中，干净简洁
-```
-
-| id | 名字 | 描述 | 锚点（画布宽 / 顶端） |
-|---|---|---|---|
-| winter | 冬季毛领大衣 | 深蓝呢料 + 白色毛领毛袖口 | `--width 0.38 --top 0.32` |
-| hoodie | 白色连帽卫衣 | 白色宽松连帽 + 橙色蝴蝶结 | `--width 0.30 --top 0.36` |
-
-### 头饰配方（白底，只有配饰，没有人物）
-
-| id | 名字 | 描述 | 锚点 |
-|---|---|---|---|
-| whale | 鲸鱼兜帽 | 蓝色鲸鱼造型毛绒兜帽（带白色绒边） | `--width 0.42 --top 0.082` |
-| snow | 雪花发饰 | 银白色雪花发饰、带一点蓝光 | `--width 0.15 --top 0.075 --x 0.40` |
-| berry | 草莓蝴蝶结 | 粉红草莓造型蝴蝶结发饰 | `--width 0.19 --top 0.105 --x 0.40` |
-| crown | 星月小皇冠 | 蓝金星月小皇冠、镶小珍珠 | `--width 0.24 --top 0.078` |
-
-### 合成命令
+## 3. 构建游戏素材
 
 ```sh
-# 裙子图层（自动去白底 + 裙腰接触阴影）
-python3 tools/compose_dress.py gown tools/source/skirt-starry.png docs/dress-up/art/gown-starry.webp
-
-# 外套 / 头饰图层（按锚点贴到画布上）
-python3 tools/compose_dress.py hat tools/source/coat-winter.png docs/dress-up/art/coat-winter.webp --width 0.38 --top 0.32
-python3 tools/compose_dress.py hat tools/source/hat-whale.png  docs/dress-up/art/hat-whale.webp  --width 0.42 --top 0.082
-
-# 缩略图（读 manifest.json 自动生成）
-python3 tools/make_thumbs.py
+python3 tools/build_wardrobe.py --src .scratch/feiyu-gen/raw8 --out docs/dress-up
 ```
 
-> 头饰/外套的白底图需要先人工看一眼锚点效果（`--width/--top` 是可调参数），
-> 贴好后再跑一次即可；裙子不需要单独调锚点，管线会自动对齐腰部。
+做四件事：
+1. 纯白背景 → 透明（**保持原始画布构图**，所以所有立绘的头/脚位置一致）；
+2. 统一缩放到 675×1200 WebP；
+3. 生成 200×200 衣柜缩略图；
+4. 量出每张立绘的内容上下边界写进 `manifest.json` 的 `bounds`（前端据此自动缩放立绘）。
 
-## 背景（场景图，没有人物）
+## 4. 新增一套衣服
 
-`--size 1024x1536`，纯场景、无人物、无文字，导出压缩到 800×1200 WebP：
+1. 以素体为参考生成「穿好这套衣服」的整套立绘（保持姿势一致）；
+2. 源图按命名约定放进源目录；
+3. 在 `tools/build_wardrobe.py` 的 `DRESSES` / `TOPS` / `BOTTOMS` 里加一行；
+4. `python3 tools/build_wardrobe.py` 重建素材和 manifest；
+5. `npm run verify`（会校验每个引用文件存在且是合法 WebP、bounds 合理）。
 
-| id | 名字 | 提示词要点 |
-|---|---|---|
-| bg-snow | 冬夜街道 | 冬夜欧洲街道、暖黄路灯、飘雪、远处钟楼 |
-| bg-sakura | 樱花庭院 | 春日樱花庭院、石灯笼与木桥、黄昏暖光 |
-| bg-starry | 银河原野 | 梦幻银河星空、紫蓝夜空、远山剪影 |
-| bg-forest | 晨光森林 | 晨光森林花园、藤蔓野花、丁达尔光 |
-| bg-cyber | 霓虹街区 | 赛博朋克霓虹街道、青紫灯牌、雨后反光 |
-| bg-cafe | 雪日咖啡馆 | 复古咖啡馆室内、暖色吊灯、窗外雪景 |
+## 版权
 
-## 新增一件衣服的完整流程
-
-1. 用 Moss 出白底图（或画师直接给白底 PNG），放进 `tools/source/`；
-2. 用 `tools/compose_dress.py` 的 `gown` / `hat` 子命令转成 `docs/dress-up/art/*.webp`；
-3. 在 `manifest.json` 对应分类里加一项（`file`、`thumb`，裙子加 `bottom`、头饰加 `top` 锚点，数值可用脚本量 bbox 得到）；
-4. `python3 tools/make_thumbs.py` 生成缩略图；
-5. `npm run verify`（会检查每个引用的文件存在且是合法 WebP）。
-
-## 版权与署名
-
-- 底座：YunYueSama（署名许可，保留作者 + 仓库地址）
-- AI 图层与背景：本项目用 Moss 图像 API 生成
-- 角色二创版权链：上善无形「溟月」→ ZipZipPipe 女仆鲸鱼娘（CC BY-NC-SA 4.0，非官方，禁止商用）
-- 本项目免费开源、不商业化、不卖皮肤；再分发请保留以上署名
+- 立绘 / 服装：本项目用 Seedream 5.0（火山方舟）基于自建素体生成，不是任何现有画作的再分发；
+- 角色概念参考：大肥鱼社区二创（上善无形「溟月」→ ZipZipPipe 女仆鲸鱼娘 的社区衍生形象），
+  仅作风格与设定参考，未直接使用原画；
+- 本项目免费开源、不商业化、不卖皮肤。

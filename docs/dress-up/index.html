@@ -4,14 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>大肥鱼衣橱 · 换装间</title>
-<meta name="description" content="给大肥鱼换裙子、头饰和背景——可拖可换的互动换装小游戏，开源免费。">
+<meta name="description" content="给大肥鱼换整套衣服、切换 Q版/少女版、换背景和特效——开源免费。">
 <meta name="theme-color" content="#f6ecff">
-<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="style.css?v=6">
 </head>
 <body>
 <main class="app">
   <header class="topbar">
     <div class="brand">🐋 <b>大肥鱼衣橱</b> <span class="tag">换装间</span></div>
+    <div class="shape-toggle" id="shapeToggle" role="group" aria-label="身形切换"></div>
     <div class="top-actions">
       <button id="collectBtn" class="icon-btn" type="button" title="图鉴" aria-label="图鉴">📖</button>
       <a class="icon-btn" href="https://github.com/GIT121995/dsh-feiyu-wardrobe" target="_blank" rel="noopener" title="GitHub" aria-label="GitHub">⭐</a>
@@ -22,28 +23,19 @@
     <img class="scene" id="scene" src="art/bg-snow.webp" alt="">
     <div class="scene-veil"></div>
     <div class="figure" id="figure" role="button" tabindex="0" aria-label="大肥鱼，点一下说话">
-      <img class="layer base" id="layerBase" src="art/base.webp" alt="大肥鱼">
-      <img class="layer gown" id="layerGown" src="art/gown-starry.webp" alt="">
-      <img class="layer coat" id="layerCoat" alt="" hidden>
-      <img class="layer hat" id="layerHat" alt="" hidden>
+      <img class="layer" id="figureImg" src="art/chibi/dress-maid.webp" alt="大肥鱼">
     </div>
     <canvas class="fx" id="fx" aria-hidden="true"></canvas>
     <div class="bubble" id="bubble" role="status" aria-live="polite" hidden></div>
     <div class="stage-tip" id="stageTip">点她一下 · 说点什么</div>
-    <div class="stage-credit">立绘 YunYueSama · AI 服装 / 背景 Moss · 非官方 · CC BY-NC-SA 4.0</div>
+    <div class="stage-credit">立绘 / 服装：Seedream 生成 · 角色参考：大肥鱼社区二创 · 非官方 · 禁止商用</div>
   </section>
 
   <section class="drawer" aria-label="衣柜">
-    <div class="tabs" role="tablist" aria-label="衣柜分类">
-      <button class="tab active" type="button" role="tab" data-cat="gowns" aria-selected="true">👗 大裙子</button>
-      <button class="tab" type="button" role="tab" data-cat="coats" aria-selected="false">🧥 外套</button>
-      <button class="tab" type="button" role="tab" data-cat="hats" aria-selected="false">🎀 头饰</button>
-      <button class="tab" type="button" role="tab" data-cat="backgrounds" aria-selected="false">🏙️ 背景</button>
-      <button class="tab" type="button" role="tab" data-cat="effects" aria-selected="false">❄️ 特效</button>
-    </div>
+    <div class="tabs" id="tabs" role="tablist" aria-label="衣柜分类"></div>
     <div class="shelf" id="shelf" role="tabpanel"></div>
     <div class="controls">
-      <div class="meta"><span id="lookName">经典原装</span><span id="lookDesc">她本来的样子。</span></div>
+      <div class="meta"><span id="lookName">经典女仆装</span><span id="lookDesc">Q版 · 冬夜街道 · 飘雪</span></div>
       <div class="btns">
         <button id="randomBtn" class="btn" type="button">🎲 随机换装</button>
         <button id="saveBtn" class="btn primary" type="button">📸 保存立绘卡</button>
@@ -60,6 +52,6 @@
   </div>
 </main>
 <canvas id="exportCanvas" width="900" height="1350" hidden></canvas>
-<script src="app.js?v=5"></script>
+<script type="module" src="app.js?v=6"></script>
 </body>
 </html>

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import test from 'node:test';
 
@@ -17,70 +17,67 @@ function assertWebp(rel, label) {
 	assert.equal(bytes.subarray(8, 12).toString('latin1'), 'WEBP', `${label}: not WEBP ${rel}`);
 }
 
-test('换装间 manifest 是 v2 分层结构', () => {
-	assert.equal(MANIFEST.version, 2);
-	assert.equal(typeof MANIFEST.base, 'string');
-	assert.ok(Array.isArray(MANIFEST.gowns) && MANIFEST.gowns.length >= 6);
-	assert.ok(Array.isArray(MANIFEST.coats) && MANIFEST.coats.length >= 2);
-	assert.ok(Array.isArray(MANIFEST.hats) && MANIFEST.hats.length >= 4);
-	assert.ok(Array.isArray(MANIFEST.backgrounds) && MANIFEST.backgrounds.length >= 4);
-	assert.ok(Array.isArray(MANIFEST.effects) && MANIFEST.effects.length >= 3);
-	assert.ok(Array.isArray(MANIFEST.bubbles) && MANIFEST.bubbles.length > 0);
-	assert.ok(typeof MANIFEST.credits === 'string' && MANIFEST.credits.includes('YunYueSama'));
+test('manifest v4：两种身形 + 5 个分类', () => {
+	assert.equal(MANIFEST.version, 4);
+	assert.deepEqual(MANIFEST.shapes.map((shape) => shape.id), ['chibi', 'girl']);
+	assert.deepEqual(
+		MANIFEST.categories.map((category) => category.id),
+		['outfits', 'tops', 'bottoms', 'backgrounds', 'effects'],
+	);
+	assert.ok(typeof MANIFEST.credits === 'string' && MANIFEST.credits.length > 10);
 });
 
-test('底座与全部图层文件存在且是有效 WebP', () => {
-	assertWebp(MANIFEST.base, 'base');
-	const groups = ['gowns', 'coats', 'hats', 'backgrounds'];
-	for (const group of groups) {
-		for (const item of MANIFEST[group]) {
-			if (!item.file) continue;
-			assert.ok(item.file.startsWith('art/'), `${item.id}: file should live under art/`);
-			assertWebp(item.file, `${group}/${item.id}`);
-			assert.ok(item.thumb, `${item.id}: thumb required`);
-			assertWebp(item.thumb, `${group}/${item.id} thumb`);
-			assert.equal(typeof item.name, 'string');
-			assert.equal(typeof item.desc, 'string');
+test('每个身形的整套立绘齐全（连衣裙 + 上衣×下装组合）', () => {
+	const dresses = MANIFEST.items.outfits.filter((item) => item.id !== 'none').map((item) => item.id);
+	const tops = MANIFEST.items.tops.map((item) => item.id);
+	const bottoms = MANIFEST.items.bottoms.map((item) => item.id);
+	assert.ok(dresses.length >= 4, '至少 4 套连衣裙');
+	assert.ok(tops.length >= 2 && bottoms.length >= 2, '至少 2x2 上衣/下装组合');
+	for (const shape of MANIFEST.shapes) {
+		for (const id of dresses) assertWebp(`art/${shape.id}/dress-${id}.webp`, `${shape.id}/dress-${id}`);
+		for (const top of tops) {
+			for (const bottom of bottoms) {
+				assertWebp(`art/${shape.id}/combo-${top}-${bottom}.webp`, `${shape.id}/combo-${top}-${bottom}`);
+			}
 		}
 	}
 });
 
-test('每个分类都有“不穿/不戴”的空选项', () => {
-	for (const group of ['coats', 'hats', 'effects']) {
-		const none = MANIFEST[group][0];
-		assert.equal(none.id, 'none', group);
+test('bounds 覆盖所有套装立绘，且上下边界合理', () => {
+	for (const shape of MANIFEST.shapes) {
+		for (const item of MANIFEST.items.outfits) {
+			if (item.id === 'none') continue;
+			const file = `art/${shape.id}/dress-${item.id}.webp`;
+			const bounds = MANIFEST.bounds[file];
+			assert.ok(bounds, `missing bounds: ${file}`);
+			assert.ok(bounds.top >= 0 && bounds.top < 0.5, `${file} top`);
+			assert.ok(bounds.bottom > 0.6 && bounds.bottom <= 1, `${file} bottom`);
+		}
 	}
 });
 
-test('布局锚点齐全（底座上下边界 + 裙子底边 + 头饰顶边）', () => {
-	assert.ok(MANIFEST.layout);
-	assert.ok(MANIFEST.layout.baseTop > 0 && MANIFEST.layout.baseTop < MANIFEST.layout.baseBottom);
-	assert.ok(MANIFEST.layout.baseBottom < 1);
-	for (const gown of MANIFEST.gowns) {
-		if (gown.file) assert.ok(gown.bottom > MANIFEST.layout.baseTop && gown.bottom <= 1, `${gown.id} bottom`);
+test('背景 / 特效 / 缩略图引用都存在', () => {
+	for (const item of MANIFEST.items.backgrounds) {
+		assertWebp(item.file, `background ${item.id}`);
+		assertWebp(item.thumb, `background thumb ${item.id}`);
 	}
-	for (const hat of MANIFEST.hats) {
-		if (hat.file) assert.ok(hat.top >= 0 && hat.top < MANIFEST.layout.baseBottom, `${hat.id} top`);
+	assert.ok(MANIFEST.items.effects.length >= 3);
+	for (const categoryId of ['outfits', 'tops', 'bottoms']) {
+		for (const item of MANIFEST.items[categoryId]) {
+			if (item.id === 'none') continue;
+			assert.ok(item.thumb, `${categoryId}/${item.id} thumb`);
+			assertWebp(item.thumb, `${categoryId}/${item.id} thumb`);
+		}
 	}
 });
 
-test('游戏页 HTML 引用本地脚本与样式，不再依赖 GitHub Pages', () => {
+test('游戏页不再依赖 GitHub Pages，且通过 ESM 模块共享核心逻辑', () => {
 	const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-	assert.ok(html.includes('app.js'));
-	assert.ok(html.includes('style.css'));
-	assert.ok(html.includes('manifest.json') || html.includes('app.js'));
+	assert.ok(html.includes('app.js?v=6'));
+	assert.ok(html.includes('type="module"'));
 	assert.ok(!html.includes('github.io'), 'game page should not hardcode GitHub Pages');
 	const app = readFileSync(join(ROOT, 'app.js'), 'utf8');
+	assert.ok(app.includes("from './wardrobe-core.js'"), 'app.js 应复用 wardrobe-core');
+	assert.ok(app.includes('feiyu:outfit'), 'app.js 必须把当前立绘写进 localStorage 给悬浮鲸鱼用');
 	assert.ok(!app.includes('github.io'), 'app.js should not hardcode GitHub Pages');
-	assert.ok(app.includes('feiyu:outfit'), 'app.js must publish the outfit for the floating pet');
-});
-
-test('缩略图目录不为空且尺寸合理', () => {
-	const dir = join(ROOT, 'art', 'thumbs');
-	assert.ok(existsSync(dir));
-	const thumbs = readFileSync(join(ROOT, 'manifest.json'));
-	assert.ok(thumbs.byteLength > 0);
-	const sample = join(dir, 'gown-starry.webp');
-	assert.ok(existsSync(sample));
-	assert.ok(statSync(sample).size > 512);
 });

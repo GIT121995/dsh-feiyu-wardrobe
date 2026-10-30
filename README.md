@@ -6,9 +6,9 @@
 
 > 把 DSH 的 token 账单，变成一条鱼的衣柜。
 
-当前版本：`0.4.0`
+当前版本：`0.5.0`
 
-**🆕 换装间 2.0（分层换装小游戏）**：装好插件后，DSH 侧边栏会出现 **🎀 换装间**，点开即玩——高清立绘 + **8 套大裙子 / 3 件外套 / 5 个头饰 / 6 张场景背景 / 4 种粒子特效**随意混搭，桌面右下角还蹲着一只**悬浮小鲸鱼**，跟着当前穿搭换装、点一下打开换装间。
+**🆕 换装间 2.0（衣服真的穿在身上）**：装好插件后，DSH 侧边栏会出现 **🎀 换装间**，点开即玩——**Q版 / 少女版双身形**切换 + 6 套整套立绘（女仆 / 星空 / 草莓 / 哥特 / 森系 / 樱花）+ 上衣×下装混搭 + 6 张场景背景 + 4 种粒子特效；桌面右下角还有一只**悬浮小鲸鱼**，跟着当前穿搭换装、点一下打开换装间。
 
 **完全离线**：换装间和全部素材由插件自己的本地静态路由 `/feiyu/dress-up/` 提供，不依赖 GitHub Pages / 外部网络。
 
@@ -20,7 +20,7 @@ DeepSeek Harness 插件：agent 每花掉一次 token，你的大肥鱼就**吃�
 
 - 🍚 **真实账本**：按 DeepSeek 官方峰谷价把每次模型调用折成人民币，再按 1 元 = 100 鱼粮币发币
 - 🎨 **原创形象**：胖鲸 + 21 件手绘 SVG 单品（帽子 / 面部 / 颈部 / 身体 / 手持 / 背景），不打包任何画师二创素材
-- 🎀 **换装小游戏**：侧边栏换装间 + 分层换装（裙子 / 外套 / 头饰 / 背景 / 特效），高清立绘、场景粒子、立绘卡导出，全部离线
+- 🎀 **换装小游戏**：侧边栏换装间 + **整套穿着立绘**换装（Q版/少女版双身形 + 套装 + 上衣×下装混搭 + 背景特效），衣服是真的「穿在身上」，全部离线
 - 🐋 **悬浮小鲸鱼**：可拖动的迷你立绘，实时跟随当前穿搭，点一下打开换装间
 - 🔒 **纯本地**：换装间零额外模型调用、零外部网络请求，不存聊天原文，只存聚合数字
 - 📸 **可晒卡**：饲养天数、投喂金额、吃掉 token、亲密度、心情、近 7 天伙食、今日穿搭
@@ -78,39 +78,33 @@ dsh --profile web
 4. **衣柜** 21 件单品、三个稀有度：普通 / 稀有 / 史诗（王冠 600 币，慢慢攒）。
 5. **晒卡**：`/fish report` 或 `dsh-feiyu-report` 生成竖版卡片，浏览器打开直接截图。
 
-## 换装间（分层换装小游戏）
+## 换装间（整套穿着立绘）
 
-`docs/dress-up/` 是一个纯前端分层换装页，也内嵌在 DSH 侧边栏面板里，免安装、手机也能玩：
+`docs/dress-up/` 是一个纯前端换装页，也内嵌在 DSH 侧边栏面板里，免安装、手机也能玩：
 
-- **高清 Q 版立绘底座**（YunYueSama 1024px 大肥鱼立绘）+ 全部衣服图层画在同一块 900×1500 画布上，游戏里直接叠加渲染，任意组合都对齐
-- 衣柜 5 个分类，共 **26 件**：大裙子 8 / 外套 3 / 头饰 5 / 背景 6 / 特效 4（飘雪、花瓣、星光）
-- 换裙子/外套/头饰/背景即时生效，带雪夜暖光、樱花庭院、银河、赛博霓虹等 6 张 AI 场景背景
-- 点角色会随机说话，支持随机换装、左右方向键换裙、**保存立绘卡**（900×1350，带穿搭名与 repo 水印）
-- 深链：`?gown=starry&coat=winter&hat=whale&bg=bg-snow&effect=snow`
-- **离线**：DSH 里由 `lib/webserver.js` 注册 `/feiyu/dress-up/` 静态路由（仅 GET/HEAD、拒绝目录穿越），换装间不再依赖 GitHub Pages
-
-![换装间](https://raw.githubusercontent.com/GIT121995/dsh-feiyu-wardrobe/main/docs/preview/dressup.png)
+- **整套穿着立绘**：用 Seedream 图生图，以自建素体为参考，直接生成「同一角色、同一姿势、穿好整套衣服」的完整立绘——换装 = 换整套立绘，衣服永远是穿在身上的（不是贴图层）
+- **双身形切换**：Q版（三头身）/ 少女版（六头身），各有 6 套连衣裙 + 上衣×下装组合
+- **混搭**：上衣 3（毛衣 / 卫衣 / 水手服）× 下装 2（格纹 / 百褶）= 6 组预生成组合立绘
+- **背景 6 + 粒子特效 4**（飘雪 / 花瓣 / 星光）任意搭配；默认穿搭 = 经典女仆装
+- 点角色随机说话、随机换装、左右方向键换套装、**保存立绘卡**（900×1350）
+- **离线**：DSH 里由 `lib/webserver.js` 注册 `/feiyu/dress-up/` 静态路由（仅 GET/HEAD、拒绝目录穿越），不依赖 GitHub Pages
 
 素材管线（全部可复现）：
 
 ```sh
-# 1) 高清底座 → 图层
-python3 tools/compose_dress.py base tools/source/classic-base-hires.png docs/dress-up/art/base.webp
-# 2) AI 裙子/头饰/外套 → 透明图层（去白底 + 裙腰接触阴影）
-python3 tools/compose_dress.py gown tools/source/skirt-starry.png docs/dress-up/art/gown-starry.webp
-python3 tools/compose_dress.py hat tools/source/hat-whale.png docs/dress-up/art/hat-whale.webp --width 0.42 --top 0.082
-# 3) 衣柜缩略图
-python3 tools/make_thumbs.py
+# 1) 生成素体（Q版 / 少女版）：见 docs/dress-up/PROMPTS.md
+# 2) 以素体为参考生成「整套穿着立绘」：<shape>-dress-<id>.png / <shape>-combo-<top>-<bottom>.png
+# 3) 构建游戏素材（白底转透明 + 统一尺寸 + 缩略图 + bounds + manifest）
+python3 tools/build_wardrobe.py --src .scratch/feiyu-gen/raw8 --out docs/dress-up
 ```
 
-生成配方（裙子 / 外套 / 头饰 / 背景的提示词与锚点）见 [`docs/dress-up/PROMPTS.md`](docs/dress-up/PROMPTS.md)。
+提示词、素体特征清单、新增衣服流程见 [`docs/dress-up/PROMPTS.md`](docs/dress-up/PROMPTS.md)。
 
 **素材版权**：
 
-- 底座立绘：YunYueSama「大肥鱼」Q 版立绘（[codex-deepseek-pet](https://github.com/YunYueSama/codex-deepseek-pet)，「大肥鱼项目署名许可 1.0」，需署名作者与仓库地址）
-- 裙子 / 外套 / 头饰 / 背景：本项目用 Moss 图像 API 生成
-- 角色版权链：上善无形「溟月」→ ZipZipPipe 女仆鲸鱼娘（CC BY-NC-SA 4.0，非官方二创）
-- 本项目免费开源、**不商业化、不卖皮肤**；二创素材禁止商用
+- 立绘 / 服装：本项目用 Seedream 5.0（火山方舟）基于自建素体生成，不是现有画作的再分发
+- 角色概念参考：大肥鱼社区二创（上善无形「溟月」→ ZipZipPipe 女仆鲸鱼娘 的社区衍生形象），仅作风格与设定参考
+- 本项目免费开源、**不商业化、不卖皮肤**
 
 ## 报告卡 CLI
 
@@ -147,7 +141,7 @@ dsh-feiyu-report --sheet            # 渲染整个衣柜目录页
 
 - **只存聚合数字**：金额、token 数、次数、日期、穿搭状态；不存任何聊天原文、模型输出、工具参数。
 - **不联网**：插件和报告卡都不发请求；卡片是自包含 HTML，没有远程字体/图片/脚本。
-- **两套美术**：报告卡里的胖鲸与 21 件单品是**本项目原创 SVG**；换装间的立绘与衣服是**社区二创素材**（YunYueSama 高清立绘 + 本项目 AI 生成图层），按许可署名、非商业使用，不冒充官方形象。
+- **两套美术**：报告卡里的胖鲸与 21 件单品是**本项目原创 SVG**；换装间的整套立绘是**本项目用 Seedream 基于自建素体生成**的素材（角色概念参考社区二创），不直接再分发任何画作，不冒充官方形象。
 - **非官方**：本项目是社区插件，不属于 DeepSeek 官方项目；「大肥鱼」相关梗的归属属于社区。
 - 后续开放「皮肤包」格式时，同样只支持**本地加载**用户自己的素材，不代分发未授权作品。
 
@@ -174,8 +168,8 @@ npm run verify
 
 ## 路线图
 
-- **v0.5**：换装间接入鱼粮经济（用 `/fish` 攒的币解锁衣服）、心情/亲密度联动换装、更多外套与场景
-- **v0.5**：皮肤包格式（`.dshskin`，本地加载自己的素材）、社区衣服交换码
+- **v0.6**：换装间接入鱼粮经济（用 `/fish` 攒的币解锁衣服）、更多整套立绘（外套 / 泳装 / 节日限定）
+- **v0.6**：头饰 / 鞋子等配饰层、皮肤包格式（`.dshskin`，本地加载自己的素材）、社区衣服交换码
 - 更远：多鱼塘（多会话鱼）、每日小任务；把 `dsh-memory-gate` 的记忆做成「鱼记得你说过什么」，但依然只读聚合摘要
 
 ## 开发
@@ -193,7 +187,7 @@ node bin/feiyu-report.mjs --demo --out card.html   # 预览报告卡
 ```text
 lib/webserver.js 换装间本地静态路由（/feiyu/dress-up/，离线可用）
 lib/client.js    浏览器半区：侧边栏换装间入口 + 主面板 iframe + 悬浮小鲸鱼
-docs/dress-up/   换装间前端：分层换装（art/ 图层 + art/thumbs 缩略图）
+docs/dress-up/   换装间前端：整套立绘换装（wardrobe-core.js + art/<shape>/ 立绘 + thumbs）
 lib/catalog.js   21 件原创 SVG 单品 + 稀有度/价格
 lib/render.js    360×360 场景与 1080×1440 报告卡
 lib/economy.js   鱼粮币 / 亲密度 / 心情 / 连续天数
