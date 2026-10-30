@@ -1,0 +1,74 @@
+{
+  "name": "dsh-feiyu-wardrobe",
+  "version": "0.1.0",
+  "description": "大肥鱼衣橱 — a chubby-whale wardrobe economy for DeepSeek Harness: every token you burn becomes fish food, every meal buys outfits for your fish. Local-only, no extra model calls, no chat text stored.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js"
+    },
+    "./catalog": "./lib/catalog.js",
+    "./render": "./lib/render.js"
+  },
+  "bin": {
+    "dsh-feiyu-report": "./bin/feiyu-report.mjs"
+  },
+  "files": [
+    "lib",
+    "bin",
+    "cordis.patch.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "docs/preview"
+  ],
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --test tests/*.test.mjs",
+    "verify": "npm run typecheck && npm test",
+    "prepublishOnly": "npm run verify",
+    "preview": "node scripts/preview.mjs"
+  },
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "virtual-pet",
+    "wardrobe",
+    "dress-up",
+    "bigfish",
+    "大肥鱼",
+    "token-cost",
+    "token"
+  ],
+  "engines": {
+    "node": ">=22.5"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "compatibility": {
+      "dsh": ">=0.1.0",
+      "dshReleases": {
+        "0.2.1-rc.2": "compatible"
+      }
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^5.8.3"
+  },
+  "author": "GIT121995",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GIT121995/dsh-feiyu-wardrobe.git"
+  },
+  "homepage": "https://github.com/GIT121995/dsh-feiyu-wardrobe#readme",
+  "bugs": {
+    "url": "https://github.com/GIT121995/dsh-feiyu-wardrobe/issues"
+  }
+}

@@ -1,0 +1,21 @@
+# Bundle patch for dsh-feiyu-wardrobe.
+# Values below are the defaults; omit any key to keep the built-in default.
+- insert:
+    - id: feiyu-wardrobe
+      name: dsh-feiyu-wardrobe
+      inject:
+        - commands
+      config:
+        # Display name of your fish. /fish rename also works at runtime.
+        fishName: 大肥鱼
+        # Empty string means <DSH home>/feiyu-wardrobe/state.json
+        statePath: ""
+        timezoneOffsetMinutes: 480
+        # 1 CNY of token spend = 100 fish-food coins by default.
+        coinPerCNY: 100
+        # Coins granted when the fish is born (so the first outfit is reachable).
+        birthGiftCoins: 120
+        # Keep the daily ledger for this many days (used by streak/report).
+        dailyRetentionDays: 120
+        # Statutory holidays (Asia/Shanghai dates, YYYY-MM-DD): off-peak pricing.
+        holidays: []
