@@ -76,11 +76,11 @@ dsh --profile web
 
 `docs/dress-up/` 是一个纯前端互动换装页，免安装、可直接在手机/浏览器里玩：
 
-- 同一只蓝发鲸鱼娘，5 套 AI 生成的大裙子（星空 / 草莓蛋糕 / 黑金哥特 / 森系花仙 / 赛博霓虹）
+- **经典二创女仆鲸鱼娘**做底座（脸/头发/身体固定），AI 只生成裙子图层再合成——换 6 套大裙子（经典原装 / 星空 / 草莓蛋糕 / 黑金哥特 / 森系花仙 / 赛博霓虹）
 - 点击裙子即时换装，支持左右键/滑动切换、随机换装、导出立绘卡
-- 素材配方见 [`docs/dress-up/PROMPTS.md`](docs/dress-up/PROMPTS.md)；新增裙子只要按标准出图 → `tools/prepare_dress.py` 去白底 → 更新 `manifest.json`
+- 素材配方见 [`docs/dress-up/PROMPTS.md`](docs/dress-up/PROMPTS.md)；新增裙子：AI 出裙子图层 → `tools/compose_dress.py` 合成到经典底座 → 更新 `manifest.json`
 
-形象与裙装素材按 CC BY-NC-SA 4.0 免费开源（禁止商用）。
+形象版权链：上善无形「溟月」→ ZipZipPipe 女仆鲸鱼娘；底图来自 [1190fasheqi/dafeiyu-pet](https://github.com/1190fasheqi/dafeiyu-pet)。素材按 CC BY-NC-SA 4.0 免费开源（署名、非商业、相同方式共享）。
 
 ## 报告卡 CLI
 
