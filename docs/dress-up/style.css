@@ -25,8 +25,8 @@ body {
 .figure { position: relative; height: min(52vh, 440px); aspect-ratio: 2 / 3; z-index: 1;
   filter: drop-shadow(0 26px 34px rgba(90,70,160,.22)); animation: floaty 4.6s ease-in-out infinite; }
 .dress { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
-  transition: opacity .32s ease, transform .32s ease; }
-.dress.hidden { opacity: 0; transform: scale(.97); }
+  transition: opacity .22s ease, transform .22s ease; }
+.dress.fading { opacity: .25; transform: scale(.985); }
 @keyframes floaty { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
 .sparkles { position: absolute; inset: 0; pointer-events: none; }
 .sparkle { position: absolute; width: 7px; height: 7px; border-radius: 50%;

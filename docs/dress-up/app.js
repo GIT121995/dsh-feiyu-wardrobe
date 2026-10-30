@@ -1,7 +1,6 @@
 (() => {
   const $ = (sel) => document.querySelector(sel);
-  const dressA = $('#dressA');
-  const dressB = $('#dressB');
+  const dressEl = $('#dress');
   const chipsEl = $('#chips');
   const nameEl = $('#dressName');
   const descEl = $('#dressDesc');
@@ -11,25 +10,31 @@
 
   let manifest = null;
   let index = 0;
-  let front = dressA;
-  let back = dressB;
+  const cache = new Map();
+
+  function loadImage(file) {
+    if (!cache.has(file)) {
+      const promise = new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = file;
+      });
+      cache.set(file, promise);
+    }
+    return cache.get(file);
+  }
 
   async function load() {
-    guard(dressA);
-    guard(dressB);
     const res = await fetch('manifest.json');
     manifest = await res.json();
+    // warm cache for all dresses
+    manifest.dresses.forEach((dress) => loadImage(dress.file).catch(() => {}));
     renderChips();
     makeSparkles(22);
     const start = Number(new URLSearchParams(location.search).get('dress'));
     show(Number.isInteger(start) && start >= 0 && start < manifest.dresses.length ? start : 0, true);
     bind();
-  }
-
-  function preload(dress) {
-    const img = new Image();
-    img.src = dress.file;
-    return img;
   }
 
   function renderChips() {
@@ -38,14 +43,13 @@
       const chip = document.createElement('button');
       chip.className = 'chip';
       chip.type = 'button';
-      chip.dataset.index = String(i);
       chip.innerHTML = `<img src="${dress.file}" alt=""><span>${dress.name}</span>`;
       chip.addEventListener('click', () => show(i));
       chipsEl.appendChild(chip);
     });
   }
 
-  function show(next, instant = false) {
+  async function show(next, instant = false) {
     index = (next + manifest.dresses.length) % manifest.dresses.length;
     const dress = manifest.dresses[index];
     nameEl.textContent = dress.name;
@@ -54,31 +58,19 @@
     [...chipsEl.children].forEach((chip, i) => chip.classList.toggle('active', i === index));
 
     if (instant) {
-      dressB.classList.add('hidden');
-      dressA.classList.remove('hidden');
-      dressA.src = dress.file;
-      dressA.alt = dress.name;
-      dressB.src = dress.file;
-      front = dressA;
-      back = dressB;
+      dressEl.src = dress.file;
+      dressEl.alt = dress.name;
       return;
     }
-    const incoming = back;
-    const outgoing = front;
-    incoming.src = dress.file;
-    incoming.alt = dress.name;
-    incoming.classList.remove('hidden');
-    requestAnimationFrame(() => {
-      outgoing.classList.add('hidden');
-      incoming.classList.remove('hidden');
-      front = incoming;
-      back = outgoing;
-    });
-  }
-
-  function guard(img) {
-    img.addEventListener('error', () => { img.style.visibility = 'hidden'; });
-    img.addEventListener('load', () => { img.style.visibility = ''; });
+    dressEl.classList.add('fading');
+    try {
+      const img = await loadImage(dress.file);
+      // Swap only after the new image decoded — no blank frames, no old-image mismatch.
+      dressEl.src = img.src;
+      dressEl.alt = dress.name;
+    } finally {
+      requestAnimationFrame(() => dressEl.classList.remove('fading'));
+    }
   }
 
   function next() { show(index + 1); }
@@ -98,8 +90,7 @@
 
   function saveCard() {
     const dress = manifest.dresses[index];
-    const img = preload(dress);
-    img.onload = () => {
+    loadImage(dress.file).then((img) => {
       const ctx = canvas.getContext('2d');
       const W = canvas.width;
       const H = canvas.height;
@@ -109,20 +100,17 @@
       bg.addColorStop(1, '#eaf8ff');
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, W, H);
-      // soft glow
       const glow = ctx.createRadialGradient(W / 2, H * 0.42, 40, W / 2, H * 0.42, W * 0.6);
       glow.addColorStop(0, 'rgba(255,255,255,0.95)');
       glow.addColorStop(1, 'rgba(255,255,255,0)');
       ctx.fillStyle = glow;
       ctx.fillRect(0, 0, W, H);
-      // figure fitted
       const maxW = W * 0.78;
       const maxH = H * 0.68;
       const scale = Math.min(maxW / img.width, maxH / img.height);
       const dw = img.width * scale;
       const dh = img.height * scale;
       ctx.drawImage(img, (W - dw) / 2, H * 0.10, dw, dh);
-      // title
       ctx.fillStyle = '#2b2350';
       ctx.font = '800 64px -apple-system, "PingFang SC", "Noto Sans CJK SC", sans-serif';
       ctx.textAlign = 'center';
@@ -137,11 +125,7 @@
       a.download = `feiyu-${dress.id}.png`;
       a.href = canvas.toDataURL('image/png');
       a.click();
-    };
-    img.onerror = () => {
-      // graceful fallback when the dress image is missing
-      alert('图片还没准备好，稍后再试～');
-    };
+    }).catch(() => alert('图片还没准备好，稍后再试～'));
   }
 
   function bind() {
@@ -156,7 +140,6 @@
       if (e.key === 'ArrowRight' || e.key === ' ') { e.preventDefault(); next(); }
       if (e.key === 'ArrowLeft') { e.preventDefault(); show(index - 1); }
     });
-    // swipe on mobile
     let startX = null;
     $('.showcase').addEventListener('touchstart', (e) => { startX = e.touches[0].clientX; }, { passive: true });
     $('.showcase').addEventListener('touchend', (e) => {
