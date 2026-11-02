@@ -1,29 +1,44 @@
 {
-  "version": 5,
+  "version": 6,
   "title": "大肥鱼衣橱 · 换装间",
   "character": "大肥鱼 · 经典鲸鱼娘",
   "credits": "立绘 / 服装：本项目用 Seedream 5.0（火山方舟）基于自建素体生成 · 角色参考：大肥鱼社区二创（仅作风格参考，未直接使用原画）· 非官方，禁止商用",
+  "drawOrder": [
+    "body",
+    "topUnder",
+    "bottom",
+    "topBody",
+    "arms",
+    "sleeve",
+    "hair"
+  ],
   "shapes": [
     {
       "id": "chibi",
       "name": "Q版",
       "desc": "大头小身子的可爱版本",
-      "base": "art/chibi/base.webp",
-      "overlay": "art/chibi/overlay.webp",
       "bounds": {
         "top": 0.04,
         "bottom": 0.9725
+      },
+      "layers": {
+        "body": "art/chibi/body.webp",
+        "arms": "art/chibi/arms.webp",
+        "hair": "art/chibi/hair.webp"
       }
     },
     {
       "id": "girl",
       "name": "少女版",
       "desc": "六头身的少女比例",
-      "base": "art/girl/base.webp",
-      "overlay": "art/girl/overlay.webp",
       "bounds": {
         "top": 0.0292,
         "bottom": 0.9725
+      },
+      "layers": {
+        "body": "art/girl/body.webp",
+        "arms": "art/girl/arms.webp",
+        "hair": "art/girl/hair.webp"
       }
     }
   ],
@@ -72,10 +87,15 @@
         "name": "经典女仆装",
         "desc": "她本来的样子。",
         "icon": "art/icons/maid.webp",
-        "z": 30,
-        "layer": {
-          "chibi": "art/chibi/layers/dress-maid.webp",
-          "girl": "art/girl/layers/dress-maid.webp"
+        "layers": {
+          "chibi": {
+            "topBody": "art/chibi/layers/dress-maid-body.webp",
+            "sleeve": "art/chibi/layers/dress-maid-sleeve.webp"
+          },
+          "girl": {
+            "topBody": "art/girl/layers/dress-maid-body.webp",
+            "sleeve": "art/girl/layers/dress-maid-sleeve.webp"
+          }
         }
       }
     ],
@@ -85,10 +105,15 @@
         "name": "白色高领毛衣",
         "desc": "软乎乎的，像一条围巾。",
         "icon": "art/icons/sweater.webp",
-        "z": 30,
-        "layer": {
-          "chibi": "art/chibi/layers/top-sweater.webp",
-          "girl": "art/girl/layers/top-sweater.webp"
+        "layers": {
+          "chibi": {
+            "topBody": "art/chibi/layers/top-sweater-body.webp",
+            "sleeve": "art/chibi/layers/top-sweater-sleeve.webp"
+          },
+          "girl": {
+            "topBody": "art/girl/layers/top-sweater-body.webp",
+            "sleeve": "art/girl/layers/top-sweater-sleeve.webp"
+          }
         }
       },
       {
@@ -96,10 +121,15 @@
         "name": "白色连帽卫衣",
         "desc": "宽宽松松，把自己藏进去。",
         "icon": "art/icons/hoodie.webp",
-        "z": 30,
-        "layer": {
-          "chibi": "art/chibi/layers/top-hoodie.webp",
-          "girl": "art/girl/layers/top-hoodie.webp"
+        "layers": {
+          "chibi": {
+            "topBody": "art/chibi/layers/top-hoodie-body.webp",
+            "sleeve": "art/chibi/layers/top-hoodie-sleeve.webp"
+          },
+          "girl": {
+            "topBody": "art/girl/layers/top-hoodie-body.webp",
+            "sleeve": "art/girl/layers/top-hoodie-sleeve.webp"
+          }
         }
       },
       {
@@ -107,10 +137,15 @@
         "name": "水手服上衣",
         "desc": "海风味的日常。",
         "icon": "art/icons/sailor.webp",
-        "z": 30,
-        "layer": {
-          "chibi": "art/chibi/layers/top-sailor.webp",
-          "girl": "art/girl/layers/top-sailor.webp"
+        "layers": {
+          "chibi": {
+            "topUnder": "art/chibi/layers/top-sailor-body.webp",
+            "sleeve": "art/chibi/layers/top-sailor-sleeve.webp"
+          },
+          "girl": {
+            "topUnder": "art/girl/layers/top-sailor-body.webp",
+            "sleeve": "art/girl/layers/top-sailor-sleeve.webp"
+          }
         }
       }
     ],
@@ -120,10 +155,13 @@
         "name": "格纹百褶裙",
         "desc": "校园里最普通也最好看的那条。",
         "icon": "art/icons/plaid.webp",
-        "z": 20,
-        "layer": {
-          "chibi": "art/chibi/layers/bottom-plaid.webp",
-          "girl": "art/girl/layers/bottom-plaid.webp"
+        "layers": {
+          "chibi": {
+            "bottom": "art/chibi/layers/bottom-plaid.webp"
+          },
+          "girl": {
+            "bottom": "art/girl/layers/bottom-plaid.webp"
+          }
         }
       },
       {
@@ -131,10 +169,13 @@
         "name": "深蓝百褶裙",
         "desc": "转一圈，裙摆会开成花。",
         "icon": "art/icons/pleated.webp",
-        "z": 20,
-        "layer": {
-          "chibi": "art/chibi/layers/bottom-pleated.webp",
-          "girl": "art/girl/layers/bottom-pleated.webp"
+        "layers": {
+          "chibi": {
+            "bottom": "art/chibi/layers/bottom-pleated.webp"
+          },
+          "girl": {
+            "bottom": "art/girl/layers/bottom-pleated.webp"
+          }
         }
       }
     ],

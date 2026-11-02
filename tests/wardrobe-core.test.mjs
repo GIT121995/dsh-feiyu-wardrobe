@@ -14,29 +14,56 @@ import {
 	resolveLayers,
 } from '../docs/dress-up/wardrobe-core.js';
 
-/* ---------------- 内联 fixture：manifest v5（不依赖真实素材文件） ---------------- */
+/* ---------------- 内联 fixture：manifest v6（不依赖真实素材文件） ---------------- */
+
+/** v6 契约的顺序（LAYER-MODEL.md §1）。 */
+const DRAW_ORDER = ['body', 'topUnder', 'bottom', 'topBody', 'arms', 'sleeve', 'hair'];
+const SHAPES = ['chibi', 'girl'];
+
+/** 身形自带的 body / arms / hair 三层。 */
+function shapeLayers(shapeId) {
+	return {
+		body: `art/${shapeId}/body.webp`,
+		arms: `art/${shapeId}/arms.webp`,
+		hair: `art/${shapeId}/hair.webp`,
+	};
+}
+
+/**
+ * 生成 item.layers：两种身形各自映射「槽位 → 图层文件」。
+ * @param {(shapeId: string) => Record<string, string>} slotsOf
+ */
+function itemLayers(slotsOf) {
+	const out = {};
+	for (const shapeId of SHAPES) {
+		out[shapeId] = {};
+		for (const [slot, file] of Object.entries(slotsOf(shapeId))) {
+			out[shapeId][slot] = `art/${shapeId}/layers/${file}`;
+		}
+	}
+	return out;
+}
 
 const manifest = {
-	version: 5,
+	version: 6,
 	title: '大肥鱼衣橱 · 换装间',
 	character: '大肥鱼 · 经典鲸鱼娘',
 	credits: '测试用内联素材说明，长度足够。',
+	drawOrder: [...DRAW_ORDER],
 	shapes: [
 		{
 			id: 'chibi',
 			name: 'Q版',
 			desc: '大头小身子的可爱版本',
-			base: 'art/chibi/base.webp',
-			overlay: 'art/chibi/overlay.webp',
 			bounds: { top: 0.05, bottom: 0.95 },
+			layers: shapeLayers('chibi'),
 		},
 		{
 			id: 'girl',
 			name: '少女版',
 			desc: '六头身的少女比例',
-			base: 'art/girl/base.webp',
-			overlay: 'art/girl/overlay.webp',
 			bounds: { top: 0.03, bottom: 0.97 },
+			layers: shapeLayers('girl'),
 		},
 	],
 	categories: [
@@ -53,21 +80,13 @@ const manifest = {
 				id: 'maid',
 				name: '经典女仆装',
 				icon: 'art/icons/maid.webp',
-				z: 30,
-				layer: { chibi: 'art/chibi/layers/dress-maid.webp', girl: 'art/girl/layers/dress-maid.webp' },
+				layers: itemLayers(() => ({ topBody: 'dress-maid-body.webp', sleeve: 'dress-maid-sleeve.webp' })),
 			},
 			{
-				// 故意不写 z：应回退默认 30
-				id: 'starry',
-				name: '星空礼服',
-				icon: 'art/icons/starry.webp',
-				layer: { chibi: 'art/chibi/layers/dress-starry.webp', girl: 'art/girl/layers/dress-starry.webp' },
-			},
-			{
-				// 故意缺 girl 图层：少女版应跳过该层
+				// 故意只给 chibi 图层：少女版应跳过整套套装层
 				id: 'ghost',
 				name: '幽灵套装',
-				layer: { chibi: 'art/chibi/layers/dress-ghost.webp' },
+				layers: { chibi: { topBody: 'art/chibi/layers/dress-ghost-body.webp' } },
 			},
 		],
 		tops: [
@@ -75,23 +94,21 @@ const manifest = {
 				id: 'sweater',
 				name: '白色高领毛衣',
 				icon: 'art/icons/sweater.webp',
-				z: 30,
-				layer: { chibi: 'art/chibi/layers/top-sweater.webp', girl: 'art/girl/layers/top-sweater.webp' },
+				layers: itemLayers(() => ({ topBody: 'top-sweater-body.webp', sleeve: 'top-sweater-sleeve.webp' })),
 			},
 			{
-				id: 'hoodie',
-				name: '白色连帽卫衣',
-				icon: 'art/icons/hoodie.webp',
-				z: 25,
-				layer: { chibi: 'art/chibi/layers/top-hoodie.webp', girl: 'art/girl/layers/top-hoodie.webp' },
+				// 水手服主体塞进裙子 → topUnder
+				id: 'sailor',
+				name: '水手服上衣',
+				icon: 'art/icons/sailor.webp',
+				layers: itemLayers(() => ({ topUnder: 'top-sailor-body.webp', sleeve: 'top-sailor-sleeve.webp' })),
 			},
 			{
-				// 故意只给 chibi 图层：少女版应跳过该层
+				// 故意只给 chibi 图层、且没有袖子层
 				id: 'sleeveless',
 				name: '无袖背心',
 				icon: 'art/icons/sweater.webp',
-				z: 5,
-				layer: { chibi: 'art/chibi/layers/top-sleeveless.webp' },
+				layers: { chibi: { topBody: 'art/chibi/layers/top-sleeveless-body.webp' } },
 			},
 		],
 		bottoms: [
@@ -99,23 +116,19 @@ const manifest = {
 				id: 'plaid',
 				name: '格纹百褶裙',
 				icon: 'art/icons/plaid.webp',
-				z: 20,
-				layer: { chibi: 'art/chibi/layers/bottom-plaid.webp', girl: 'art/girl/layers/bottom-plaid.webp' },
+				layers: itemLayers(() => ({ bottom: 'bottom-plaid.webp' })),
 			},
 			{
-				// 故意不写 z：应回退默认 20
 				id: 'pleated',
 				name: '深蓝百褶裙',
 				icon: 'art/icons/pleated.webp',
-				layer: { chibi: 'art/chibi/layers/bottom-pleated.webp', girl: 'art/girl/layers/bottom-pleated.webp' },
+				layers: itemLayers(() => ({ bottom: 'bottom-pleated.webp' })),
 			},
 			{
-				// 与上装同 z：用来验证「同 z 保持 base→下装→上装→overlay 的插入顺序」
-				id: 'sash',
-				name: '腰带长裙',
-				icon: 'art/icons/pleated.webp',
-				z: 30,
-				layer: { chibi: 'art/chibi/layers/bottom-sash.webp', girl: 'art/girl/layers/bottom-sash.webp' },
+				// 故意只给 chibi 图层
+				id: 'ghostBottom',
+				name: '幽灵裙',
+				layers: { chibi: { bottom: 'art/chibi/layers/bottom-ghost.webp' } },
 			},
 		],
 		backgrounds: [
@@ -130,9 +143,36 @@ const manifest = {
 	bubbles: ['嘿嘿。'],
 };
 
-/** 断言图层数组按 z 升序。 */
+/** 按 drawOrder 生成期望的图层序列（entries 是「槽位 → 文件」的无序映射）。 */
+function expectLayers(entries, drawOrder = DRAW_ORDER) {
+	const bySlot = new Map(entries);
+	return drawOrder
+		.map((slot, z) => (bySlot.has(slot) ? { slot, file: bySlot.get(slot), z } : null))
+		.filter((layer) => layer !== null);
+}
+
+/** 断言图层数组按 z 严格升序。 */
 function assertZOrder(layers) {
-	for (let i = 1; i < layers.length; i += 1) assert.ok(layers[i].z >= layers[i - 1].z, '图层应按 z 升序');
+	for (let i = 1; i < layers.length; i += 1) {
+		assert.ok(layers[i].z > layers[i - 1].z, '图层应按 z 严格升序');
+	}
+}
+
+/** 断言每个图层的 z 等于该槽位在 drawOrder 里的下标。 */
+function assertZMatchesDrawOrder(layers, drawOrder = DRAW_ORDER) {
+	for (const layer of layers) assert.equal(layer.z, drawOrder.indexOf(layer.slot), `${layer.slot} 的 z 应为 drawOrder 下标`);
+}
+
+/** 每个槽位在结果里最多出现一次。 */
+function assertUniqueSlots(layers) {
+	const slots = layers.map((layer) => layer.slot);
+	assert.equal(new Set(slots).size, slots.length, '同一槽位不应重复渲染');
+}
+
+/** 把 fixture 深拷贝一份再改（避免测试之间互相污染）。 */
+function cloneManifest(patch) {
+	const copy = JSON.parse(JSON.stringify(manifest));
+	return patch ? patch(copy) : copy;
 }
 
 /* ---------------- 默认状态 / 状态校验 ---------------- */
@@ -148,10 +188,10 @@ test('默认穿搭：Q版 + 经典女仆装 + 默认上下装/背景/特效', ()
 });
 
 test('normalizeState 丢弃未知值并补全', () => {
-	const state = normalizeState(manifest, { shape: 'girl', outfit: '不存在的', top: 'hoodie', effect: 42 });
+	const state = normalizeState(manifest, { shape: 'girl', outfit: '不存在的', top: 'sailor', effect: 42 });
 	assert.equal(state.shape, 'girl');
 	assert.equal(state.outfit, 'maid', '未知套装回退默认');
-	assert.equal(state.top, 'hoodie', '合法值保留');
+	assert.equal(state.top, 'sailor', '合法值保留');
 	assert.equal(state.effect, 'snow', '非字符串回退默认');
 	assert.equal(state.bg, 'bg-snow', '缺失槽位回退默认');
 });
@@ -161,89 +201,126 @@ test('无效 / 空状态也能拿到完整默认状态', () => {
 	assert.deepEqual(normalizeState(manifest, 'not-an-object'), defaultState(manifest));
 });
 
-test('resolveImage 已删除（v5 改为图层解析）', () => {
+test('resolveImage 已删除（v4 单图 → v6 多槽位图层解析）', () => {
 	assert.equal('resolveImage' in core, false);
 });
 
-/* ---------------- resolveLayers ---------------- */
+/* ---------------- resolveLayers：槽位顺序 ---------------- */
 
-test('套装模式：base → 套装层（z=30）→ overlay', () => {
+test('套装模式：按 drawOrder 返回 body → topBody → arms → sleeve → hair', () => {
 	const layers = resolveLayers(manifest, defaultState(manifest));
-	assert.deepEqual(layers, [
-		{ kind: 'base', file: 'art/chibi/base.webp', z: 0 },
-		{ kind: 'outfit', file: 'art/chibi/layers/dress-maid.webp', z: 30 },
-		{ kind: 'overlay', file: 'art/chibi/overlay.webp', z: 100 },
-	]);
+	assert.deepEqual(
+		layers,
+		expectLayers([
+			['body', 'art/chibi/body.webp'],
+			['topBody', 'art/chibi/layers/dress-maid-body.webp'],
+			['arms', 'art/chibi/arms.webp'],
+			['sleeve', 'art/chibi/layers/dress-maid-sleeve.webp'],
+			['hair', 'art/chibi/hair.webp'],
+		]),
+	);
 	assertZOrder(layers);
-	assert.ok(!layers.some((layer) => layer.kind === 'top' || layer.kind === 'bottom'), '套装模式不应叠上下装');
+	assertZMatchesDrawOrder(layers);
+	assertUniqueSlots(layers);
+	assert.ok(!layers.some((layer) => layer.slot === 'topUnder' || layer.slot === 'bottom'), '套装模式不应叠上衣 / 下装');
 });
 
-test('上下装模式：base → 下装（z=20）→ 上装（z=30）→ overlay', () => {
+test('上下装模式：按 drawOrder 返回 body → bottom → topBody → arms → sleeve → hair', () => {
 	const state = { ...defaultState(manifest), outfit: 'none', top: 'sweater', bottom: 'plaid' };
 	const layers = resolveLayers(manifest, state);
-	assert.deepEqual(layers, [
-		{ kind: 'base', file: 'art/chibi/base.webp', z: 0 },
-		{ kind: 'bottom', file: 'art/chibi/layers/bottom-plaid.webp', z: 20 },
-		{ kind: 'top', file: 'art/chibi/layers/top-sweater.webp', z: 30 },
-		{ kind: 'overlay', file: 'art/chibi/overlay.webp', z: 100 },
-	]);
+	assert.deepEqual(
+		layers,
+		expectLayers([
+			['body', 'art/chibi/body.webp'],
+			['bottom', 'art/chibi/layers/bottom-plaid.webp'],
+			['topBody', 'art/chibi/layers/top-sweater-body.webp'],
+			['arms', 'art/chibi/arms.webp'],
+			['sleeve', 'art/chibi/layers/top-sweater-sleeve.webp'],
+			['hair', 'art/chibi/hair.webp'],
+		]),
+	);
 	assertZOrder(layers);
-	assert.ok(!layers.some((layer) => layer.kind === 'outfit'), '上下装模式不应叠套装层');
+	assertZMatchesDrawOrder(layers);
+	assert.ok(!layers.some((layer) => layer.slot === 'topUnder'), '毛衣主体应在 topBody 而不是 topUnder');
 });
 
-test('图层按 z 排序：z 小于下装的上装也会排到下装前面', () => {
-	const state = { ...defaultState(manifest), outfit: 'none', top: 'sleeveless', bottom: 'pleated' };
+test('水手服主体（topUnder）在下装之下：裙子盖住下摆，手臂仍在下装之上', () => {
+	const state = { ...defaultState(manifest), outfit: 'none', top: 'sailor', bottom: 'pleated' };
 	const layers = resolveLayers(manifest, state);
 	assert.deepEqual(
-		layers.map((layer) => [layer.kind, layer.z]),
-		[
-			['base', 0],
-			['top', 5],
-			['bottom', 20],
-			['overlay', 100],
-		],
+		layers.map((layer) => layer.slot),
+		['body', 'topUnder', 'bottom', 'arms', 'sleeve', 'hair'],
+	);
+	const bySlot = new Map(layers.map((layer) => [layer.slot, layer]));
+	assert.ok(bySlot.get('topUnder').z < bySlot.get('bottom').z, 'topUnder 应被 bottom 盖住');
+	assert.ok(bySlot.get('bottom').z < bySlot.get('arms').z, '手臂（手）应盖在下装之上');
+	assert.ok(bySlot.get('sleeve').z > bySlot.get('arms').z, '袖子应盖在手臂之上');
+	assert.ok(bySlot.get('hair').z > bySlot.get('sleeve').z, '前发永远最上层');
+	assert.ok(!layers.some((layer) => layer.slot === 'topBody'), '水手服不应用 topBody');
+});
+
+test('无袖上衣没有 sleeve 层：只渲染 topBody', () => {
+	const state = { ...defaultState(manifest), outfit: 'none', top: 'sleeveless', bottom: 'plaid' };
+	const layers = resolveLayers(manifest, state);
+	assert.deepEqual(
+		layers.map((layer) => layer.slot),
+		['body', 'bottom', 'topBody', 'arms', 'hair'],
 	);
 	assertZOrder(layers);
 });
 
-test('同 z 保持插入顺序：下装在上装之前', () => {
-	const state = { ...defaultState(manifest), outfit: 'none', top: 'sweater', bottom: 'sash' };
-	const layers = resolveLayers(manifest, state);
-	const sameZ = layers.filter((layer) => layer.z === 30);
-	assert.deepEqual(
-		sameZ.map((layer) => layer.kind),
-		['bottom', 'top'],
-	);
+test('所有组合的 z 都单调且等于 drawOrder 下标', () => {
+	const states = [
+		defaultState(manifest),
+		{ ...defaultState(manifest), outfit: 'none', top: 'sweater', bottom: 'plaid' },
+		{ ...defaultState(manifest), outfit: 'none', top: 'sailor', bottom: 'pleated' },
+		{ ...defaultState(manifest), outfit: 'none', top: 'sleeveless', bottom: 'plaid' },
+		{ ...defaultState(manifest), shape: 'girl' },
+	];
+	for (const state of states) {
+		const layers = resolveLayers(manifest, state);
+		assertZOrder(layers);
+		assertZMatchesDrawOrder(layers);
+		assertUniqueSlots(layers);
+	}
 });
 
-test('套装缺 z 时回退默认 30；套装层替换上下装', () => {
-	const layers = resolveLayers(manifest, { ...defaultState(manifest), outfit: 'starry' });
-	const outfit = layers.find((layer) => layer.kind === 'outfit');
-	assert.ok(outfit);
-	assert.equal(outfit.file, 'art/chibi/layers/dress-starry.webp');
-	assert.equal(outfit.z, 30);
-	assert.equal(layers.length, 3);
-});
+/* ---------------- resolveLayers：槽位来源 / 跳过规则 ---------------- */
 
-test('切换身形：图层路径与 bounds 都跟着身形走', () => {
+test('切换身形：身形层与单品层都跟着身形走', () => {
 	const layers = resolveLayers(manifest, { ...defaultState(manifest), shape: 'girl' });
-	assert.deepEqual(layers, [
-		{ kind: 'base', file: 'art/girl/base.webp', z: 0 },
-		{ kind: 'outfit', file: 'art/girl/layers/dress-maid.webp', z: 30 },
-		{ kind: 'overlay', file: 'art/girl/overlay.webp', z: 100 },
-	]);
+	assert.deepEqual(
+		layers,
+		expectLayers([
+			['body', 'art/girl/body.webp'],
+			['topBody', 'art/girl/layers/dress-maid-body.webp'],
+			['arms', 'art/girl/arms.webp'],
+			['sleeve', 'art/girl/layers/dress-maid-sleeve.webp'],
+			['hair', 'art/girl/hair.webp'],
+		]),
+	);
+	assert.ok(layers.find((layer) => layer.slot === 'body').file.startsWith('art/girl/'));
 });
 
-test('非法身形回退第一个身形', () => {
+test('非法身形回退第一个身形的图层与 bounds', () => {
 	const layers = resolveLayers(manifest, { ...defaultState(manifest), shape: 'alien' });
-	assert.equal(layers[0].file, 'art/chibi/base.webp');
-	assert.equal(layers.find((layer) => layer.kind === 'outfit').file, 'art/chibi/layers/dress-maid.webp');
+	assert.deepEqual(
+		layers,
+		expectLayers([
+			['body', 'art/chibi/body.webp'],
+			['topBody', 'art/chibi/layers/dress-maid-body.webp'],
+			['arms', 'art/chibi/arms.webp'],
+			['sleeve', 'art/chibi/layers/dress-maid-sleeve.webp'],
+			['hair', 'art/chibi/hair.webp'],
+		]),
+	);
+	assert.deepEqual(currentBounds(manifest, { ...defaultState(manifest), shape: 'alien' }), { top: 0.05, bottom: 0.95 });
 });
 
-test('缺失单品 / 缺当前身形图层路径时跳过该层，不抛错', () => {
+test('缺失单品 / 缺当前身形图层时跳过该层，不抛错', () => {
 	const unknownTop = resolveLayers(manifest, { ...defaultState(manifest), outfit: 'none', top: '不存在的上衣' });
-	assert.ok(!unknownTop.some((layer) => layer.kind === 'top'));
-	assert.ok(unknownTop.some((layer) => layer.kind === 'bottom'));
+	assert.ok(!unknownTop.some((layer) => layer.slot === 'topBody' || layer.slot === 'sleeve'));
+	assert.ok(unknownTop.some((layer) => layer.slot === 'bottom'));
 
 	const girlSleeveless = resolveLayers(manifest, {
 		...defaultState(manifest),
@@ -252,30 +329,111 @@ test('缺失单品 / 缺当前身形图层路径时跳过该层，不抛错', ()
 		top: 'sleeveless',
 		bottom: 'plaid',
 	});
-	assert.ok(!girlSleeveless.some((layer) => layer.kind === 'top'), '少女版没有无袖背心图层，应跳过');
+	assert.ok(!girlSleeveless.some((layer) => layer.slot === 'topBody'), '少女版没有无袖背心图层，应跳过');
 
 	const girlGhost = resolveLayers(manifest, { ...defaultState(manifest), shape: 'girl', outfit: 'ghost' });
-	assert.ok(!girlGhost.some((layer) => layer.kind === 'outfit'), '缺当前身形图层路径的套装应跳过');
-	assert.ok(!girlGhost.some((layer) => layer.kind === 'top' || layer.kind === 'bottom'), '套装模式不加上下装');
-	assert.deepEqual(girlGhost.map((layer) => layer.kind), ['base', 'overlay'], '其余两层仍在');
+	assert.deepEqual(
+		girlGhost.map((layer) => layer.slot),
+		['body', 'arms', 'hair'],
+		'缺当前身形图层路径的套装应整套跳过，其余身形层仍在',
+	);
 });
 
-test('state 为空时容错：只返回 base 与 overlay', () => {
+test('商品字段缺失 / 空字符串 / 非字符串文件都跳过，不抛错', () => {
+	const broken = cloneManifest((copy) => {
+		copy.items.tops[0].layers.chibi = { topBody: '', sleeve: 42 };
+		return copy;
+	});
+	const layers = resolveLayers(broken, { ...defaultState(broken), outfit: 'none', top: 'sweater', bottom: 'plaid' });
+	assert.ok(!layers.some((layer) => layer.slot === 'topBody' || layer.slot === 'sleeve'), '缺文件的上衣层应跳过');
+	assert.deepEqual(layers.map((layer) => layer.slot), ['body', 'bottom', 'arms', 'hair']);
+
+	const noShapeLayers = cloneManifest((copy) => {
+		delete copy.shapes[0].layers;
+		return copy;
+	});
 	assert.deepEqual(
-		resolveLayers(manifest, undefined).map((layer) => layer.kind),
-		['base', 'overlay'],
+		resolveLayers(noShapeLayers, { ...defaultState(noShapeLayers), outfit: 'none', top: 'sweater', bottom: 'plaid' })
+			.map((layer) => layer.slot),
+		['bottom', 'topBody', 'sleeve'],
+		'身形层缺失时只渲染衣服层',
 	);
+});
+
+test('未知槽位（不在 drawOrder 里）被忽略', () => {
+	const extraSlots = cloneManifest((copy) => {
+		copy.items.tops[0].layers.chibi.hat = 'art/chibi/layers/top-sweater-hat.webp';
+		copy.items.tops[0].layers.chibi.cape = 'art/chibi/layers/top-sweater-cape.webp';
+		copy.shapes[0].layers.tail = 'art/chibi/tail.webp';
+		return copy;
+	});
+	const layers = resolveLayers(extraSlots, { ...defaultState(extraSlots), outfit: 'none', top: 'sweater' });
+	assert.ok(!layers.some((layer) => layer.slot === 'hat' || layer.slot === 'cape' || layer.slot === 'tail'), '未知槽位应忽略');
+	assert.deepEqual(
+		layers.map((layer) => layer.slot),
+		['body', 'bottom', 'topBody', 'arms', 'sleeve', 'hair'],
+	);
+});
+
+test('state 为空时容错：只返回身形层', () => {
+	const layers = resolveLayers(manifest, undefined);
+	assert.deepEqual(
+		layers.map((layer) => layer.slot),
+		['body', 'arms', 'hair'],
+	);
+	assertZOrder(layers);
 	assert.deepEqual(currentBounds(manifest, null), { top: 0.05, bottom: 0.95 });
 });
 
-test('base 与 overlay 恒在（即使套装 / 上下装都没解析出来）', () => {
-	const layers = resolveLayers(manifest, { shape: 'girl', outfit: 'ghost', top: 'x', bottom: 'y' });
+test('manifest 为空 / 没有 drawOrder 时返回空数组，不抛错', () => {
+	assert.deepEqual(resolveLayers(undefined, { shape: 'chibi' }), []);
+	assert.deepEqual(resolveLayers({}, { shape: 'chibi' }), []);
+	assert.deepEqual(resolveLayers({ ...manifest, drawOrder: undefined }, defaultState(manifest)), []);
+	assert.deepEqual(resolveLayers({ ...manifest, drawOrder: 'body,hair' }, defaultState(manifest)), []);
+});
+
+/* ---------------- resolveLayers：drawOrder 是唯一顺序来源 ---------------- */
+
+test('自定义 drawOrder：输出顺序与 z 完全跟随 manifest.drawOrder', () => {
+	const customOrder = ['hair', 'arms', 'body'];
+	const custom = cloneManifest((copy) => {
+		copy.drawOrder = [...customOrder];
+		return copy;
+	});
+	const layers = resolveLayers(custom, defaultState(custom));
 	assert.deepEqual(
-		layers.map((layer) => layer.kind),
-		['base', 'overlay'],
+		layers,
+		expectLayers(
+			[
+				['body', 'art/chibi/body.webp'],
+				['arms', 'art/chibi/arms.webp'],
+				['hair', 'art/chibi/hair.webp'],
+			],
+			customOrder,
+		),
 	);
-	assert.equal(layers[0].z, 0);
-	assert.equal(layers[1].z, 100);
+	assert.deepEqual(
+		layers.map((layer) => layer.slot),
+		customOrder,
+		'顺序应由 manifest.drawOrder 决定，而不是写死常量',
+	);
+	assert.ok(!layers.some((layer) => layer.slot === 'topBody' || layer.slot === 'sleeve'), 'drawOrder 之外的槽位不渲染');
+});
+
+test('drawOrder 里的非法项被忽略、重复项只算一次', () => {
+	const custom = cloneManifest((copy) => {
+		copy.drawOrder = ['body', '', 42, 'hair', 'body', null, 'arms'];
+		return copy;
+	});
+	const layers = resolveLayers(custom, defaultState(custom));
+	assert.deepEqual(
+		layers.map((layer) => [layer.slot, layer.z]),
+		[
+			['body', 0],
+			['hair', 1],
+			['arms', 2],
+		],
+	);
 });
 
 /* ---------------- currentBounds ---------------- */
@@ -286,7 +444,7 @@ test('currentBounds 读身形固定边界，不随穿搭变化', () => {
 	const sameShapeCombo = currentBounds(manifest, {
 		...defaultState(manifest),
 		outfit: 'none',
-		top: 'hoodie',
+		top: 'sweater',
 		bottom: 'pleated',
 	});
 	assert.deepEqual(sameShapeCombo, chibi, '同一身形换穿搭边界不变');
@@ -295,10 +453,7 @@ test('currentBounds 读身形固定边界，不随穿搭变化', () => {
 	assert.deepEqual(girl, { top: 0.03, bottom: 0.97 });
 });
 
-test('currentBounds 非法身形回退第一个身形，缺 bounds 时给默认值', () => {
-	const fallbackShape = currentBounds(manifest, { ...defaultState(manifest), shape: 'alien' });
-	assert.deepEqual(fallbackShape, { top: 0.05, bottom: 0.95 });
-
+test('currentBounds 缺 bounds 时给默认值', () => {
 	const noBoundsManifest = {
 		...manifest,
 		shapes: manifest.shapes.map(({ bounds, ...shape }) => shape),
@@ -310,14 +465,14 @@ test('currentBounds 非法身形回退第一个身形，缺 bounds 时给默认�
 
 test('选上衣/下装会退出套装模式；选套装会回到套装模式', () => {
 	let state = defaultState(manifest);
-	state = applySelection(manifest, state, 'tops', 'hoodie');
+	state = applySelection(manifest, state, 'tops', 'sailor');
 	assert.equal(state.outfit, 'none');
-	assert.equal(state.top, 'hoodie');
+	assert.equal(state.top, 'sailor');
 	state = applySelection(manifest, state, 'bottoms', 'pleated');
 	assert.equal(state.outfit, 'none');
 	assert.equal(state.bottom, 'pleated');
-	state = applySelection(manifest, state, 'outfits', 'starry');
-	assert.equal(state.outfit, 'starry');
+	state = applySelection(manifest, state, 'outfits', 'ghost');
+	assert.equal(state.outfit, 'ghost');
 	state = applySelection(manifest, state, 'outfits', 'none');
 	assert.equal(state.outfit, 'none');
 });
@@ -325,7 +480,7 @@ test('选上衣/下装会退出套装模式；选套装会回到套装模式', (
 test('applySelection 不修改入参', () => {
 	const state = defaultState(manifest);
 	const snapshot = { ...state };
-	applySelection(manifest, state, 'tops', 'hoodie');
+	applySelection(manifest, state, 'tops', 'sailor');
 	assert.deepEqual(state, snapshot);
 });
 
@@ -348,8 +503,8 @@ test('describeOutfit 区分套装模式与组合模式', () => {
 	assert.ok(outfit.name.includes('经典女仆装'));
 	assert.ok(outfit.detail.includes('Q版'));
 	assert.ok(outfit.detail.includes('冬夜街道'));
-	const combo = describeOutfit(manifest, { ...defaultState(manifest), outfit: 'none', top: 'hoodie', bottom: 'pleated' });
-	assert.ok(combo.name.includes('白色连帽卫衣'));
+	const combo = describeOutfit(manifest, { ...defaultState(manifest), outfit: 'none', top: 'sweater', bottom: 'pleated' });
+	assert.ok(combo.name.includes('白色高领毛衣'));
 	assert.ok(combo.name.includes('深蓝百褶裙'));
 });
 

@@ -8,7 +8,7 @@ import {
 	randomOutfit,
 	resolveLayers,
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；这里加版本号是为了让浏览器绕过 wardrobe-core 的旧缓存
-} from './wardrobe-core.js?v=9';
+} from './wardrobe-core.js?v=10';
 
 (() => {
 	'use strict';
@@ -17,9 +17,10 @@ import {
 	const STORAGE_KEY = 'feiyu:outfit';
 	const params = new URLSearchParams(location.search);
 
-	/** 图层栈的 5 个固定槽位（与 resolveLayers 的 kind 一一对应）。 */
-	const LAYER_SLOTS = ['base', 'bottom', 'top', 'outfit', 'overlay'];
-	/** 悬浮小鲸鱼用的小图尺寸（9:16，与旧整套立绘同构）。 */
+	/** 图层槽位（v6 起由 manifest.drawOrder 决定，boot 时动态建 <img>，不再写死）。 */
+	/** @type {string[]} */
+	let layerSlots = [];
+	/** 悬浮小鲸鱼用的小图尺寸（9:16，与整张立绘画布同构）。 */
 	const PET_IMAGE_W = 184;
 	const PET_IMAGE_H = 328;
 
@@ -44,9 +45,6 @@ import {
 		sheetStat: $('#sheetStat'),
 		canvas: $('#exportCanvas'),
 	};
-	for (const slot of LAYER_SLOTS) {
-		els.figureLayers[slot] = /** @type {HTMLImageElement} */ (document.querySelector(`.figure-layer[data-layer="${slot}"]`));
-	}
 
 	let manifest = null;
 	let state = null;
@@ -127,13 +125,14 @@ import {
 	}
 
 	/**
-	 * 当前穿搭的兜底小图（图层小图还没合成好时用素体顶上）。
+	 * 当前穿搭的兜底小图（图层小图还没合成好时用素体 body 层顶上）。
 	 * @param {string} shapeId
 	 * @returns {string}
 	 */
 	function petFallbackImage(shapeId) {
 		const shape = manifest.shapes.find((entry) => entry.id === shapeId) || manifest.shapes[0];
-		return (shape && shape.base) || 'art/chibi/base.webp';
+		const body = shape && shape.layers && shape.layers.body;
+		return body || 'art/chibi/body.webp';
 	}
 
 	/** 小图合公用 canvas（透明背景，不显示在页面上）。 */
@@ -185,8 +184,9 @@ import {
 
 	/**
 	 * 把当前穿搭合成为悬浮小鲸鱼用的小图 data URL（异步，不阻塞点击/换装）。
-	 * 图层共用同一张 675×1200 画布坐标，直接整幅缩放叠放即可，不需要任何锚点。
-	 * @param {Array<{ file: string }>} layers
+	 * `resolveLayers` 已按 drawOrder 从下到上排好序，这里按同一顺序整幅缩放叠放即可，
+	 * 图层共用同一张 675×1200 画布坐标，不需要任何锚点。
+	 * @param {Array<{ slot: string, file: string, z: number }>} layers
 	 * @returns {Promise<string>}
 	 */
 	async function composePetImage(layers) {
@@ -257,29 +257,55 @@ import {
 	/* ---------------- 人物图层栈 ---------------- */
 
 	/**
+	 * 按 `manifest.drawOrder` 动态创建图层 <img>（data-layer=槽位，初始 hidden）。
+	 * v6 不再在 index.html 里写死 5 个槽位；只在 boot 时建一次，之后换装只改 src/显隐。
+	 */
+	function buildFigureLayers() {
+		const drawOrder = Array.isArray(manifest.drawOrder) ? manifest.drawOrder : [];
+		/** @type {string[]} */
+		const slots = [];
+		for (const slot of drawOrder) {
+			if (typeof slot === 'string' && slot && !slots.includes(slot)) slots.push(slot);
+		}
+		layerSlots = slots;
+		els.figure.innerHTML = '';
+		for (let z = 0; z < layerSlots.length; z += 1) {
+			const slot = layerSlots[z];
+			const img = document.createElement('img');
+			img.className = 'figure-layer';
+			img.dataset.layer = slot;
+			img.alt = slot === 'body' ? '大肥鱼' : '';
+			img.draggable = false;
+			img.decoding = 'async';
+			img.hidden = true;
+			// z-index 按 drawOrder 固定：与 resolveLayers 返回的 z 一致，建层时设一次即可
+			img.style.zIndex = String(z);
+			els.figure.appendChild(img);
+			els.figureLayers[slot] = img;
+		}
+	}
+
+	/**
 	 * 按 `resolveLayers` 把变化过的槽位换成新图；未变化的槽位不重建、不重新赋值。
-	 * 隐藏当前穿搭用不到的槽位（套装与上下装互斥，槽位数量固定为 5 个）。
+	 * 隐藏当前穿搭用不到的槽位（套装与上下装互斥；槽位数量由 drawOrder 决定，v6 最多 7 个）。
 	 */
 	function renderFigure() {
 		const layers = resolveLayers(manifest, state);
-		const key = layers.map((layer) => `${layer.kind}:${layer.file}:${layer.z}`).join('|');
+		const key = layers.map((layer) => `${layer.slot}:${layer.file}:${layer.z}`).join('|');
 		if (key === lastRendered.figureKey) return; // 只换背景/特效时整个图层栈都不用动
 		lastRendered.figureKey = key;
 		const seq = (renderSeq += 1);
-		/** @type {Map<string, { file: string, z: number }>} */
-		const byKind = new Map();
-		for (const layer of layers) {
-			if (layer.file) byKind.set(layer.kind, layer);
-		}
-		for (const slot of LAYER_SLOTS) {
+		/** @type {Map<string, { slot: string, file: string, z: number }>} */
+		const bySlot = new Map();
+		for (const layer of layers) bySlot.set(layer.slot, layer);
+		for (const slot of layerSlots) {
 			const el = els.figureLayers[slot];
 			if (!el) continue;
-			const layer = byKind.get(slot);
-			if (!layer) {
+			const layer = bySlot.get(slot);
+			if (!layer || !layer.file) {
 				el.hidden = true;
 				continue;
 			}
-			el.style.zIndex = String(layer.z);
 			if (el.dataset.file === layer.file && el.getAttribute('src')) {
 				el.hidden = false;
 				continue; // 未变化：什么都不动
@@ -289,7 +315,7 @@ import {
 				(img) => {
 					if (seq !== renderSeq || el.dataset.file !== layer.file) return; // 已被更新的渲染取代
 					el.src = layer.file;
-					el.alt = slot === 'base' ? '大肥鱼' : '';
+					el.alt = slot === 'body' ? '大肥鱼' : '';
 					el.hidden = false;
 				},
 				() => {
@@ -544,8 +570,8 @@ import {
 		ctx.fillStyle = 'rgba(255,255,255,0.08)';
 		ctx.fillRect(0, 0, W, H);
 
-		// 人物：所有图层共用同一张画布坐标，按 z 序在同一个矩形里依次 drawImage
-		const baseLayer = layers.find((layer) => layer.kind === 'base');
+		// 人物：所有图层共用同一张画布坐标，按 resolveLayers 的 drawOrder 在同一个矩形里依次 drawImage
+		const baseLayer = layers.find((layer) => layer.slot === 'body');
 		const baseImg = baseLayer ? layerImgs.get(baseLayer.file) : null;
 		const ratio = baseImg && baseImg.width && baseImg.height ? baseImg.width / baseImg.height : 9 / 16;
 		const areaTop = H * 0.035;
@@ -822,6 +848,7 @@ import {
 		const res = await fetch('manifest.json', { cache: 'no-cache' });
 		manifest = await res.json();
 		state = normalizeState(manifest, { ...readSaved(), ...readUrlOverrides() });
+		buildFigureLayers();
 		document.title = `${manifest.character} · 大肥鱼衣橱`;
 		renderShapeToggle();
 		renderTabs();

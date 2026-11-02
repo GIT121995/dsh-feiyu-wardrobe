@@ -8,6 +8,14 @@ import { dressUpRoot } from '../lib/webserver.js';
 const ROOT = dressUpRoot();
 const MANIFEST = JSON.parse(readFileSync(join(ROOT, 'manifest.json'), 'utf8'));
 
+/** v6 契约：drawOrder 的 7 个深度槽位（LAYER-MODEL.md §1）。 */
+const DRAW_ORDER = ['body', 'topUnder', 'bottom', 'topBody', 'arms', 'sleeve', 'hair'];
+/** 身形自带的身体部件层。 */
+const SHAPE_LAYER_SLOTS = ['body', 'arms', 'hair'];
+/** 身形层之外、由单品占用的槽位（下装 bottom / 上衣 topUnder+topBody+sleeve / 套装 topBody+sleeve）。 */
+const ITEM_LAYER_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve'];
+const CLOTHING_CATEGORIES = ['outfits', 'tops', 'bottoms'];
+
 /** 断言相对路径存在、是 WebP 且体积像真图。 */
 function assertWebp(rel, label) {
 	const file = join(ROOT, rel);
@@ -24,110 +32,250 @@ function walk(relDir) {
 	const out = [];
 	const dir = join(ROOT, relDir);
 	if (!existsSync(dir)) return out;
+	const base = ROOT.endsWith('/') ? ROOT : `${ROOT}/`;
 	for (const entry of readdirSync(dir, { withFileTypes: true, recursive: true })) {
 		if (entry.isFile()) {
 			const full = join(entry.parentPath || entry.path, entry.name);
-			out.push(full.slice(ROOT.length + 1).split('\\').join('/'));
+			out.push(full.slice(base.length).split('\\').join('/'));
 		}
 	}
 	return out;
 }
 
-test('manifest v5：两种身形（base/overlay/bounds）+ 5 个分类', () => {
-	assert.equal(MANIFEST.version, 5);
+/** 递归收集 manifest 里所有字符串（带 JSON 键路径，便于报错定位）。 */
+function collectManifestStrings(value, path = 'manifest') {
+	/** @type {Array<[string, string]>} */
+	const out = [];
+	if (typeof value === 'string') out.push([path, value]);
+	else if (value && typeof value === 'object') {
+		for (const [key, child] of Object.entries(value)) out.push(...collectManifestStrings(child, `${path}.${key}`));
+	}
+	return out;
+}
+
+/** v5 的整套立绘裸文件（art/<shape>/(dress|combo)-*.webp）。 */
+function isLegacyWholeLook(rel) {
+	return /^art\/(?:chibi|girl)\/(?:dress|combo)-[^/]+\.webp$/.test(rel);
+}
+
+/** v5 的素体 / 头发叠层文件。 */
+function isLegacyShapeFile(rel) {
+	return /^art\/(?:chibi|girl)\/(?:base|overlay)\.webp$/.test(rel);
+}
+
+/** v5 保守范围里「无槽位后缀」的旧上衣 / 套装图层（新文件名带 -topBody/-topUnder/-sleeve 等槽位后缀）。 */
+function isLegacyBareLayer(rel) {
+	return /^art\/(?:chibi|girl)\/layers\/(?:dress-maid|top-sweater|top-hoodie|top-sailor)\.webp$/.test(rel);
+}
+
+/** 单个身形下某件单品的槽位映射。 */
+function itemSlots(item, shapeId) {
+	return (item.layers && item.layers[shapeId]) || null;
+}
+
+/* ---------------- manifest v6：整体契约 ---------------- */
+
+test('manifest v6：drawOrder / 两种身形 / 5 个分类', () => {
+	assert.equal(MANIFEST.version, 6, 'manifest 版本应为 6');
+	assert.deepEqual(MANIFEST.drawOrder, DRAW_ORDER, 'drawOrder 必须与 LAYER-MODEL.md §1 一致');
 	assert.deepEqual(MANIFEST.shapes.map((shape) => shape.id), ['chibi', 'girl']);
 	assert.deepEqual(
 		MANIFEST.categories.map((category) => category.id),
 		['outfits', 'tops', 'bottoms', 'backgrounds', 'effects'],
 	);
 	assert.ok(typeof MANIFEST.credits === 'string' && MANIFEST.credits.length > 10);
-	for (const shape of MANIFEST.shapes) {
-		assert.equal(shape.base, `art/${shape.id}/base.webp`, `${shape.id} 需要 base 素体`);
-		assert.equal(shape.overlay, `art/${shape.id}/overlay.webp`, `${shape.id} 需要 overlay 叠层`);
-		assert.ok(shape.bounds && typeof shape.bounds === 'object', `${shape.id} 需要 bounds`);
-	}
+	assert.ok(typeof MANIFEST.title === 'string' && MANIFEST.title.length > 0);
+	assert.equal(MANIFEST.bounds, undefined, 'v6 没有顶层 bounds（改到 shapes[].bounds）');
 });
 
-test('每个身形的素体与头发叠层齐全（透明 WebP）', () => {
+test('每个身形有 body/arms/hair 三层（WebP），且只引用 drawOrder 里的槽位', () => {
 	for (const shape of MANIFEST.shapes) {
-		assertWebp(shape.base, `${shape.id}/base`);
-		assertWebp(shape.overlay, `${shape.id}/overlay`);
-	}
-});
-
-test('v0.8 保守范围：套装只保留「经典女仆装」，其余 5 套已移除', () => {
-	const outfits = MANIFEST.items.outfits;
-	assert.deepEqual(
-		outfits.map((item) => item.id),
-		['none', 'maid'],
-		'套装应只剩 none + maid',
-	);
-	const removed = ['starry', 'strawberry', 'gothic', 'forest', 'sakura'];
-	for (const shape of MANIFEST.shapes) {
-		for (const id of removed) {
-			const rel = `art/${shape.id}/layers/dress-${id}.webp`;
-			assert.ok(!existsSync(join(ROOT, rel)), `已移除的套装图层不应再存在：${rel}`);
+		assert.ok(shape.layers && typeof shape.layers === 'object', `${shape.id} 需要 layers 映射`);
+		assert.equal(shape.base, undefined, `${shape.id} 不应再有 v5 的 base 字段`);
+		assert.equal(shape.overlay, undefined, `${shape.id} 不应再有 v5 的 overlay 字段`);
+		for (const slot of SHAPE_LAYER_SLOTS) {
+			const rel = shape.layers[slot];
+			assert.ok(rel, `${shape.id} 缺少 ${slot} 层`);
+			assert.equal(rel, `art/${shape.id}/${slot}.webp`, `${shape.id} 的 ${slot} 层路径应为 art/${shape.id}/${slot}.webp`);
+			assertWebp(rel, `${shape.id}/${slot}`);
 		}
-	}
-});
-
-test('每个身形 × 每件衣服单品的图层齐全且是 WebP（保守范围共 6 件/身形）', () => {
-	const clothing = ['outfits', 'tops', 'bottoms'];
-	let count = 0;
-	for (const categoryId of clothing) {
-		const items = MANIFEST.items[categoryId] || [];
-		assert.ok(items.length >= 2, `${categoryId} 至少要有占位 + 1 件单品`);
-		for (const item of items) {
-			if (item.id === 'none') continue;
-			assert.ok(item.layer && typeof item.layer === 'object', `${categoryId}/${item.id} 需要 layer 映射`);
-			assert.ok(typeof item.z === 'number', `${categoryId}/${item.id} 需要 z`);
-			for (const shape of MANIFEST.shapes) {
-				const layer = item.layer[shape.id];
-				assert.ok(layer, `${categoryId}/${item.id} 缺少 ${shape.id} 图层`);
-				assertWebp(layer, `${categoryId}/${item.id}/${shape.id}`);
-				count += 1;
-			}
+		for (const slot of Object.keys(shape.layers)) {
+			assert.ok(MANIFEST.drawOrder.includes(slot), `${shape.id} 的槽位 ${slot} 不在 drawOrder 里`);
 		}
-	}
-	const perShape = 6; // 1 连衣裙 + 3 上衣 + 2 下装
-	assert.equal(count, MANIFEST.shapes.length * perShape, `衣服图层总数应为 ${MANIFEST.shapes.length * perShape}（每身形 ${perShape} 件）`);
-});
-
-test('每个身形的 bounds 合理（同一身形固定，不随穿搭变化）', () => {
-	for (const shape of MANIFEST.shapes) {
-		const { top, bottom } = shape.bounds;
+		const { top, bottom } = shape.bounds || {};
 		assert.ok(typeof top === 'number' && top >= 0 && top < 0.5, `${shape.id} bounds.top 不合理：${top}`);
 		assert.ok(typeof bottom === 'number' && bottom > 0.6 && bottom <= 1, `${shape.id} bounds.bottom 不合理：${bottom}`);
 		assert.ok(bottom > top, `${shape.id} bounds.bottom 应大于 top`);
 	}
-	assert.equal(MANIFEST.bounds, undefined, 'v5 已删除顶层 bounds（改到 shapes[].bounds）');
 });
 
-test('旧整套立绘（dress-*/combo-* 裸路径）不再被引用，也不再存在', () => {
-	const filenames = [];
-	const collect = (value, key) => {
-		if (typeof value === 'string') filenames.push([key, value]);
-		else if (value && typeof value === 'object') {
-			for (const [childKey, child] of Object.entries(value)) collect(child, `${key}.${childKey}`);
+/* ---------------- 保守范围：1 套装 + 3 上衣 + 2 下装 ---------------- */
+
+test('v0.9 保守范围：套装只留「经典女仆装」，上衣 3 件、下装 2 件', () => {
+	assert.deepEqual(
+		MANIFEST.items.outfits.map((item) => item.id),
+		['none', 'maid'],
+		'套装应只剩 none + maid',
+	);
+	assert.deepEqual(
+		MANIFEST.items.tops.map((item) => item.id).sort(),
+		['hoodie', 'sailor', 'sweater'],
+		'上衣应保留 sweater / hoodie / sailor',
+	);
+	assert.deepEqual(
+		MANIFEST.items.bottoms.map((item) => item.id).sort(),
+		['plaid', 'pleated'],
+		'下装应保留 plaid / pleated',
+	);
+});
+
+/* ---------------- 单品图层：每身形齐全、槽位合法、文件存在 ---------------- */
+
+test('每件单品都有 v6 layers 映射，每身形图层齐全、槽位合法且是 WebP', () => {
+	/** @type {Map<string, number>} 每个身形的衣服图层文件数 */
+	const perShapeCount = new Map(MANIFEST.shapes.map((shape) => [shape.id, 0]));
+	let itemCount = 0;
+
+	for (const categoryId of CLOTHING_CATEGORIES) {
+		for (const item of MANIFEST.items[categoryId] || []) {
+			if (item.id === 'none') continue;
+			itemCount += 1;
+			assert.ok(item.icon, `${categoryId}/${item.id} 需要只有衣服的 icon`);
+			assertWebp(item.icon, `${categoryId}/${item.id} icon`);
+			assert.equal(item.layer, undefined, `${categoryId}/${item.id} 不应再有 v5 的 layer 字段`);
+			assert.equal(item.z, undefined, `${categoryId}/${item.id} 不应再有 v5 的 z 字段`);
+			assert.ok(item.layers && typeof item.layers === 'object', `${categoryId}/${item.id} 需要 layers 映射`);
+
+			for (const shape of MANIFEST.shapes) {
+				const slots = itemSlots(item, shape.id);
+				assert.ok(slots && typeof slots === 'object', `${categoryId}/${item.id} 缺少 ${shape.id} 的图层映射`);
+				const slotNames = Object.keys(slots).filter((slot) => slots[slot]);
+				assert.ok(slotNames.length >= 1, `${categoryId}/${item.id}/${shape.id} 至少要有一层`);
+				for (const slot of slotNames) {
+					assert.ok(MANIFEST.drawOrder.includes(slot), `${categoryId}/${item.id}/${shape.id} 槽位 ${slot} 非法`);
+					assert.ok(
+						!SHAPE_LAYER_SLOTS.includes(slot),
+						`${categoryId}/${item.id}/${shape.id} 不应占用身形层槽位 ${slot}`,
+					);
+					assertWebp(slots[slot], `${categoryId}/${item.id}/${shape.id}/${slot}`);
+					perShapeCount.set(shape.id, perShapeCount.get(shape.id) + 1);
+				}
+			}
 		}
-	};
-	collect(MANIFEST, 'manifest');
-	for (const [key, value] of filenames) {
+	}
+
+	assert.equal(itemCount, 6, '保守范围应是 1 套装 + 3 上衣 + 2 下装 = 6 件单品');
+	for (const shape of MANIFEST.shapes) {
+		const count = perShapeCount.get(shape.id);
+		// 每件单品 1–2 层（主体 + 可选袖子/下摆），6 件单品 → 6–12 个图层文件
+		assert.ok(count >= 6 && count <= 12, `${shape.id} 衣服图层数不合理：${count}（应在 6–12）`);
+	}
+});
+
+test('上衣主体槽位语义：水手服 topUnder，毛衣/卫衣 topBody；topUnder 与 topBody 互斥', () => {
+	for (const shape of MANIFEST.shapes) {
+		const sailor = MANIFEST.items.tops.find((item) => item.id === 'sailor');
+		const sailorSlots = Object.keys(itemSlots(sailor, shape.id));
+		assert.ok(sailorSlots.includes('topUnder'), `${shape.id} 水手服主体应放 topUnder（下摆塞进裙子）`);
+		assert.ok(!sailorSlots.includes('bottom'), `${shape.id} 上衣不应自带下装`);
+
+		for (const id of ['sweater', 'hoodie']) {
+			const top = MANIFEST.items.tops.find((item) => item.id === id);
+			const slots = Object.keys(itemSlots(top, shape.id));
+			assert.ok(slots.includes('topBody'), `${shape.id} ${id} 主体应放 topBody（下摆盖在裙子外）`);
+			assert.ok(!slots.includes('topUnder'), `${shape.id} ${id} 不应同时占 topUnder`);
+		}
+
+		for (const top of MANIFEST.items.tops) {
+			const slots = Object.keys(itemSlots(top, shape.id));
+			assert.ok(
+				slots.includes('topUnder') !== slots.includes('topBody'),
+				`${shape.id}/${top.id} 主体槽位 topUnder / topBody 必须二选一`,
+			);
+			if (slots.includes('sleeve')) {
+				assert.ok(
+					slots.includes('topUnder') || slots.includes('topBody'),
+					`${shape.id}/${top.id} 有袖子层就必须有主体层`,
+				);
+			}
+		}
+	}
+});
+
+test('下装只有 bottom 一个槽位（每身形一张）', () => {
+	for (const item of MANIFEST.items.bottoms) {
+		if (item.id === 'none') continue;
+		for (const shape of MANIFEST.shapes) {
+			const slots = itemSlots(item, shape.id);
+			assert.ok(slots, `${item.id} 缺少 ${shape.id} 图层`);
+			assert.deepEqual(Object.keys(slots).filter((slot) => slots[slot]), ['bottom'], `${shape.id}/${item.id} 应只有 bottom 层`);
+			assertWebp(slots.bottom, `${shape.id}/${item.id}/bottom`);
+		}
+	}
+});
+
+test('套装与上衣/下装互斥：套装只占 topBody + 可选 sleeve', () => {
+	for (const item of MANIFEST.items.outfits) {
+		if (item.id === 'none') continue;
+		for (const shape of MANIFEST.shapes) {
+			const slots = Object.keys(itemSlots(item, shape.id)).filter((slot) => itemSlots(item, shape.id)[slot]);
+			assert.ok(slots.includes('topBody'), `${shape.id}/${item.id} 套装主体应放 topBody`);
+			assert.ok(!slots.includes('bottom'), `${shape.id}/${item.id} 套装不应再带 bottom 层`);
+			assert.ok(!slots.includes('topUnder'), `${shape.id}/${item.id} 套装不应占 topUnder`);
+			for (const slot of slots) assert.ok(['topBody', 'sleeve'].includes(slot), `${shape.id}/${item.id} 非法套装槽位 ${slot}`);
+		}
+	}
+});
+
+/* ---------------- 旧 v5 素材清理 ---------------- */
+
+test('旧 v5 字段不再被引用，旧素材文件已清理', () => {
+	// 1) manifest 里不应再引用任何 v5 旧文件
+	for (const [key, value] of collectManifestStrings(MANIFEST)) {
 		if (!/^art\//.test(value)) continue;
-		assert.ok(
-			!/^art\/(chibi|girl)\/(dress|combo)-[^/]+\.webp$/.test(value),
-			`${key} 仍引用旧整套立绘：${value}`,
+		assert.ok(!isLegacyWholeLook(value), `${key} 仍引用旧整套立绘：${value}`);
+		assert.ok(!isLegacyShapeFile(value), `${key} 仍引用 v5 base/overlay：${value}`);
+		assert.ok(!isLegacyBareLayer(value), `${key} 仍引用无槽位后缀的旧图层：${value}`);
+	}
+
+	// 2) 旧文件不应还留在 art/ 里
+	const files = walk('art');
+	assert.deepEqual(files.filter(isLegacyWholeLook), [], '旧整套立绘文件应删除');
+	assert.deepEqual(files.filter(isLegacyShapeFile), [], 'v5 base/overlay 文件应删除');
+	assert.deepEqual(files.filter(isLegacyBareLayer), [], '无槽位后缀的旧图层应删除');
+
+	// 3) 已知旧文件名逐个断言（双保险）
+	const legacyFiles = [];
+	for (const shape of ['chibi', 'girl']) {
+		legacyFiles.push(
+			`art/${shape}/base.webp`,
+			`art/${shape}/overlay.webp`,
+			`art/${shape}/layers/dress-maid.webp`,
+			`art/${shape}/layers/top-sweater.webp`,
+			`art/${shape}/layers/top-hoodie.webp`,
+			`art/${shape}/layers/top-sailor.webp`,
 		);
 	}
-	const oldFiles = walk('art').filter((rel) => /^art\/(chibi|girl)\/(dress|combo)-[^/]+\.webp$/.test(rel));
-	assert.deepEqual(oldFiles, [], `旧整套立绘文件应删除：${oldFiles.join(', ')}`);
+	for (const rel of legacyFiles) assert.ok(!existsSync(join(ROOT, rel)), `旧 v5 文件不应再存在：${rel}`);
+
+	// 4) art/ 里不应有 manifest / 宿主 fallback 都没引用的孤儿文件（兜住任何改名遗漏的旧素材）
+	const referenced = new Set(
+		collectManifestStrings(MANIFEST)
+			.map(([, value]) => value)
+			.filter((value) => /^art\//.test(value)),
+	);
+	referenced.add('art/pet-default.webp'); // 悬浮鲸鱼兜底图由 lib/client.js 引用，不在 manifest 里
+	const orphans = files.filter((rel) => !referenced.has(rel));
+	assert.deepEqual(orphans, [], `art/ 里不应有未被引用的文件：${orphans.join(', ')}`);
 });
+
+/* ---------------- 悬浮小鲸鱼 / 背景 / 图标 ---------------- */
 
 test('悬浮小鲸鱼默认穿搭小图存在（readOutfit 的 fallback）', () => {
 	assertWebp('art/pet-default.webp', 'pet-default');
 });
 
-test('右侧衣柜只放「衣服本身」的图标，背景带地面线', () => {
+test('背景图 + 缩略图 + 地面线齐全，衣柜只放「衣服本身」的图标', () => {
 	for (const item of MANIFEST.items.backgrounds) {
 		assertWebp(item.file, `background ${item.id}`);
 		assertWebp(item.thumb, `background thumb ${item.id}`);
@@ -137,7 +285,7 @@ test('右侧衣柜只放「衣服本身」的图标，背景带地面线', () =>
 		);
 	}
 	assert.ok(MANIFEST.items.effects.length >= 3);
-	for (const categoryId of ['outfits', 'tops', 'bottoms']) {
+	for (const categoryId of CLOTHING_CATEGORIES) {
 		for (const item of MANIFEST.items[categoryId]) {
 			if (item.id === 'none') continue;
 			assert.ok(item.icon, `${categoryId}/${item.id} 需要只有衣服的 icon`);
@@ -152,42 +300,63 @@ test('宿主半区 readOutfit 接受 data URL / art 路径，并 fallback 到 pe
 	assert.ok(client.includes("startsWith('data:image/')"), 'readOutfit 应接受合成小图 data URL');
 	assert.ok(client.includes("startsWith('art/')"), 'readOutfit 应兼容 art/ 相对路径');
 	assert.ok(client.includes("'art/pet-default.webp'"), 'readOutfit 的 fallback 应为 art/pet-default.webp');
-	assert.ok(
-		!client.includes("'art/chibi/dress-maid.webp'"),
-		'fallback 不应再指向 v0.7 已删除的整套立绘',
-	);
-	assert.ok(
-		client.includes("outfit.image.startsWith('data:')"),
-		'悬浮小鲸鱼渲染时 data URL 不能拼 GAME_BASE 前缀',
-	);
+	assert.ok(!client.includes("'art/chibi/base.webp'"), 'fallback 不应指向 v5 的 base 素体');
+	assert.ok(client.includes("outfit.image.startsWith('data:')"), '悬浮小鲸鱼渲染时 data URL 不能拼 GAME_BASE 前缀');
 });
 
-test('游戏页改为图层栈、通过 ESM 共享核心逻辑并 cache-bust 到 v9', () => {
-	const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-	assert.match(html, /app\.js\?v=\d+/);
-	assert.match(html, /style\.css\?v=\d+/);
-	assert.ok(html.includes('type="module"'));
-	assert.ok(!html.includes('github.io'), 'game page should not hardcode GitHub Pages');
-	for (const slot of ['base', 'bottom', 'top', 'outfit', 'overlay']) {
-		assert.ok(html.includes(`data-layer="${slot}"`), `index.html 应有 ${slot} 图层槽位`);
-	}
-	assert.ok(!html.includes('id="figureImg"'), 'v5 不再用单张立绘 <img>');
+/* ---------------- 页面 / 渲染器 v6 ---------------- */
 
+test('index.html v6：不写死图层 img，cache-bust 升到 v10', () => {
+	const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
+	assert.match(html, /style\.css\?v=10/, 'style.css 应 cache-bust 到 v10');
+	assert.match(html, /app\.js\?v=10/, 'app.js 应 cache-bust 到 v10');
+	assert.ok(!/\?v=(?!10)\d+/.test(html), 'index.html 里不应残留旧版本号');
+	assert.ok(html.includes('type="module"'));
+	assert.ok(html.includes('id="figure"'), 'index.html 应保留 .figure 容器');
+	assert.ok(!/data-layer=/.test(html), 'v6 不再在 index.html 写死图层槽位 <img>');
+	assert.ok(!html.includes('id="figureImg"'), '不再用单张立绘 <img>');
+	assert.ok(!html.includes('github.io'), 'game page should not hardcode GitHub Pages');
+	assert.ok(!html.includes('裙底'), 'index.html 不应包含不保守文案');
+});
+
+test('app.js v6：按 manifest.drawOrder 动态建槽位，三处叠图都走 resolveLayers', () => {
 	const app = readFileSync(join(ROOT, 'app.js'), 'utf8');
-	assert.ok(/from '\.\/wardrobe-core\.js(\?v=\d+)?'/.test(app), 'app.js 应复用 wardrobe-core');
+	assert.match(app, /from '\.\/wardrobe-core\.js\?v=10'/, 'app.js 应按 v10 复用 wardrobe-core');
+	assert.ok(app.includes('manifest.drawOrder'), 'app.js 应读 manifest.drawOrder 决定槽位');
+	assert.ok(!/LAYER_SLOTS\s*=\s*\[/.test(app), 'app.js 不应再写死 5 个槽位常量');
+	assert.ok(app.includes('buildFigureLayers'), 'app.js 应动态创建 .figure-layer');
+	assert.ok(app.includes('data-layer') || app.includes('dataset.layer'), '动态图层应带 data-layer=槽位');
+	assert.ok(app.includes('createElement(\'img\')'), '动态图层应是 <img>');
 	assert.ok(app.includes('resolveLayers'), 'app.js 应按 resolveLayers 叠图层');
+	assert.ok(
+		(app.match(/resolveLayers\(/g) || []).length >= 3,
+		'renderFigure / 立绘卡 / 悬浮小图三处都应按 resolveLayers 顺序合成',
+	);
 	assert.ok(!app.includes('resolveImage'), 'app.js 不应再用 v4 的 resolveImage');
+	assert.ok(!app.includes('.kind'), 'app.js 不应再用 v5 的 layer.kind 字段');
 	assert.ok(app.includes('feiyu:outfit'), 'app.js 必须把当前穿搭写进 localStorage 给悬浮鲸鱼用');
-	// v0.8 性能：小图合成移出点击路径（debounce + 空闲回调 + 异步 toBlob）
+	// v0.8 性能优化保留
+	assert.ok(app.includes('renderSeq'), '应保留 renderSeq 防竞态');
 	assert.ok(app.includes('toBlob'), '小图合成应走异步 canvas.toBlob');
 	assert.ok(app.includes('requestIdleCallback'), '小图合成应放到浏览器空闲时执行');
-	assert.ok(!app.includes('composePetImageNow'), '不应再在点击路径里同步合成小图');
+	assert.ok(!app.includes('composePetImageNow'), '不应在点击路径里同步合成小图');
 	assert.ok(app.includes('persistTimer'), 'persist 应有 debounce 定时器');
 
 	// v0.8 保守文案：去掉性感/身体评价/撒娇过头的台词
 	const banned = ['转一圈', '裙底', '性感', '身材', '偷看', '亲亲', '抱抱'];
 	for (const word of banned) assert.ok(!app.includes(word), `app.js 不应包含不保守文案「${word}」`);
-	assert.ok(!html.includes('裙底'), 'index.html 不应包含不保守文案');
-
 	assert.ok(!app.includes('github.io'), 'app.js should not hardcode GitHub Pages');
+});
+
+test('style.css：.figure-layer 仍绝对定位铺满画布', () => {
+	const css = readFileSync(join(ROOT, 'style.css'), 'utf8');
+	const rule = css.match(/\.figure-layer\s*\{([^}]*)\}/);
+	assert.ok(rule, 'style.css 应有 .figure-layer 规则');
+	const body = rule[1];
+	assert.match(body, /position:\s*absolute/, '.figure-layer 应绝对定位');
+	assert.match(body, /inset:\s*0/, '.figure-layer 应铺满容器');
+	assert.match(body, /width:\s*100%/, '.figure-layer 宽度应铺满');
+	assert.match(body, /height:\s*100%/, '.figure-layer 高度应铺满');
+	assert.match(body, /object-fit:\s*contain/, '.figure-layer 应用 object-fit: contain');
+	assert.ok(!/data-layer="(?:base|bottom|top|outfit|overlay)"/.test(css), 'style.css 不应残留 v5 写死槽位');
 });

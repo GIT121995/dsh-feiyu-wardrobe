@@ -1,11 +1,19 @@
-# 大肥鱼衣橱 · 换装间素材管线（v0.7 分层版）
+# 大肥鱼衣橱 · 换装间素材管线（v0.9 · 纸娃娃分层 v2）
 
-v0.7 起换装间是**真·分层换装（纸娃娃）**：
+v0.9 起换装间是 **7 槽位纸娃娃分层**：
 
 ```
-每个身形 = 1 张素体（base）+ 11 张衣服图层（layers）+ 1 张头发/尾巴叠层（overlay）
-运行时 z 序：base(0) → 下装(20) → 上装(30) → 头发叠层(100)；连衣裙占 z=30，与上衣/下装互斥
+drawOrder: body → topUnder → bottom → topBody → arms → sleeve → hair
+
+每个身形 = body（素体）+ arms（手臂+手）+ hair（完整前发）
+每件上衣/连衣裙 = body 层（衣身，topBody 或 topUnder 槽位）+ sleeve 层（袖子，盖在手臂上）
+每件下装 = bottom 层（裙子，在手臂层之下 → 手在裙前）
 ```
+
+- 身形部件掩膜由 `tools/build_masks.py` 生成（`tools/masks/<shape>/{arms,hair}.png`，需要人工 QA）；
+- 袖子层 = 衣身 alpha × dilate(手臂掩膜, 6px)，再减掉 look 真值里的手部 → 长袖正确盖手腕、手在袖口外；
+- 衣服**不再挖头发洞**：头发是独立最上层，完整前发由 `hair` 层盖回。
+- 契约与验收见 [`LAYER-MODEL.md`](./LAYER-MODEL.md)，技术选型见 [`LAYER-ARCHITECTURE.md`](./LAYER-ARCHITECTURE.md)。
 
 **为什么不需要手工锚点/配准**：所有单件 look 都穿在**同一张素体**上生成，
 构图（位置 / 比例 / 姿势 / 头脚位置）由参考图继承；图层从 look 里抠出来，
@@ -15,26 +23,35 @@ v0.7 起换装间是**真·分层换装（纸娃娃）**：
 
 ```
 docs/dress-up/
-├── index.html / style.css / app.js   换装间前端（多图层槽位渲染）
+├── index.html / style.css / app.js   换装间前端（按 drawOrder 动态槽位渲染）
 ├── wardrobe-core.js                  纯函数核心（穿搭规则 / resolveLayers / 随机搭配）
-├── manifest.json                     v5：shapes[].base/overlay/bounds + 单品 layer/z
+├── manifest.json                     v6：drawOrder + shapes[].layers(body/arms/hair) + items[].layers[shape][slot]
+├── LAYER-MODEL.md                    v6 分层契约（槽位 / schema / 构建 / 验收）
+├── LAYER-ARCHITECTURE.md             技术选型（为什么是 DOM 多槽位而不是 Canvas/WebGL/骨骼）
 └── art/
     ├── bg-*.webp / thumbs/           6 张背景 + 缩略图
-    ├── icons/*.webp                  11 张「纯衣服」衣柜图标
+    ├── icons/*.webp                  6 张「纯衣服」衣柜图标
     ├── pet-default.webp              悬浮小鲸鱼兜底图（184×327 透明）
     └── <shape>/
-        ├── base.webp                 素体（白色无肩带连体泳衣，675×1200 透明）
-        ├── overlay.webp              头发/耳鳍/尾巴叠层（z=100）
-        └── layers/                   dress-*.webp / top-*.webp / bottom-*.webp
+        ├── body.webp                 素体（白色无肩带连体泳衣，675×1200 透明）
+        ├── arms.webp                 手臂+手（画在衣服之上，长袖的袖子再盖回来）
+        ├── hair.webp                 完整前发（含手臂下方长发丝，画在最上层）
+        └── layers/
+            ├── top-<id>-body.webp / top-<id>-sleeve.webp
+            ├── dress-<id>-body.webp / dress-<id>-sleeve.webp
+            └── bottom-<id>.webp
 tools/
-└── build_wardrobe.py                 分层素材构建（抠图/配准/叠层/manifest/QA）
+├── build_masks.py                    身体部件掩膜生成（arms/hair，带 --check 回归）
+├── masks/<shape>/arms.png|hair.png   掩膜（1152×2048，RGBA，A 通道=掩膜）
+├── masks/README.md                   掩膜算法 / 阈值 / QA / 已知误差
+└── build_wardrobe.py                 v6 素材构建（mask → 部件层 / 袖身拆分 / manifest / QA）
 ```
 
 ## 1. 素体（Q版 / 少女版）
 
 参考图：`ref-q3view.jpg`、`ref-girl3view.jpg` 等（见 `.scratch/feiyu-art/`）。
 
-v0.7 的素体换成**白色无肩带连体泳衣（bandeau）**——有肩带的连体衣会在抹胸礼服 /
+素体是**白色无肩带连体泳衣（bandeau）**——有肩带的连体衣会在抹胸礼服 /
 无袖上衣的肩线处露出白色肩带。提示词：
 
 ```
@@ -61,7 +78,7 @@ v0.7 的素体换成**白色无肩带连体泳衣（bandeau）**——有肩带�
 - 下装：`plaid` 蓝白格纹百褶裙 / `pleated` 深蓝百褶裙（白细条纹 + 腰间蝴蝶结）
   - **裙长要点**：单独画下装时 AI 会画成超短裙 → 组合模式里会被上衣下摆完全盖住。
     提示词必须写「**高腰，裙摆长度到大腿中部偏下（膝盖以上约 15cm）**」；
-    构建时还会按「衣服顶部中点」锚定放大（chibi ×1.42 / girl ×1.22）再保险。
+    构建时还会按「衣服顶部中点」锚定放大（chibi ×1.72 / girl ×1.40）再保险。
 - 连衣裙：**只保留 1 套 `maid` 经典女仆装**（内容保守约束：抹胸礼服/蕾丝大裙摆等已移除）
   - **保守基调**：上衣全部带袖/有领，下装裙长做到**及膝**（构建时按顶部锚定放大约 1.7×/1.4×），不出现暴露款式
 
@@ -81,36 +98,41 @@ v0.7 的素体换成**白色无肩带连体泳衣（bandeau）**——有肩带�
 > 实测 AI **不一定**保持位置/大小（白色上衣会被画得明显更大），所以构建时用
 > **形状 IoU 配准**把 whiteout 单件图配回 look 坐标系（FFT 互相关做平移搜索 + 缩放扫描）。
 > 水手服的深色领子/蝴蝶结比衬衫主体大，直接整体配准会把衣服拉小 → 只拿「浅色衬衫主体」做 probe 配准。
+> 少女版卫衣的 whiteout 丢了橙色蝴蝶结 → 构建时从 look 的橙色像素补回（`patch_lost_bow`）。
 
 ## 4. 构建游戏素材
 
 ```sh
+# 1) 身体部件掩膜（arms / hair，两身形；可加 --check 做逐字节回归）
+python3 tools/build_masks.py
+# 2) 素材 + manifest v6 + QA 拼图
 python3 tools/build_wardrobe.py --src .scratch/feiyu-gen/raw12 --out docs/dress-up
 ```
 
-依赖 `pillow + numpy + opencv-python`（仅构建用）。做这些事：
+依赖 `pillow + numpy + opencv-python`（仅构建用；游戏运行零依赖）。构建做这些事：
 
-1. **素体**：白底→透明，premultiplied 缩放到 675×1200 WebP；
-2. **头发/尾巴叠层**：从素体做 CV 颜色分割（蓝色连通块 ≥150px + 只取紧贴蓝块的深色描边），
-   单独一层，z=100；衣服在头发处留洞 → 由这一层补回；
-3. **衣服图层（matte）**，按单品类型分三种策略：
-   - `whiteout` + 形状 IoU 配准：白色上衣（sweater / hoodie / sailor）、所有下装；
-     下装额外按衣服顶部中点锚定放大；上装图层只含衣服本体（不会有素体碎片/碎发）；
-   - `diff` 主连通块 + 填洞：彩色连衣裙（现在只剩女仆装）；
-   - （保留 `flood` 线稿灌水模式给浅色衣服备用）
-4. **premultiplied 缩放**：避免半透明边缘把白色背景插值成灰边；
-5. **原子写**（先 `.tmp` 再 `os.replace`）：构建中打开游戏也不会读到半截图；
-6. 重建 `manifest.json` v5 + `art/pet-default.webp`（透明 184×327）+ QA 拼图
-   （`--qa-dir`，默认 `.scratch/feiyu-art/v7-layers-<shape>.jpg`）。
+1. **部件层**：`body.webp`（素体，白底→透明，premultiplied 缩放到 675×1200）、
+   `arms.webp`（body RGB + arms 掩膜 alpha）、`hair.webp`（body RGB + hair 掩膜 alpha）；
+2. **衣服 body 层**：沿用 v0.8 的三种 matte 策略（whiteout 配准 / diff 主块 / flood 备用），
+   得到整件 alpha 后**不挖头发洞**，premultiplied 缩放；
+3. **衣服 sleeve 层**：`garment_alpha × dilate(arms掩膜, 6px)`，再用 look 的手部区域减掉手，
+   羽化 1px；RGB 与 body 层相同 → 重叠处无接缝；
+4. **manifest v6**：`drawOrder` + `shapes[].layers` + `items[].layers[shape][slot]`；
+   水手服主体映射到 `topUnder`（下摆塞进裙子），其余上衣/连衣裙主体映射到 `topBody`；
+5. **premultiplied 缩放**（避免半透明边缘把白色背景插值成灰边）+ **原子写**（先 `.tmp` 再 `os.replace`）；
+6. `art/pet-default.webp`（按 drawOrder 合成的透明 184×327）+ QA 拼图
+   （`--qa-dir`，默认 `.scratch/feiyu-art/v9-layers-<shape>.jpg`），以及
+   `hand-in-front-skirt / hair-over-clothes / hair-ghost / bow / seam / magenta-holes` 等专项 QA 图。
 
 ## 5. 新增一件衣服
 
 1. 用素体生成「只穿这一件」的 look（保持姿势一致），再生成对应的 whiteout 单件图；
 2. 文件按 `<shape>-only-<cat>-<id>.png` / `<shape>-whiteout-<cat>-<id>.png` 放进源目录；
 3. 在 `tools/build_wardrobe.py` 的 `DRESSES` / `TOPS` / `BOTTOMS` 加一行，
-   并在 `LAYER_PLAN` 里给它选 matte 策略（白色 → whiteout / 彩色 → diff）；
-4. 重建素材和 manifest；
-5. `npm run verify`（校验每个引用文件存在且是合法 WebP、bounds 合理、layer 齐全）。
+   在 `LAYER_PLAN` 里选 matte 策略（白色 → whiteout / 彩色 → diff），
+   并在 `MAIN_SLOT` 里决定主体放 `topBody` 还是 `topUnder`（塞进裙子）；
+4. 重建素材和 manifest（sleeve 层会自动从部件掩膜切出来，不用手工做袖子图）；
+5. `npm run verify`（校验 manifest v6 契约、每个引用文件存在且是合法 WebP、槽位合法、bounds 合理）。
 
 ## 版权
 

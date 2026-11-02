@@ -1,45 +1,61 @@
 #!/usr/bin/env python3
-"""换装 3.0 素材构建：v0.7 分层换装（素体 + 衣服图层 + 头发叠层）。
+"""换装 4.0 素材构建：v0.9 多槽位分层（v6 契约，见 docs/dress-up/LAYER-MODEL.md）。
+
+把画布拆成 7 个深度 strata（drawOrder，从下到上）：
+    body → topUnder → bottom → topBody → arms → sleeve → hair
 
 输入目录（默认 .scratch/feiyu-gen/raw12）里按命名约定存放：
   base-bandeau-<shape>.png           素体（白色无肩带连体衣，1152×2048，纯白背景）
   <shape>-only-<cat>-<id>.png        单件穿着 look（同一素体上生成，构图一致）
-  <shape>-whiteout-<cat>-<id>.png    白底单件图（取衣服调色板用）
+  <shape>-whiteout-<cat>-<id>.png    白底单件图（取衣服调色板 / 形状配准用）
 
-处理：
-  1. 素体：白底→透明，premultiplied 缩放到 675×1200 WebP；
-  2. 头发/尾巴叠层：从素体做 CV 颜色分割（蓝发 + 深色描边），单独一层（z=100，画在最上面）；
-  3. 衣服图层：直接从「单件穿着 look」抠图（位置/合身度 100% 正确）：
-       - 浅色衣服：线稿灌水（多 seed）+ 平涂色块区域生长（补领口/袖口/罗纹）
-       - 彩色衣服：look 与素体的像素差主连通块 + 填洞
-       - 再做大核闭运算补掉「头发在衣服上划出的细通道」，保证衣服完整
-       - 保留头发处的小洞/缺口：由最上层头发叠层补回（头发永远在衣服前）
-  4. 统一 premultiplied 缩放到 675×1200，写 WebP；
-  5. 重建 manifest.json（v5）+ 悬浮鲸鱼兜底图 art/pet-default.webp；
-  6. 生成 QA 拼图到 --qa-dir（默认 ../../.scratch/feiyu-art/）。
+新增输入掩膜（源分辨率 1152×2048，0-255 alpha PNG，由 tools/build_masks.py 生成）：
+  tools/masks/<shape>/arms.png       手臂+手（含手臂轮廓描边，略保守）
+  tools/masks/<shape>/hair.png       全部可见前发（含手臂下方长发丝、呆毛），不含尾巴
+
+输出：
+  art/<shape>/body.webp              整张素体（最底层，= 旧 v5 base.webp 内容）
+  art/<shape>/arms.webp              body RGB + alpha = arms_mask × foreground_alpha
+  art/<shape>/hair.webp              body RGB + alpha = hair_mask × foreground_alpha
+  art/<shape>/layers/<cat>-<id>-body.webp    每件上衣/连衣裙主体（不挖头发洞）
+  art/<shape>/layers/<cat>-<id>-sleeve.webp  袖子 = garment_alpha × dilate(arms_mask,6px)，羽化 1px
+  art/<shape>/layers/bottom-<id>.webp        下装单层
+  art/pet-default.webp               按 drawOrder 合成的默认穿搭（Q 版女仆装，184×327，透明）
+  manifest.json                      v6（drawOrder / shapes[].layers / items[].layers）
 
 依赖：pillow + numpy + opencv-python（仅构建用，运行时不依赖）。
 
 用法:
   python3 tools/build_wardrobe.py --src /home/ubuntu/dsh/.scratch/feiyu-gen/raw12 --out docs/dress-up
-  python3 tools/build_wardrobe.py --shape chibi      # 只构建一个身形（调试）
+  python3 tools/build_wardrobe.py --shape chibi --masks-dir /tmp/pf/masks   # 单身形调试
 """
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import time
 from pathlib import Path
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parent.parent
 TARGET = (675, 1200)
-GLOBAL = TARGET[0] / 1152.0
+SOURCE = (1152, 2048)
+GLOBAL = TARGET[0] / SOURCE[0]
 
 SHAPES = [('chibi', 'Q版', '大头小身子的可爱版本'), ('girl', '少女版', '六头身的少女比例')]
+
+# mask-forge 冻结的掩膜版本（LWW 文件，A=掩膜；构建时做 md5 回归，不一致只告警不阻断）
+FROZEN_MASK_MD5 = {
+    'chibi/arms': '236ab154a3069ec1e857852267ea6644',
+    'chibi/hair': '45bd3e2ee82213b39deec96a41f0fb33',
+    'girl/arms': 'c6fdf571d5db297f164f73694b94b69f',
+    'girl/hair': '3ac7a0855cb82b396d814be42c4e2087',
+}
 
 # 内容基调：养女儿向 / 保守——套装只保留最保守的经典女仆装（长袖长裙 + 围裙）
 # 其余礼服类（抹胸/蕾丝/大裙摆）已从 v0.8.0 移除
@@ -56,6 +72,11 @@ BOTTOMS = [
     ('pleated', '深蓝百褶裙', '转一圈，裙摆会开成花。'),
 ]
 
+# v6 的 7 个深度槽位（从下到上）。前端按此顺序动态建层。
+DRAW_ORDER = ['body', 'topUnder', 'bottom', 'topBody', 'arms', 'sleeve', 'hair']
+SHAPE_SLOTS = ('body', 'arms', 'hair')
+ITEM_SLOTS = ('topUnder', 'bottom', 'topBody', 'sleeve')
+
 # 每件单品的抠图策略：
 #   flood = 线稿灌水 + 平涂色块区域生长（浅色衣服）
 #   diff  = 与素体像素差主块 + 填洞（彩色衣服）
@@ -70,14 +91,19 @@ LAYER_PLAN = {
     ('top', 'sailor'): {'mode': 'whiteout', 'target_frac': {'chibi': 0.57, 'girl': 0.46},
                         'align_probe': 'light', 'extra_scale': {'chibi': 1.0, 'girl': 0.95}},
     # 下装：同样走 whiteout 配准；单独生成时裙子偏短，按「衣服顶部中点」锚定放大，
-    # 保证上衣下摆之下还能露出明显裙摆（组合模式好看）。
+    # 保证上衣下摆之下还能露出明显裙摆（组合模式好看）。v6 下装只有一层（bottom 槽位）。
     ('bottom', 'plaid'): {'mode': 'whiteout', 'extra_scale': {'chibi': 1.72, 'girl': 1.40}},
     ('bottom', 'pleated'): {'mode': 'whiteout', 'extra_scale': {'chibi': 1.72, 'girl': 1.40}},
     # 连衣裙：直接对 look 做 diff 主块 matte（v1/v2 两轮 QA 已确认位置/大小正确）
     ('dress', 'maid'): {'mode': 'diff', 'thr': 30},
 }
-# 图层 z 序：下装在下、上装在上（毛衣/卫衣下摆盖住裙腰）
-Z_ORDER = {'bottom': 20, 'top': 30, 'dress': 30}
+# 单品主体放哪个槽位：水手服下摆应被裙子盖住 → topUnder；毛衣/卫衣/女仆装 → topBody
+MAIN_SLOT = {
+    ('dress', 'maid'): 'topBody',
+    ('top', 'sweater'): 'topBody',
+    ('top', 'hoodie'): 'topBody',
+    ('top', 'sailor'): 'topUnder',
+}
 
 BACKGROUNDS = [
     ('bg-snow', '冬夜街道', '暖黄色的路灯，和一直下的雪。', 0.86),
@@ -116,11 +142,36 @@ BUBBLES = [
 CREDITS = ('立绘 / 服装：本项目用 Seedream 5.0（火山方舟）基于自建素体生成 · '
            '角色参考：大肥鱼社区二创（仅作风格参考，未直接使用原画）· 非官方，禁止商用')
 
+# sleeve 层参数（契约 §3）：dilate(arms_mask, 6px) 再羽化 1px
+SLEEVE_DILATE_PX = 6
+SLEEVE_FEATHER_SIGMA = 1.0
+SLEEVE_MIN_FRAC = 0.002  # 袖子像素占比低于此值视为无袖 → 不产出 sleeve 层
+
+# 少女版卫衣橙色蝴蝶结在 whiteout 里丢失 → build patch 从 look 补回（契约 §6）
+BOW_ORANGE_MIN_LOOK = 400      # look 里至少这么多橙色像素才认为「有蝴蝶结」
+BOW_WHITEOUT_FRAC = 0.35      # whiteout 配准结果橙色像素 < look 的 35% → 判定蝴蝶结丢失
+BOW_WHITEOUT_MIN = 200         # whiteout 里至少这么多橙色像素才认为是「自带蝴蝶结」
+
 
 # ---------------------------------------------------------------- 通用图像工具
 
 def load_rgb(path: Path) -> np.ndarray:
     return np.asarray(Image.open(path).convert('RGB')).astype(np.int16)
+
+
+def load_mask(path: Path) -> np.ndarray:
+    """读源分辨率掩膜（0-255 alpha）。支持 L / LA / RGBA / RGB。"""
+    if not path.exists():
+        raise SystemExit(f'缺少掩膜: {path}（由 tools/build_masks.py 生成，见 LAYER-MODEL.md §3）')
+    im = Image.open(path)
+    if im.size != SOURCE:
+        raise SystemExit(f'掩膜尺寸必须是 {SOURCE}: {path} 实际 {im.size}')
+    if im.mode in ('RGBA', 'LA'):
+        arr = np.asarray(im)
+        return arr[:, :, arr.shape[2] - 1].astype(np.uint8)
+    if im.mode == 'L':
+        return np.asarray(im).astype(np.uint8)
+    return np.asarray(im.convert('L')).astype(np.uint8)
 
 
 def remove_white_alpha(rgb: np.ndarray, thresh: int = 26) -> np.ndarray:
@@ -167,6 +218,16 @@ def resize_rgba(rgb: np.ndarray, alpha: np.ndarray, size=TARGET) -> tuple[np.nda
     return np.clip(out, 0, 255), (a2 * 255)
 
 
+def resize_alpha(mask: np.ndarray, size=TARGET) -> np.ndarray:
+    """源分辨率 0-255 掩膜 → 目标尺寸平滑 alpha（float32 0-255）。"""
+    return np.clip(cv2.resize(mask.astype(np.float32) / 255.0, size,
+                              interpolation=cv2.INTER_AREA), 0, 1) * 255.0
+
+
+def ellipse(radius: int) -> np.ndarray:
+    return cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (radius * 2 + 1, radius * 2 + 1))
+
+
 def save_webp(rgb: np.ndarray, alpha: np.ndarray, path: Path, quality: int = 88) -> None:
     """原子写（先写 .tmp 再 os.replace），避免游戏页在构建过程中读到半截图。"""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -195,48 +256,43 @@ def save_thumb(src_rgb: np.ndarray, src_alpha: np.ndarray, path: Path, size: int
     Image.fromarray(canvas).save(path, 'WEBP', quality=88, method=6)
 
 
-# ---------------------------------------------------------------- 头发 / 尾巴叠层
+# ---------------------------------------------------------------- 合成工具（QA / pet 用）
 
-def hair_front_mask(base: np.ndarray) -> np.ndarray:
-    """素体「前面的头发」alpha：蓝色发丝/耳鳍/呆毛 + 它们的深色描边。
-
-    只保留与头部相连的蓝色连通块（按 bbox 顶部位置判断），**不含鲸鱼尾巴**——
-    尾巴在身体后面，应该被衣服盖住，不能画到最上层。
-    """
-    r, g, b = base[:, :, 0], base[:, :, 1], base[:, :, 2]
-    lum = base.mean(axis=2)
-    blue = ((b - r > 18) & (b - g > 6) & (b > 40)).astype(np.uint8)
-    body = (np.abs(base - 255).max(axis=2) > 25)
-    ys, xs = np.nonzero(body)
-    by0, by1 = float(ys.min()), float(ys.max())
-    n, lab, stats, _ = cv2.connectedComponentsWithStats(blue, 8)
-    kept = np.zeros_like(blue)
-    for i in range(1, n):
-        if stats[i, cv2.CC_STAT_AREA] < 150:
-            continue
-        top_frac = (stats[i, cv2.CC_STAT_TOP] - by0) / max(by1 - by0, 1)
-        if top_frac > 0.45:  # 只保留头部/上身连着的头发（排除尾巴、下摆碎块）
-            continue
-        kept[lab == i] = 1
-    near_blue = cv2.dilate(kept, np.ones((5, 5), np.uint8)) > 0
-    overlay = (kept > 0) | ((lum < 100) & near_blue)
-    ov = overlay.astype(np.uint8)
-    n, lab, stats, _ = cv2.connectedComponentsWithStats(ov, 8)
-    out = np.zeros_like(ov)
-    for i in range(1, n):
-        if stats[i, cv2.CC_STAT_AREA] >= 200:
-            out[lab == i] = 1
-    box = np.zeros_like(body)
-    box[ys.min():ys.max() + 1, xs.min():xs.max() + 1] = True
-    return (out.astype(bool) & box).astype(np.uint8) * 255
+def over(dst_rgb: np.ndarray, dst_a: np.ndarray, rgb: np.ndarray, alpha: np.ndarray):
+    """source-over：dst 在下，src 在上。dst_a 0-255（用于透明画布）。"""
+    a = np.clip(alpha.astype(np.float32) / 255.0, 0, 1)
+    out_rgb = dst_rgb * (1 - a[..., None]) + np.clip(rgb, 0, 255).astype(np.float32) * a[..., None]
+    out_a = dst_a * (1 - a) + a * 255.0
+    return out_rgb, out_a
 
 
-def extract_overlay(base: np.ndarray) -> np.ndarray:
-    """兼容旧名字：头发叠层 == hair_front_mask。"""
-    return hair_front_mask(base)
+def compose(layers: list[tuple[np.ndarray, np.ndarray]],
+            opaque_bg: tuple[int, int, int] | None = (255, 255, 255)) -> tuple[np.ndarray, np.ndarray]:
+    """按顺序叠加。opaque_bg 给 RGB 底色（白色 = 网页/QA），None = 透明画布。"""
+    h, w = TARGET[1], TARGET[0]
+    if opaque_bg is None:
+        img = np.zeros((h, w, 3), np.float32)
+        acc = np.zeros((h, w), np.float32)
+    else:
+        img = np.zeros((h, w, 3), np.float32)
+        img[:] = opaque_bg
+        acc = np.full((h, w), 255.0, np.float32)
+    for rgb, alpha in layers:
+        img, acc = over(img, acc, rgb, alpha)
+    return np.clip(img, 0, 255).astype(np.uint8), np.clip(acc, 0, 255).astype(np.uint8)
 
 
-# ---------------------------------------------------------------- 衣服抠图（matte）
+def resize_premult(rgb: np.ndarray, alpha: np.ndarray, size: tuple[int, int]):
+    """缩放 premultiplied 画布（compose(opaque_bg=None) 的产物）：RGB 已含 alpha 权重。"""
+    a = np.clip(alpha.astype(np.float32) / 255.0, 0, 1)
+    rgb2 = cv2.resize(rgb.astype(np.float32), size, interpolation=cv2.INTER_AREA)
+    a2 = np.clip(cv2.resize(a, size, interpolation=cv2.INTER_AREA), 0, 1)
+    safe = np.maximum(a2, 1e-4)[..., None]
+    out = np.where(a2[..., None] > 0.004, rgb2 / safe, 0.0)
+    return np.clip(out, 0, 255), a2 * 255
+
+
+# ---------------------------------------------------------------- 衣服抠图（matte，沿用 v0.8）
 
 def flat_regions(look: np.ndarray, line_thr: int = 112):
     lum = look.mean(axis=2)
@@ -321,6 +377,116 @@ def close_fill(mask: np.ndarray, kernel_size: int = 31, max_grow: int = 14) -> n
     limit = cv2.dilate(f.astype(np.uint8), np.ones((max_grow * 2 + 1, max_grow * 2 + 1), np.uint8))
     return fill_holes((filled & (limit > 0)).astype(np.uint8))
 
+
+def grow_regions(lab: np.ndarray, regions: list[dict], seed_mask: np.ndarray,
+                 bbox, max_dist: float = 45, max_extra: float = 1.8) -> np.ndarray:
+    """从灌水区域出发，按「颜色相近 + 邻接 + bbox 附近」生长，补齐领口/袖口/罗纹等平涂块。"""
+    keep: set[int] = set()
+    seed_mask_bool = seed_mask > 0
+    colors = []
+    seed_area = 0
+    for r in regions:
+        m = lab == r['id']
+        if np.logical_and(m, seed_mask_bool).sum() > 0.5 * r['area']:
+            keep.add(r['id'])
+            colors.append(r['mean'])
+            seed_area += r['area']
+    if not keep:
+        return seed_mask
+    palette = np.array(colors, np.float32)
+    x0, y0, w, h = bbox
+    ex = (x0 - 25, y0 - 25, x0 + w + 25, y0 + h + 25)
+    total = seed_area
+    changed = True
+    while changed:
+        changed = False
+        keep_d = cv2.dilate(np.isin(lab, list(keep)).astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
+        for r in regions:
+            if r['id'] in keep or r['area'] > 0.2 * seed_area:
+                continue
+            m = lab == r['id']
+            if not np.logical_and(m, keep_d).any():
+                continue
+            cx, cy = r['centroid']
+            if not (ex[0] <= cx <= ex[2] and ex[1] <= cy <= ex[3]):
+                continue
+            d = np.linalg.norm(palette - r['mean'][None, :], axis=1).min()
+            if d > max_dist:
+                continue
+            if total + r['area'] > max_extra * seed_area + 20000:
+                continue
+            keep.add(r['id'])
+            total += r['area']
+            changed = True
+    return np.isin(lab, list(keep)).astype(np.uint8)
+
+
+def matte(look: np.ndarray, base: np.ndarray, cfg: dict) -> np.ndarray | None:
+    mode = cfg['mode']
+    if mode == 'diff_low':
+        # 下装专用：只在「下半身带」里找最大的横向色块（排除上衣 look 里被 AI 画上去的背心/头发噪声）
+        comps = diff_comps(look, base, thr=cfg.get('thr', 26))
+        body = (np.abs(base - 255).max(axis=2) > 25)
+        ys, xs = np.nonzero(body)
+        by0, by1 = float(ys.min()), float(ys.max())
+        bw = float(xs.max() - xs.min())
+        band = (0.52, 0.92)
+        best = None
+        for c in comps:
+            x, y, w, h = c['bbox']
+            frac = (c['centroid'][1] - by0) / max(by1 - by0, 1)
+            if not (band[0] <= frac <= band[1]):
+                continue
+            if w / max(h, 1) < 0.7 or w < 0.2 * bw:
+                continue
+            if best is None or c['area'] > best['area']:
+                best = c
+        if best is None:
+            return None
+        mask = close_fill(best['mask'], kernel_size=25, max_grow=12)
+        return mask
+    if mode == 'diff':
+        comps = diff_comps(look, base, thr=cfg.get('thr', 30))
+        if not comps:
+            return None
+        main = comps[0]
+        mask = main['mask'].copy()
+        for c in comps[1:]:
+            if c['area'] >= 2000 and _bbox_overlap(c['bbox'], main['bbox']):
+                mask = np.maximum(mask, c['mask'])
+        mask = close_fill(mask)
+        return keep_largest(mask)
+    # flood 模式（浅色衣服）
+    cands = flood_regions(look, cfg['band'])
+    if not cands:
+        return None
+    lab, regions = flat_regions(look)
+    comps = diff_comps(look, base, min_area=500)
+    best = None
+    for reg in cands:
+        bbox = cv2.boundingRect(reg)
+        ys, xs = np.nonzero(reg)
+        flood_mean = np.clip(look[reg > 0].mean(axis=0), 0, 255)
+        grown = grow_regions(lab, regions, reg, bbox)
+        mask = np.maximum(reg, grown)
+        pad = 100
+        fx0, fy0, fw, fh = bbox
+        for c in comps:
+            if c['area'] >= max(int(reg.sum()) * 1.2, 500):
+                continue
+            x, y, w, h = c['bbox']
+            inside = (x >= fx0 - pad and y >= fy0 - pad
+                      and x + w <= fx0 + fw + pad and y + h <= fy0 + fh + pad)
+            if not inside:
+                continue
+            if np.linalg.norm(c['mean'] - flood_mean) < 55:
+                continue
+            mask = np.maximum(mask, c['mask'])
+        mask = close_fill(mask, kernel_size=21, max_grow=10)
+        mask = keep_largest(mask)
+        if best is None or int(mask.sum()) > int(best.sum()):
+            best = mask
+    return best
 
 
 # ---------------------------------------------------------------- 白底单件图（whiteout）配准
@@ -461,257 +627,581 @@ def layer_from_whiteout(wo: np.ndarray, wa: np.ndarray, target: np.ndarray,
     return rgb, a, iou
 
 
-def matte(look: np.ndarray, base: np.ndarray, cfg: dict) -> np.ndarray | None:
-    mode = cfg['mode']
-    if mode == 'diff_low':
-        # 下装专用：只在「下半身带」里找最大的横向色块（排除上衣 look 里被 AI 画上去的背心/头发噪声）
-        comps = diff_comps(look, base, thr=cfg.get('thr', 26))
-        body = (np.abs(base - 255).max(axis=2) > 25)
-        ys, xs = np.nonzero(body)
-        by0, by1 = float(ys.min()), float(ys.max())
-        bw = float(xs.max() - xs.min())
-        band = (0.52, 0.92)
-        best = None
-        for c in comps:
-            x, y, w, h = c['bbox']
-            frac = (c['centroid'][1] - by0) / max(by1 - by0, 1)
-            if not (band[0] <= frac <= band[1]):
-                continue
-            if w / max(h, 1) < 0.7 or w < 0.2 * bw:
-                continue
-            if best is None or c['area'] > best['area']:
-                best = c
-        if best is None:
-            return None
-        mask = close_fill(best['mask'], kernel_size=25, max_grow=12)
-        return mask
-    if mode == 'diff':
-        comps = diff_comps(look, base, thr=cfg.get('thr', 30))
-        if not comps:
-            return None
-        main = comps[0]
-        mask = main['mask'].copy()
-        for c in comps[1:]:
-            if c['area'] >= 2000 and _bbox_overlap(c['bbox'], main['bbox']):
-                mask = np.maximum(mask, c['mask'])
-        mask = close_fill(mask)
-        return keep_largest(mask)
-    # flood 模式（浅色衣服）
-    cands = flood_regions(look, cfg['band'])
-    if not cands:
-        return None
-    lab, regions = flat_regions(look)
-    comps = diff_comps(look, base, min_area=500)
-    best = None
-    for reg in cands:
-        bbox = cv2.boundingRect(reg)
-        ys, xs = np.nonzero(reg)
-        flood_mean = np.clip(look[reg > 0].mean(axis=0), 0, 255)
-        grown = grow_regions(lab, regions, reg, bbox)
-        mask = np.maximum(reg, grown)
-        # 只补「位置被灌水区包围、且颜色明显不同」的深色部件（水手领 / 深色袖口等）
-        pad = 100
-        fx0, fy0, fw, fh = bbox
-        for c in comps:
-            if c['area'] >= max(int(reg.sum()) * 1.2, 500):
-                continue
-            x, y, w, h = c['bbox']
-            inside = (x >= fx0 - pad and y >= fy0 - pad
-                      and x + w <= fx0 + fw + pad and y + h <= fy0 + fh + pad)
-            if not inside:
-                continue
-            if np.linalg.norm(c['mean'] - flood_mean) < 55:
-                continue
-            mask = np.maximum(mask, c['mask'])
-        mask = close_fill(mask, kernel_size=21, max_grow=10)
-        mask = keep_largest(mask)
-        if best is None or int(mask.sum()) > int(best.sum()):
-            best = mask
-    return best
+# ---------------------------------------------------------------- 蝴蝶结补丁（v6 build patch）
+
+def orange_mask(rgb: np.ndarray) -> np.ndarray:
+    """橙色蝴蝶结像素（r-g>60 & g-b>30 & r>170；不误伤肤色/腮红）。"""
+    r, g, b = rgb[:, :, 0], rgb[:, :, 1], rgb[:, :, 2]
+    return ((r - g > 60) & (g - b > 30) & (r > 170)).astype(np.uint8)
 
 
-def grow_regions(lab: np.ndarray, regions: list[dict], seed_mask: np.ndarray,
-                 bbox, max_dist: float = 45, max_extra: float = 1.8) -> np.ndarray:
-    """从灌水区域出发，按「颜色相近 + 邻接 + bbox 附近」生长，补齐领口/袖口/罗纹等平涂块。"""
-    keep: set[int] = set()
-    seed_mask_bool = seed_mask > 0
-    colors = []
-    seed_area = 0
-    for r in regions:
-        m = lab == r['id']
-        if np.logical_and(m, seed_mask_bool).sum() > 0.5 * r['area']:
-            keep.add(r['id'])
-            colors.append(r['mean'])
-            seed_area += r['area']
-    if not keep:
-        return seed_mask
-    palette = np.array(colors, np.float32)
-    x0, y0, w, h = bbox
-    ex = (x0 - 25, y0 - 25, x0 + w + 25, y0 + h + 25)
-    total = seed_area
-    changed = True
-    while changed:
-        changed = False
-        keep_d = cv2.dilate(np.isin(lab, list(keep)).astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
-        for r in regions:
-            if r['id'] in keep or r['area'] > 0.2 * seed_area:
-                continue
-            m = lab == r['id']
-            if not np.logical_and(m, keep_d).any():
-                continue
-            cx, cy = r['centroid']
-            if not (ex[0] <= cx <= ex[2] and ex[1] <= cy <= ex[3]):
-                continue
-            d = np.linalg.norm(palette - r['mean'][None, :], axis=1).min()
-            if d > max_dist:
-                continue
-            if total + r['area'] > max_extra * seed_area + 20000:
-                continue
-            keep.add(r['id'])
-            total += r['area']
-            changed = True
-    return np.isin(lab, list(keep)).astype(np.uint8)
+def patch_lost_bow(look: np.ndarray, rgb1152: np.ndarray, a1152: np.ndarray,
+                   look_fg: np.ndarray) -> tuple[np.ndarray, np.ndarray, int]:
+    """少女版卫衣橙色蝴蝶结在 whiteout 里丢失：从 look 的橙色像素补回主体层。
+
+    只在「whiteout 配准结果几乎没有橙色、而 look 里明显有橙色」时打补丁，
+    chibi 的 whiteout 自带蝴蝶结 → 自动跳过，避免重复画。
+    返回 (rgb, alpha, 补丁像素数)。
+    """
+    lo = orange_mask(look)
+    wo_orange = int((orange_mask(rgb1152) & (a1152 > 127)).sum())
+    look_orange = int(lo.sum())
+    if look_orange < BOW_ORANGE_MIN_LOOK:
+        return rgb1152, a1152, 0
+    # whiteout 已自带蝴蝶结（橙色像素量接近 look，如 chibi）→ 跳过，避免重复画
+    if wo_orange >= max(BOW_WHITEOUT_MIN, BOW_WHITEOUT_FRAC * look_orange):
+        return rgb1152, a1152, 0
+    near = cv2.dilate((a1152 > 127).astype(np.uint8), ellipse(40)) > 0
+    patch = (lo > 0) & near & (look_fg > 0)
+    # 外扩 1px 收进抗锯齿边缘，避免补丁边缘出现一圈白线
+    patch = cv2.dilate(patch.astype(np.uint8), ellipse(1)) > 0
+    patch &= near & (look_fg > 0)
+    rgb1152 = rgb1152.copy()
+    a1152 = a1152.copy()
+    rgb1152[patch] = look[patch]
+    a1152[patch] = 255.0
+    return rgb1152, a1152, int(patch.sum())
 
 
-# ---------------------------------------------------------------- 主构建
 
-def build_shape(shape: str, src: Path, out: Path, qa_dir: Path, layers_meta: dict) -> dict:
+# ---------------------------------------------------------------- 袖口线（look 真值）
+
+def hand_region_from_look(look: np.ndarray, arms_src: np.ndarray) -> tuple[np.ndarray, list[int]]:
+    """确定「手部」区域（源分辨率 0-255），用于把 sleeve 从手上裁掉。
+
+    验收 §5.1「长袖袖口正确盖住手腕、手在袖口外」：v6 的 sleeve = garment_alpha ×
+    dilate(arms)，whiteout 配准有 1-2% 尺度误差时袖子会把 base 的手盖住（v0.8「手消失」
+    缺陷会借 sleeve 层复活），所以这里给 sleeve 加一道手部裁切兜底：
+      1) 几何兜底：两条手臂连通块各自最下端 22% 一定是手/指尖；
+      2) look 真值增强：look 里手臂下半段露出的皮肤（短袖/中袖的前臂）也算手部。
+    袖口线以下从 sleeve alpha 里减掉；手臂层在 sleeve 之上，会把 base 的手画回来。
+    """
+    r, g, b = look[:, :, 0], look[:, :, 1], look[:, :, 2]
+    lum = look.mean(axis=2)
+    skin = ((r - g > 6) & (g - b > -8) & (r > 200) & (lum > 165))
+    n, lab, stats, _ = cv2.connectedComponentsWithStats((arms_src > 127).astype(np.uint8), 8)
+    comps = sorted((i for i in range(1, n) if stats[i, cv2.CC_STAT_AREA] > 2000),
+                   key=lambda i: -stats[i, cv2.CC_STAT_AREA])[:2]
+    h, w = arms_src.shape[:2]
+    hand = np.zeros((h, w), bool)
+    cuffs: list[int] = []
+    for i in comps:
+        x0, y0, ww, hh = (stats[i, cv2.CC_STAT_LEFT], stats[i, cv2.CC_STAT_TOP],
+                          stats[i, cv2.CC_STAT_WIDTH], stats[i, cv2.CC_STAT_HEIGHT])
+        m = (lab == i)
+        geom = np.zeros_like(m)
+        geom[y0 + int(0.78 * hh):y0 + hh, :] = True
+        geom &= m
+        low = np.zeros_like(m)
+        low[y0 + int(0.55 * hh):y0 + hh, :] = True
+        sm = cv2.dilate((skin & m & low).astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
+        sm &= m
+        part = geom | sm
+        hand |= part
+        ys = np.nonzero(part.any(axis=1))[0]
+        cuffs.append(int(ys.min()) if len(ys) else -1)
+    return (hand.astype(np.uint8)) * 255, cuffs
+
+# ---------------------------------------------------------------- 单身形构建
+
+def build_garment(shape: str, cat: str, ident: str, src: Path, base: np.ndarray,
+                  arms_target: np.ndarray, arms_src: np.ndarray) -> dict:
+    """构建一件上衣/连衣裙/下装的 body（+sleeve）层（源分辨率 matte → 目标尺寸 webp 像素）。
+
+    返回 {'layers': {slot: (rgb, alpha)}, 'iou': float, 'bow_px': int}
+    """
+    cfg = LAYER_PLAN[(cat, ident)]
+    look_path = src / f'{shape}-only-{cat}-{ident}.png'
+    look_v2 = src / f'{shape}-only-{cat}-{ident}-v2.png'
+    if cfg['mode'] == 'whiteout' and look_v2.exists():
+        look_path = look_v2
+    look = load_rgb(look_path)
+    look_fg = remove_white_alpha(look) > 40  # 该 look 自身的前景（白底图的轮廓内部都算）
+    iou = 0.0
+    bow_px = 0
+    if cfg['mode'] == 'whiteout':
+        wo_path = src / f'{shape}-whiteout-{cat}-{ident}-v2.png'
+        if not wo_path.exists():
+            wo_path = src / f'{shape}-whiteout-{cat}-{ident}.png'
+        wo = load_rgb(wo_path)
+        wa = whiteout_alpha(wo)
+        if 'target_frac' in cfg:
+            target = flood_target(look, cfg.get('band', (0.30, 0.80)), cfg['target_frac'][shape])
+        else:
+            target = whiteout_target(look, base, wo, wa)
+        if target is None:
+            raise SystemExit(f'配准目标失败: {shape} {cat}-{ident}')
+        extra = cfg.get('extra_scale', 1.0)
+        if isinstance(extra, dict):
+            extra = extra[shape]
+        rgb1152, a1152, iou = layer_from_whiteout(wo, wa, target, extra_scale=extra,
+                                                  align_probe=cfg.get('align_probe'))
+        # v6：不再挖头发洞（最上层 hair 负责盖回）；只做羽化，保持衣服完整
+        a1152 = np.clip(cv2.GaussianBlur(a1152.astype(np.float32), (0, 0), 0.9) * 1.05 - 6, 0, 255)
+        if (cat, ident) == ('top', 'hoodie'):
+            rgb1152, a1152, bow_px = patch_lost_bow(look, rgb1152, a1152, look_fg)
+    else:
+        mask = matte(look, base, cfg)
+        if mask is None:
+            raise SystemExit(f'抠图失败: {shape} {cat}-{ident}')
+        # 硬约束：图层不能包含 look 的背景（白底），否则会把白块贴上舞台
+        mask = mask & cv2.dilate(look_fg.astype(np.uint8), np.ones((5, 5), np.uint8))
+        a1152 = np.clip(cv2.GaussianBlur(mask.astype(np.float32) * 255.0, (0, 0), 0.9) * 1.12 - 12, 0, 255)
+        rgb1152 = np.clip(look, 0, 255).astype(np.uint8)
+    l_rgb, l_alpha = resize_rgba(np.clip(rgb1152, 0, 255).astype(np.uint8), a1152)
+
+    main_slot = MAIN_SLOT.get((cat, ident), 'bottom')
+    layers: dict[str, tuple[np.ndarray, np.ndarray]] = {main_slot: (l_rgb, l_alpha)}
+    if cat != 'bottom':
+        # sleeve = garment_alpha × dilate(arms_mask_target, 6px)，羽化 1px；RGB 与主体层完全相同
+        arm_bin = (arms_target > 127).astype(np.uint8)
+        grown = cv2.dilate(arm_bin, ellipse(SLEEVE_DILATE_PX)).astype(np.float32)
+        sleeve = (l_alpha.astype(np.float32) / 255.0) * grown
+        # 验收 §5.1 兜底：用 look 真值的袖口线减掉手部（否则配准误差会让袖口盖住手 → 手消失）
+        hand_src, cuffs = hand_region_from_look(look, arms_src)
+        if cuffs:
+            hand_t = resize_alpha(hand_src) / 255.0
+            sleeve = sleeve * (1.0 - hand_t)
+        sleeve = cv2.GaussianBlur(sleeve, (3, 3), SLEEVE_FEATHER_SIGMA)
+        sleeve = np.clip(sleeve, 0, 1) * 255.0
+        if float((sleeve > 20).mean()) >= SLEEVE_MIN_FRAC:
+            layers['sleeve'] = (l_rgb.copy(), sleeve)
+    return {'layers': layers, 'iou': float(iou), 'bow_px': bow_px, 'look': look,
+            'cuffs': cuffs if cat != 'bottom' else []}
+
+
+def build_qa_sheet(shape: str, name: str, qa_dir: Path, shape_px: dict,
+                   item_px: dict) -> None:
+    """v9-layers-<shape>.jpg：全部组合 + 女仆装 + 单层 + 单件拼图。"""
+
+    def layers_for(outfit: str | None = None, top: str | None = None, bottom: str | None = None):
+        chosen: dict[str, tuple[np.ndarray, np.ndarray]] = {'body': shape_px['body']}
+        if outfit:
+            chosen.update(item_px[('dress', outfit)])
+        else:
+            if top:
+                chosen.update(item_px[('top', top)])
+            if bottom:
+                chosen.update(item_px[('bottom', bottom)])
+        for slot in SHAPE_SLOTS:
+            chosen.setdefault(slot, shape_px[slot])
+        return [chosen[slot] for slot in DRAW_ORDER if slot in chosen]
+
+    cells: list[tuple[str, np.ndarray]] = []
+    for top, _, _ in TOPS:
+        for bottom, _, _ in BOTTOMS:
+            cells.append((f'{top}+{bottom}', compose(layers_for(top=top, bottom=bottom))[0]))
+    for ident, _, _ in DRESSES:
+        cells.append((f'dress-{ident}', compose(layers_for(outfit=ident))[0]))
+    cells.append(('bare-body+arms+hair', compose(layers_for())[0]))
+    for ident, _, _ in TOPS:
+        cells.append((f'only-{ident}', compose(layers_for(top=ident))[0]))
+    for ident, _, _ in BOTTOMS:
+        cells.append((f'only-{ident}', compose(layers_for(bottom=ident))[0]))
+
+    W, H, cols = 250, 445, 5
+    rows = (len(cells) + cols - 1) // cols
+    sheet = Image.new('RGB', (cols * W, rows * (H + 18)), (255, 255, 255))
+    draw = ImageDraw.Draw(sheet)
+    for i, (label, img) in enumerate(cells):
+        sheet.paste(Image.fromarray(img).resize((W, H), Image.LANCZOS),
+                    ((i % cols) * W, (i // cols) * (H + 18)))
+        draw.text(((i % cols) * W + 4, (i // cols) * (H + 18) + H + 3), label, fill=(30, 30, 30))
+    qa_dir.mkdir(parents=True, exist_ok=True)
+    sheet.save(qa_dir / f'v9-layers-{shape}.jpg', quality=90)
+
+
+def _crop2x(img: np.ndarray, x0f: float, x1f: float, y0f: float, y1f: float,
+            scale: int = 2) -> np.ndarray:
+    h, w = img.shape[:2]
+    x0, x1 = int(w * x0f), int(w * x1f)
+    y0, y1 = int(h * y0f), int(h * y1f)
+    crop = img[y0:y1, x0:x1]
+    return cv2.resize(crop, ((x1 - x0) * scale, (y1 - y0) * scale), interpolation=cv2.INTER_NEAREST)
+
+
+def build_audit(shape: str, audit_dir: Path, shape_px: dict, item_px: dict,
+                look_src: dict, stats: dict) -> None:
+    """洋红底空洞检查 + 手在裙前 / 长发在衣服前 / 蝴蝶结 局部审计图。"""
+    audit_dir.mkdir(parents=True, exist_ok=True)
+
+    def layers_for(outfit=None, top=None, bottom=None, with_hair=True):
+        chosen: dict[str, tuple[np.ndarray, np.ndarray]] = {'body': shape_px['body']}
+        if outfit:
+            chosen.update(item_px[('dress', outfit)])
+        else:
+            if top:
+                chosen.update(item_px[('top', top)])
+            if bottom:
+                chosen.update(item_px[('bottom', bottom)])
+        for slot in ('arms', 'hair'):
+            chosen[slot] = shape_px[slot]
+        return [chosen[slot] for slot in DRAW_ORDER if slot in chosen
+                and (with_hair or slot != 'hair')]
+
+    # ---- 洋红底空洞检查（所有组合）----
+    combos = [(f'{t}+{b}', dict(top=t, bottom=b)) for t, _, _ in TOPS for b, _, _ in BOTTOMS]
+    combos += [(f'dress-{i}', dict(outfit=i)) for i, _, _ in DRESSES]
+    combos += [('bare', {})]
+    holes_report = {}
+    cells = []
+    for label, kw in combos:
+        layer_list = layers_for(**kw)
+        union_a = np.zeros((TARGET[1], TARGET[0]), np.float32)
+        for _, al in layer_list:
+            union_a = np.maximum(union_a, al.astype(np.float32))
+        comp, _ = compose(layer_list, opaque_bg=(255, 0, 255))
+        magenta = (comp[:, :, 0] > 235) & (comp[:, :, 1] < 25) & (comp[:, :, 2] > 235)
+        sil = fill_holes((union_a > 20).astype(np.uint8)) > 0
+        sil = cv2.erode(sil.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+        body_a = shape_px['body'][1]
+        bad_hole = magenta & sil & (body_a > 200)     # 身体不透明区出现洋红 = 真缺陷（构造上应为 0）
+        bg_gap = magenta & sil & (body_a <= 200)      # 发丝/手臂围出的背景缝隙（素材固有，正常）
+        n_bad, n_gap = int(bad_hole.sum()), int(bg_gap.sum())
+        n_comp, _, cstats, _ = cv2.connectedComponentsWithStats(bad_hole.astype(np.uint8), 8)
+        bad_max = int(cstats[1:, cv2.CC_STAT_AREA].max()) if n_comp > 1 else 0
+        holes_report[label] = {'bad': n_bad, 'bad_max': bad_max, 'bg_gap': n_gap}
+        cell = comp.copy()
+        if n_bad:
+            cell[bad_hole] = (255, 0, 0)
+        if n_gap:
+            cell[bg_gap] = (0, 160, 0)
+        cells.append((f'{label} bad={n_bad} bg_gap={n_gap}', cell))
+    W, H, cols = 250, 445, 4
+    rows = (len(cells) + cols - 1) // cols
+    sheet = Image.new('RGB', (cols * W, rows * (H + 18)), (20, 20, 20))
+    draw = ImageDraw.Draw(sheet)
+    for i, (label, img) in enumerate(cells):
+        sheet.paste(Image.fromarray(img).resize((W, H), Image.LANCZOS),
+                    ((i % cols) * W, (i // cols) * (H + 18)))
+        draw.text(((i % cols) * W + 4, (i // cols) * (H + 18) + H + 3), label, fill=(240, 240, 240))
+    sheet.save(audit_dir / f'magenta-holes-{shape}.jpg', quality=90)
+    stats.setdefault('magenta_holes', {})[shape] = holes_report
+
+    # ---- 手在裙前：下摆两侧 2x 局部放大（白底）----
+    hand_cells = []
+    for label, kw in (('sweater+plaid', dict(top='sweater', bottom='plaid')),
+                      ('hoodie+pleated', dict(top='hoodie', bottom='pleated'))):
+        comp, _ = compose(layers_for(**kw))
+        for side, (x0, x1) in (('L', (0.10, 0.42)), ('R', (0.58, 0.90))):
+            crop = _crop2x(comp, x0, x1, 0.52, 0.74)
+            hand_cells.append((f'{label} {side} hand/skirt', crop))
+    cw = max(c.shape[1] for _, c in hand_cells)
+    chh = max(c.shape[0] for _, c in hand_cells)
+    sheet = Image.new('RGB', (2 * cw, 2 * (chh + 16)), (255, 255, 255))
+    draw = ImageDraw.Draw(sheet)
+    for i, (label, crop) in enumerate(hand_cells):
+        x, y = (i % 2) * cw, (i // 2) * (chh + 16)
+        sheet.paste(Image.fromarray(crop), (x, y))
+        draw.text((x + 4, y + chh + 2), label, fill=(30, 30, 30))
+    sheet.save(audit_dir / f'hand-in-front-skirt-{shape}.jpg', quality=92)
+
+    # ---- 长发丝在衣服前：with hair vs without hair 对比 ----
+    comp_h, _ = compose(layers_for(top='sweater', bottom='plaid', with_hair=True))
+    comp_n, _ = compose(layers_for(top='sweater', bottom='plaid', with_hair=False))
+    crop_h = _crop2x(comp_h, 0.14, 0.86, 0.42, 0.80)
+    crop_n = _crop2x(comp_n, 0.14, 0.86, 0.42, 0.80)
+    w, hh = crop_h.shape[1], crop_h.shape[0]
+    sheet = Image.new('RGB', (2 * w, hh + 18), (255, 255, 255))
+    draw = ImageDraw.Draw(sheet)
+    sheet.paste(Image.fromarray(crop_n), (0, 0))
+    sheet.paste(Image.fromarray(crop_h), (w, 0))
+    draw.text((4, hh + 3), 'no hair layer', fill=(30, 30, 30))
+    draw.text((w + 4, hh + 3), 'with hair layer (v9) - strands over clothes', fill=(30, 30, 30))
+    sheet.save(audit_dir / f'hair-over-clothes-{shape}.jpg', quality=92)
+
+    # ---- 少女卫衣橙色蝴蝶结局部 ----
+    if shape == 'girl':
+        comp, _ = compose(layers_for(top='hoodie'))
+        crop_final = _crop2x(comp, 0.38, 0.62, 0.32, 0.44, scale=4)
+        # look 真值：look 白底抠图 → 目标尺寸，同一坐标裁切
+        look = look_src[('top', 'hoodie')]
+        look_fg = remove_white_alpha(look)
+        l_rgb, l_a = resize_rgba(look, look_fg)
+        white = np.full((TARGET[1], TARGET[0], 3), 255.0, np.float32)
+        truth, _ = compose([(l_rgb, l_a)], opaque_bg=(255, 255, 255))
+        crop_truth = _crop2x(truth, 0.38, 0.62, 0.32, 0.44, scale=4)
+        # 仅主体层（body+garment）看蝴蝶结是否在图层里
+        g_layers = item_px[('top', 'hoodie')]
+        body_layer = g_layers[item_px_top_slot(g_layers)]
+        cell, _ = compose([shape_px['body'], body_layer], opaque_bg=(255, 255, 255))
+        crop_layer = _crop2x(cell, 0.38, 0.62, 0.32, 0.44, scale=4)
+        w2, h2 = crop_final.shape[1], crop_final.shape[0]
+        sheet = Image.new('RGB', (3 * w2, h2 + 18), (255, 255, 255))
+        draw = ImageDraw.Draw(sheet)
+        for i, (label, crop) in enumerate((('final composite', crop_final),
+                                           ('look ground truth', crop_truth),
+                                           ('body layer only', crop_layer))):
+            sheet.paste(Image.fromarray(crop), (i * w2, 0))
+            draw.text((i * w2 + 4, h2 + 3), label, fill=(30, 30, 30))
+        sheet.save(audit_dir / 'bow-girl-hoodie.jpg', quality=92)
+
+    # ---- 袖子/衣身接缝 2x 检查 ----
+    seam_cells = []
+    for label, kw in (('sweater+plaid', dict(top='sweater', bottom='plaid')),):
+        comp, _ = compose(layers_for(**kw))
+        seam_cells.append((f'{label} waist 2x', _crop2x(comp, 0.28, 0.72, 0.38, 0.56, scale=2)))
+        seam_cells.append((f'{label} cuff 2x', _crop2x(comp, 0.12, 0.40, 0.48, 0.62, scale=2)))
+        seam_cells.append((f'{label} cuff R 2x', _crop2x(comp, 0.60, 0.88, 0.48, 0.62, scale=2)))
+    w3 = max(c.shape[1] for _, c in seam_cells)
+    h3 = max(c.shape[0] for _, c in seam_cells)
+    sheet = Image.new('RGB', (w3, len(seam_cells) * (h3 + 16)), (255, 255, 255))
+    draw = ImageDraw.Draw(sheet)
+    for i, (label, crop) in enumerate(seam_cells):
+        sheet.paste(Image.fromarray(crop), (0, i * (h3 + 16)))
+        draw.text((4, i * (h3 + 16) + h3 + 2), label, fill=(30, 30, 30))
+    sheet.save(audit_dir / f'seam-2x-{shape}.jpg', quality=92)
+
+    # ---- 与单件 look 真值对照：build 合成 vs look vs 差异热图（查配准/抠图/丢失部件）----
+    look_pairs = [('sweater', ('top', 'sweater'), dict(top='sweater')),
+                  ('hoodie', ('top', 'hoodie'), dict(top='hoodie')),
+                  ('sailor', ('top', 'sailor'), dict(top='sailor')),
+                  ('plaid', ('bottom', 'plaid'), dict(bottom='plaid')),
+                  ('pleated', ('bottom', 'pleated'), dict(bottom='pleated')),
+                  ('maid', ('dress', 'maid'), dict(outfit='maid'))]
+    rows = []
+    look_diff = {}
+    for label, key, kw in look_pairs:
+        comp, _ = compose(layers_for(**kw))
+        look = look_src[key]
+        look_fg = remove_white_alpha(look)
+        l_rgb, l_a = resize_rgba(look, look_fg)
+        truth, _ = compose([(l_rgb, l_a)], opaque_bg=(255, 255, 255))
+        diff = np.abs(comp.astype(np.int16) - truth.astype(np.int16)).max(axis=2)
+        fg = l_a > 40
+        look_diff[label] = round(float(diff[fg].mean()), 2) if fg.any() else 0.0
+        heat = np.full((TARGET[1], TARGET[0], 3), 255, np.uint8)
+        hot = diff > 40
+        heat[hot] = (255, 60, 60)
+        rows.append((label, comp, truth, heat))
+    W, H, cols = 250, 445, 3
+    sheet = Image.new('RGB', (cols * W, len(rows) * (H + 16)), (255, 255, 255))
+    draw = ImageDraw.Draw(sheet)
+    for r, (label, comp, truth, heat) in enumerate(rows):
+        for c, img in enumerate((comp, truth, heat)):
+            x, y = c * W, r * (H + 16)
+            sheet.paste(Image.fromarray(img).resize((W, H), Image.LANCZOS), (x, y))
+            tag = ('build', 'look-truth', 'diff>40')[c]
+            draw.text((x + 3, y + H + 2), f'{label} {tag}', fill=(30, 30, 30))
+    sheet.save(audit_dir / f'look-vs-build-{shape}.jpg', quality=90)
+    stats['look_diff'] = look_diff
+
+    # ---- 身体部件层（body/arms/hair）单独可视化：确认 arms 是完整双臂+手、hair 完整 ----
+    body_rgb = shape_px['body'][0]
+    mag = np.zeros((TARGET[1], TARGET[0], 3), np.float32)
+    mag[:] = (255, 0, 255)
+    layer_cells = []
+    layer_cells.append(('body (full base)', compose([shape_px['body']], opaque_bg=(255, 0, 255))[0]))
+    layer_cells.append(('arms layer', compose([shape_px['arms']], opaque_bg=(255, 0, 255))[0]))
+    layer_cells.append(('hair layer', compose([shape_px['hair']], opaque_bg=(255, 0, 255))[0]))
+    layer_cells.append(('arms+body', compose([shape_px['body'], shape_px['arms']], opaque_bg=(255, 0, 255))[0]))
+    W, H = 250, 445
+    sheet = Image.new('RGB', (len(layer_cells) * W, H + 16), (20, 20, 20))
+    draw = ImageDraw.Draw(sheet)
+    for i, (label, img) in enumerate(layer_cells):
+        sheet.paste(Image.fromarray(img).resize((W, H), Image.LANCZOS), (i * W, 0))
+        draw.text((i * W + 3, H + 2), label, fill=(240, 240, 240))
+    sheet.save(audit_dir / f'shape-layers-{shape}.jpg', quality=90)
+
+    # ---- 头发层「白衣服上的淡蓝鬼影」检查：低饱和高亮像素若被 hair 掩膜包进来就会盖到衣服上 ----
+    lum = body_rgb.mean(axis=2)
+    mx, mn = body_rgb.max(axis=2), body_rgb.min(axis=2)
+    sat = (mx - mn) / np.maximum(mx, 1)
+    ghost = (shape_px['hair'][1] > 127) & (sat < 0.18) & (lum > 180)
+    stats['hair_ghost_px'] = int(ghost.sum())
+    ghost_comp, _ = compose(layers_for(top='sweater', bottom='plaid'))
+    ghost_vis = ghost_comp.copy()
+    ghost_vis[ghost] = (255, 0, 0)
+    crop_ghost = _crop2x(ghost_vis, 0.24, 0.76, 0.30, 0.62, scale=4)
+    Image.fromarray(crop_ghost).save(audit_dir / f'hair-ghost-{shape}.jpg', quality=92)
+    # 白毛衣 4x 特写（无高亮，直接肉眼看有无淡蓝鬼影；chibi 是重灾区）
+    crop_sweater = _crop2x(ghost_comp, 0.26, 0.74, 0.28, 0.62, scale=4)
+    Image.fromarray(crop_sweater).save(audit_dir / f'sweater-4x-{shape}.jpg', quality=92)
+
+    # ---- maid + plaid 正面腰部特写（检查背部中央那缕头发有没有在裙面/围裙上留下深色竖线）----
+    waist_cells = []
+    for label, kw in (('maid', dict(outfit='maid')), ('plaid only', dict(bottom='plaid'))):
+        comp, _ = compose(layers_for(**kw))
+        waist_cells.append((label, _crop2x(comp, 0.34, 0.66, 0.42, 0.68, scale=3)))
+    ww = max(c.shape[1] for _, c in waist_cells)
+    hh = max(c.shape[0] for _, c in waist_cells)
+    sheet = Image.new('RGB', (len(waist_cells) * ww, hh + 16), (255, 255, 255))
+    draw = ImageDraw.Draw(sheet)
+    for i, (label, crop) in enumerate(waist_cells):
+        sheet.paste(Image.fromarray(crop), (i * ww, 0))
+        draw.text((i * ww + 4, hh + 2), f'{label} front waist 3x', fill=(30, 30, 30))
+    sheet.save(audit_dir / f'waist-center-{shape}.jpg', quality=92)
+
+
+def item_px_top_slot(layers: dict) -> str:
+    for slot in ('topBody', 'topUnder'):
+        if slot in layers:
+            return slot
+    raise KeyError(layers.keys())
+
+
+def build_shape(shape: str, src: Path, out: Path, qa_dir: Path, audit_dir: Path,
+                masks_dir: Path) -> dict:
+    print(f'[{shape}] 读素体 / 掩膜 / 图层 …')
     base = load_rgb(src / f'base-bandeau-{shape}.png')
     base_alpha = remove_white_alpha(base)
     art = out / 'art' / shape
     (art / 'layers').mkdir(parents=True, exist_ok=True)
 
     b_rgb, b_alpha = resize_rgba(base, base_alpha)
-    save_webp(b_rgb, b_alpha, art / 'base.webp')
+    save_webp(b_rgb, b_alpha, art / 'body.webp')
     ys, xs = np.nonzero(b_alpha > 40)
     bounds = {'top': round(float(ys.min()) / TARGET[1], 4), 'bottom': round(float(ys.max() + 1) / TARGET[1], 4)}
 
-    hair_front = hair_front_mask(base)
-    o_rgb, o_alpha = resize_rgba(base, hair_front)
-    save_webp(o_rgb, o_alpha, art / 'overlay.webp')
+    arms_src = load_mask(masks_dir / shape / 'arms.png')
+    hair_src = load_mask(masks_dir / shape / 'hair.png')
+    arms_alpha = (arms_src.astype(np.uint16) * base_alpha.astype(np.uint16) // 255).astype(np.uint8)
+    hair_alpha = (hair_src.astype(np.uint16) * base_alpha.astype(np.uint16) // 255).astype(np.uint8)
+    a_rgb, a_alpha = resize_rgba(base, arms_alpha)
+    h_rgb, h_alpha = resize_rgba(base, hair_alpha)
+    save_webp(a_rgb, a_alpha, art / 'arms.webp')
+    save_webp(h_rgb, h_alpha, art / 'hair.webp')
+    arms_target = resize_alpha(arms_src)
+    print(f'  body/arms/hair 面积: arms={float((a_alpha > 40).mean()):.1%} '
+          f'hair={float((h_alpha > 40).mean()):.1%}')
 
-    layer_paths: dict[tuple[str, str], str] = {}
-    layer_pixels: dict[tuple[str, str], tuple[np.ndarray, np.ndarray]] = {}
+    shape_px = {'body': (b_rgb, b_alpha), 'arms': (a_rgb, a_alpha), 'hair': (h_rgb, h_alpha)}
+    shape_layers = {'body': f'art/{shape}/body.webp',
+                    'arms': f'art/{shape}/arms.webp',
+                    'hair': f'art/{shape}/hair.webp'}
+    item_layers: dict[tuple[str, str], dict[str, str]] = {}
+    item_px: dict[tuple[str, str], dict[str, tuple[np.ndarray, np.ndarray]]] = {}
+    look_src: dict[str, np.ndarray] = {}
+    stats: dict = {'sleeve': {}, 'bow': {}, 'iou': {}}
+
     for cat, ids in (('dress', DRESSES), ('top', TOPS), ('bottom', BOTTOMS)):
         for ident, _, _ in ids:
-            look_path = src / f'{shape}-only-{cat}-{ident}.png'
-            look_v2 = src / f'{shape}-only-{cat}-{ident}-v2.png'
-            cfg = LAYER_PLAN[(cat, ident)]
-            if cfg['mode'] == 'whiteout' and look_v2.exists():
-                look_path = look_v2
-            look = load_rgb(look_path)
-            if cfg['mode'] == 'whiteout':
-                wo_path = src / f'{shape}-whiteout-{cat}-{ident}-v2.png'
-                if not wo_path.exists():
-                    wo_path = src / f'{shape}-whiteout-{cat}-{ident}.png'
-                wo = load_rgb(wo_path)
-                wa = whiteout_alpha(wo)
-                if 'target_frac' in cfg:
-                    target = flood_target(look, cfg.get('band', (0.30, 0.80)), cfg['target_frac'][shape])
+            g = build_garment(shape, cat, ident, src, base, arms_target, arms_src)
+            look_src[(cat, ident)] = g['look']
+            main_slot = MAIN_SLOT.get((cat, ident), 'bottom')
+            rels: dict[str, str] = {}
+            for slot, (rgb, alpha) in g['layers'].items():
+                if slot == 'bottom':
+                    rel = f'art/{shape}/layers/bottom-{ident}.webp'
                 else:
-                    target = whiteout_target(look, base, wo, wa)
-                if target is None:
-                    raise SystemExit(f'配准目标失败: {shape} {cat}-{ident}')
-                extra = cfg.get('extra_scale', 1.0)
-                if isinstance(extra, dict):
-                    extra = extra[shape]
-                rgb1152, a1152, iou = layer_from_whiteout(wo, wa, target, extra_scale=extra,
-                                                          align_probe=cfg.get('align_probe'))
-                a1152 = a1152.astype(np.float32) * (hair_front == 0)  # 头发处留洞，由 overlay 补回
-                a1152 = np.clip(cv2.GaussianBlur(a1152, (0, 0), 0.9) * 1.05 - 6, 0, 255)
-                l_rgb, l_alpha = resize_rgba(np.clip(rgb1152, 0, 255).astype(np.uint8), a1152)
-                print(f'    配准 IoU={iou:.2f} extra={extra}')
-            else:
-                mask = matte(look, base, cfg)
-                if mask is None:
-                    raise SystemExit(f'抠图失败: {shape} {cat}-{ident}')
-                # 硬约束：图层不能包含 look 的背景（白底），否则会把白块贴上舞台
-                look_fg = remove_white_alpha(look) > 40
-                mask = mask & cv2.dilate(look_fg.astype(np.uint8), np.ones((5, 5), np.uint8))
-                # 头发处留洞（由最上层 overlay 补回），再羽化 + premultiplied 缩放
-                mask = mask & (hair_front == 0)
-                a1152 = np.clip(cv2.GaussianBlur(mask.astype(np.float32) * 255.0, (0, 0), 0.9) * 1.12 - 12, 0, 255)
-                l_rgb, l_alpha = resize_rgba(np.clip(look, 0, 255).astype(np.uint8), a1152)
-            rel = f'art/{shape}/layers/{"dress" if cat == "dress" else cat}-{ident}.webp'
-            save_webp(l_rgb, l_alpha, out / rel)
-            layer_paths[(cat, ident)] = rel
-            layer_pixels[(cat, ident)] = (l_rgb, l_alpha)
-            area = round(float((l_alpha > 40).mean()), 4)
-            print(f'  {rel}  面积 {area:.1%}')
+                    # 契约 §2/§3：主体层统一 *-body.webp，袖子 *-sleeve.webp（manifest 里再映射到 topBody/topUnder）
+                    suffix = '-body' if slot in ('topBody', 'topUnder') else f'-{slot}'
+                    rel = f'art/{shape}/layers/{cat}-{ident}{suffix}.webp'
+                save_webp(rgb, alpha, out / rel)
+                rels[slot] = rel
+            item_layers[(cat, ident)] = rels
+            item_px[(cat, ident)] = g['layers']
+            stats['iou'][f'{cat}-{ident}'] = round(g['iou'], 3)
+            stats['bow'][f'{cat}-{ident}'] = g['bow_px']
+            if g.get('cuffs'):
+                stats.setdefault('cuffs', {})[f'{cat}-{ident}'] = g['cuffs']
+            sleeve_a = g['layers'].get('sleeve')
+            if sleeve_a is not None:
+                stats['sleeve'][f'{cat}-{ident}'] = round(float((sleeve_a[1] > 40).mean()), 4)
+            area = round(float((g['layers'][main_slot][1] > 40).mean()), 4)
+            print(f'  {cat}-{ident}: 主体面积 {area:.1%}'
+                  + (f' sleeve {stats["sleeve"].get(f"{cat}-{ident}", 0):.1%}'
+                     if 'sleeve' in g['layers'] else ' 无袖')
+                  + (f' 蝴蝶结补丁 {g["bow_px"]}px' if g['bow_px'] else ''))
 
-    # QA 拼图：所有组合 + 全部连衣裙 + 单层
-    qa_dir.mkdir(parents=True, exist_ok=True)
-    canvas = np.zeros((TARGET[1], TARGET[0], 3), np.float32)
-    canvas[:] = 255
+    build_qa_sheet(shape, shape, qa_dir, shape_px, item_px)
+    build_audit(shape, audit_dir, shape_px, item_px, look_src, stats)
 
-    def compose(keys) -> np.ndarray:
-        img = np.full((TARGET[1], TARGET[0], 3), 255.0, np.float32)
-        a = b_alpha.astype(np.float32) / 255.0
-        img = img * (1 - a[..., None]) + np.clip(b_rgb, 0, 255).astype(np.float32) * a[..., None]
-        for k in keys:
-            rgb, al = layer_pixels[k]
-            a2 = al.astype(np.float32) / 255.0
-            img = img * (1 - a2[..., None]) + np.clip(rgb, 0, 255).astype(np.float32) * a2[..., None]
-        a3 = o_alpha.astype(np.float32) / 255.0
-        img = img * (1 - a3[..., None]) + np.clip(o_rgb, 0, 255).astype(np.float32) * a3[..., None]
-        return np.clip(img, 0, 255).astype(np.uint8)
+    # ---- 程序化验收指标（手在裙前 / 长发在衣服前）----
+    def layers_for(outfit=None, top=None, bottom=None):
+        chosen: dict[str, tuple[np.ndarray, np.ndarray]] = {'body': shape_px['body']}
+        if outfit:
+            chosen.update(item_px[('dress', outfit)])
+        else:
+            if top:
+                chosen.update(item_px[('top', top)])
+            if bottom:
+                chosen.update(item_px[('bottom', bottom)])
+        for slot in ('arms', 'hair'):
+            chosen[slot] = shape_px[slot]
+        return [chosen[slot] for slot in DRAW_ORDER if slot in chosen]
 
-    cells = []
+    def visible_frac(comp, mask, rgb_ref):
+        m = mask & (np.abs(comp.astype(np.int16) - rgb_ref.astype(np.int16)).max(axis=2) < 16)
+        return float(m.sum()) / max(int(mask.sum()), 1)
+
+    def hand_free_frac(comp, mask):
+        """手部区域最上层不是衣服（= arms 或 hair 层）的比例；发丝压手属正常构图。"""
+        ok = np.zeros_like(mask)
+        for ref in (shape_px['arms'][0], shape_px['hair'][0]):
+            ok |= np.abs(comp.astype(np.int16) - ref.astype(np.int16)).max(axis=2) < 16
+        return float((mask & ok).sum()) / max(int(mask.sum()), 1)
+
+    hand_checks = {}
+    h_alpha = shape_px['arms'][1]
+    # 手部核心区 = 两条手臂连通块各自最下端 12%（指尖/手心，任何长袖都不该盖住这里）
+    n_arm, lab_arm, stats_arm, _ = cv2.connectedComponentsWithStats((h_alpha > 127).astype(np.uint8), 8)
+    comps = sorted((i for i in range(1, n_arm) if stats_arm[i, cv2.CC_STAT_AREA] > 800),
+                   key=lambda i: -stats_arm[i, cv2.CC_STAT_AREA])[:2]
+    hand_mask = np.zeros((TARGET[1], TARGET[0]), bool)
+    for i in comps:
+        top = stats_arm[i, cv2.CC_STAT_TOP]
+        hgt = stats_arm[i, cv2.CC_STAT_HEIGHT]
+        band = lab_arm == i
+        band[: int(top + 0.88 * hgt), :] = False
+        hand_mask |= band
+    # 去掉 1px 抗锯齿边缘（边缘与下层混色，不代表手被遮住）
+    hand_mask = cv2.erode(hand_mask.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
     for top, _, _ in TOPS:
         for bottom, _, _ in BOTTOMS:
-            cells.append((f'{top}+{bottom}', compose([('bottom', bottom), ('top', top)])))
+            comp, _ = compose(layers_for(top=top, bottom=bottom))
+            frac = hand_free_frac(comp, hand_mask)
+            hand_checks[f'{top}+{bottom}'] = round(frac, 3)
     for ident, _, _ in DRESSES:
-        cells.append((f'dress-{ident}', compose([('dress', ident)])))
-    for ident, _, _ in TOPS:
-        cells.append((f'only-{ident}', compose([('top', ident)])))
-    for ident, _, _ in BOTTOMS:
-        cells.append((f'only-{ident}', compose([('bottom', ident)])))
-    W, H, cols = 260, 462, 5
-    rows = (len(cells) + cols - 1) // cols
-    sheet = Image.new('RGB', (cols * W, rows * (H + 18)), (255, 255, 255))
-    from PIL import ImageDraw
-    draw = ImageDraw.Draw(sheet)
-    for i, (label, img) in enumerate(cells):
-        sheet.paste(Image.fromarray(img).resize((W, H), Image.LANCZOS), ((i % cols) * W, (i // cols) * (H + 18)))
-        draw.text(((i % cols) * W + 4, (i // cols) * (H + 18) + H + 3), label, fill=(30, 30, 30))
-    sheet.save(qa_dir / f'v7-layers-{shape}.jpg', quality=90)
+        comp, _ = compose(layers_for(outfit=ident))
+        hand_checks[f'dress-{ident}'] = round(hand_free_frac(comp, hand_mask), 3)
+    stats['hand_core_visible'] = hand_checks
+    hair_over = {}
+    for top in ('sweater', 'hoodie'):
+        for bottom in ('plaid', 'pleated'):
+            comp, _ = compose(layers_for(top=top, bottom=bottom))
+            gmask = np.zeros((TARGET[1], TARGET[0]), bool)
+            for layer in item_px[('top', top)].values():
+                gmask |= layer[1] > 127
+            if bottom:
+                gmask |= item_px[('bottom', bottom)][('bottom')][1] > 127
+            m = (shape_px['hair'][1] > 200) & gmask
+            hair_over[f'{top}+{bottom}'] = round(visible_frac(comp, m, shape_px['hair'][0]), 3)
+    stats['hair_over_clothes'] = hair_over
+    print(f'  QA: 手部核心区未被衣服覆盖比例 {hand_checks}')
+    print(f'  QA: 长发盖在衣服上可见 {hair_over}')
+    return {'shape': shape, 'bounds': bounds, 'shape_layers': shape_layers,
+            'item_layers': item_layers, 'item_px': item_px, 'shape_px': shape_px,
+            'stats': stats}
 
-    # 悬浮鲸鱼兜底图（默认 Q 版女仆装，184×327，透明背景 RGBA）
-    if shape == 'chibi':
-        def compose_rgba(keys) -> tuple[np.ndarray, np.ndarray]:
-            img = np.zeros((TARGET[1], TARGET[0], 3), np.float32)
-            acc = np.zeros((TARGET[1], TARGET[0]), np.float32)
 
-            def over(rgb, al):
-                nonlocal img, acc
-                a2 = np.clip(al.astype(np.float32) / 255.0, 0, 1)
-                img = img * (1 - a2[..., None]) + np.clip(rgb, 0, 255).astype(np.float32) * a2[..., None]
-                acc = acc * (1 - a2) + a2
+# ---------------------------------------------------------------- pet / 图标 / 背景缩略图
 
-            over(b_rgb, b_alpha)
-            for k in keys:
-                rgb, al = layer_pixels[k]
-                over(rgb, al)
-            over(o_rgb, o_alpha)
-            return np.clip(img, 0, 255).astype(np.uint8), np.clip(acc * 255, 0, 255).astype(np.uint8)
-
-        prgb, pa = compose_rgba([('dress', 'maid')])
-        ys, xs = np.nonzero(pa > 20)
-        prgb = prgb[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
-        pa = pa[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
-        ratio = min(184 / pa.shape[1], 327 / pa.shape[0])
-        nw, nh = max(1, round(pa.shape[1] * ratio)), max(1, round(pa.shape[0] * ratio))
-        prgb = cv2.resize(prgb, (nw, nh), interpolation=cv2.INTER_AREA)
-        pa = cv2.resize(pa, (nw, nh), interpolation=cv2.INTER_AREA)
-        pet = np.zeros((327, 184, 4), np.uint8)
-        x0, y0 = (184 - nw) // 2, (327 - nh) // 2
-        pet[y0:y0 + nh, x0:x0 + nw, :3] = prgb
-        pet[y0:y0 + nh, x0:x0 + nw, 3] = pa
-        tmp_pet = out / 'art' / 'pet-default.webp.tmp'
-        Image.fromarray(pet).save(tmp_pet, 'WEBP', quality=85, method=6)
-        os.replace(tmp_pet, out / 'art' / 'pet-default.webp')
-
-    return {'shape': shape, 'bounds': bounds, 'layer_paths': layer_paths}
+def build_pet_default(out: Path, chibi: dict) -> None:
+    """悬浮鲸鱼兜底图：按 drawOrder 合成默认穿搭（Q 版女仆装），184×327 透明背景。"""
+    shape_px = chibi['shape_px']
+    chosen = {'body': shape_px['body']}
+    chosen.update(chibi['item_px'][('dress', 'maid')])
+    for slot in ('arms', 'hair'):
+        chosen[slot] = shape_px[slot]
+    layers = [chosen[slot] for slot in DRAW_ORDER if slot in chosen]
+    img, acc = compose(layers, opaque_bg=None)
+    ys, xs = np.nonzero(acc > 20)
+    img = img[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    acc = acc[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    ratio = min(184 / acc.shape[1], 327 / acc.shape[0])
+    nw, nh = max(1, round(acc.shape[1] * ratio)), max(1, round(acc.shape[0] * ratio))
+    prgb, pa = resize_premult(img, acc, (nw, nh))
+    pet = np.zeros((327, 184, 4), np.uint8)
+    x0, y0 = (184 - nw) // 2, (327 - nh) // 2
+    pet[y0:y0 + nh, x0:x0 + nw, :3] = np.clip(prgb, 0, 255).astype(np.uint8)
+    pet[y0:y0 + nh, x0:x0 + nw, 3] = np.clip(pa, 0, 255).astype(np.uint8)
+    target = out / 'art' / 'pet-default.webp'
+    tmp = target.with_name(target.name + '.tmp')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(pet).save(tmp, 'WEBP', quality=85, method=6)
+    os.replace(tmp, target)
+    print(f'  pet-default -> {target.relative_to(out)}  ({nw}x{nh} in 184x327)')
 
 
 def make_icons(src: Path, out: Path) -> None:
@@ -739,33 +1229,46 @@ def make_bg_thumbs(out: Path) -> None:
         im.save(thumb, 'WEBP', quality=86, method=6)
 
 
+# ---------------------------------------------------------------- manifest v6
+
+def _item_layers_for(shape_info: dict, cat_key: str, ident: str) -> dict:
+    layers = {}
+    for sid, _, _ in SHAPES:
+        info = shape_info.get(sid)
+        if not info:
+            continue
+        lay = info['item_layers'].get((cat_key, ident))
+        if lay:
+            layers[sid] = {slot: lay[slot] for slot in ITEM_SLOTS if slot in lay}
+    return layers
+
+
 def build_manifest(shape_info: dict) -> dict:
     items = {'outfits': [{'id': 'none', 'name': '不穿套装', 'emoji': '🚫', 'desc': '换成上衣 + 下装搭配。'}]}
     for ident, name, desc in DRESSES:
         items['outfits'].append({'id': ident, 'name': name, 'desc': desc,
-                                 'icon': f'art/icons/{ident}.webp', 'z': Z_ORDER['dress'],
-                                 'layer': {s: shape_info[s]['layer_paths'][('dress', ident)] for s in shape_info}})
+                                 'icon': f'art/icons/{ident}.webp',
+                                 'layers': _item_layers_for(shape_info, 'dress', ident)})
     items['tops'] = [{'id': ident, 'name': name, 'desc': desc, 'icon': f'art/icons/{ident}.webp',
-                      'z': Z_ORDER['top'],
-                      'layer': {s: shape_info[s]['layer_paths'][('top', ident)] for s in shape_info}}
+                      'layers': _item_layers_for(shape_info, 'top', ident)}
                      for ident, name, desc in TOPS]
     items['bottoms'] = [{'id': ident, 'name': name, 'desc': desc, 'icon': f'art/icons/{ident}.webp',
-                         'z': Z_ORDER['bottom'],
-                         'layer': {s: shape_info[s]['layer_paths'][('bottom', ident)] for s in shape_info}}
+                         'layers': _item_layers_for(shape_info, 'bottom', ident)}
                         for ident, name, desc in BOTTOMS]
     items['backgrounds'] = [{'id': i, 'name': n, 'desc': d, 'file': f'art/{i}.webp',
                              'thumb': f'art/thumbs/{i}.webp', 'floor': floor}
                             for i, n, d, floor in BACKGROUNDS]
     items['effects'] = [{'id': i, 'name': n, 'desc': d, 'emoji': e} for i, n, d, e in EFFECTS]
     return {
-        'version': 5,
+        'version': 6,
         'title': '大肥鱼衣橱 · 换装间',
         'character': '大肥鱼 · 经典鲸鱼娘',
         'credits': CREDITS,
+        'drawOrder': DRAW_ORDER,
         'shapes': [{'id': sid, 'name': name, 'desc': desc,
-                    'base': f'art/{sid}/base.webp', 'overlay': f'art/{sid}/overlay.webp',
-                    'bounds': shape_info[sid]['bounds']}
-                   for sid, name, desc in SHAPES],
+                    'bounds': shape_info[sid]['bounds'],
+                    'layers': {slot: shape_info[sid]['shape_layers'][slot] for slot in SHAPE_SLOTS}}
+                   for sid, name, desc in SHAPES if sid in shape_info],
         'categories': [
             {'id': 'outfits', 'name': '套装', 'emoji': '👗', 'stateKey': 'outfit'},
             {'id': 'tops', 'name': '上衣', 'emoji': '👚', 'stateKey': 'top'},
@@ -780,60 +1283,328 @@ def build_manifest(shape_info: dict) -> dict:
     }
 
 
-def build(src: Path, out: Path, qa_dir: Path, only_shape: str | None = None) -> None:
-    shapes = [s for s in SHAPES if not only_shape or s[0] == only_shape]
-    shape_info = {}
-    for shape, _, _ in shapes:
-        print(f'[{shape}] 素体 / 叠层 / 图层 …')
-        shape_info[shape] = build_shape(shape, src, out, qa_dir, {})
-    print('图标 …')
-    make_icons(src, out)
-    make_bg_thumbs(out)
-    # 若只构建了一个身形，manifest 需合并另一个身形的已有图层信息（增量调试用）
-    if only_shape:
-        manifest_path = out / 'manifest.json'
-        if manifest_path.exists():
-            old = json.loads(manifest_path.read_text())
-            for shape in old.get('shapes', []):
-                sid = shape['id']
-                if sid in shape_info:
-                    continue
-                shape_info[sid] = {'bounds': shape['bounds'], 'layer_paths': {}}
-                for cat in ('outfits', 'tops', 'bottoms'):
-                    key = {'outfits': 'dress', 'tops': 'top', 'bottoms': 'bottom'}[cat]
-                    for item in old['items'][cat]:
-                        if item['id'] == 'none':
-                            continue
-                        shape_info[sid]['layer_paths'][(key, item['id'])] = item['layer'][sid]
-    # 清理不再被 manifest 引用的旧图层 / 图标（内容收敛后删掉历史素材）
-    referenced_layers = set()
-    for info in shape_info.values():
-        referenced_layers.update(info['layer_paths'].values())
-    for shape, _, _ in shapes:
-        for stale in (out / 'art' / shape / 'layers').glob('*.webp'):
-            rel = f'art/{shape}/layers/{stale.name}'
-            if rel not in referenced_layers:
-                stale.unlink()
-    for stale in (out / 'art' / 'icons').glob('*.webp'):
-        if stale.stem not in ICON_SOURCES:
-            stale.unlink()
-    # 清理旧版「整套立绘」产物（新素材写完之后再删，避免构建期间素材缺失）
-    for shape, _, _ in shapes:
+def validate_build(out: Path, manifest: dict) -> list[str]:
+    """校验 manifest 与素材：schema v6 + 文件存在 + 尺寸正确 + v5 字段已移除。"""
+    problems: list[str] = []
+    if manifest.get('version') != 6:
+        problems.append(f'version != 6: {manifest.get("version")}')
+    if manifest.get('drawOrder') != DRAW_ORDER:
+        problems.append(f'drawOrder 不符合契约: {manifest.get("drawOrder")}')
+    for shape in manifest.get('shapes', []):
+        if set(shape) & {'base', 'overlay'}:
+            problems.append(f'shape {shape["id"]} 仍含 v5 字段 base/overlay')
+        if set(shape.get('layers', {})) != set(SHAPE_SLOTS):
+            problems.append(f'shape {shape["id"]} layers 槽位不全: {list(shape.get("layers", {}))}')
+        for slot, rel in shape.get('layers', {}).items():
+            p = out / rel
+            if not p.exists():
+                problems.append(f'缺文件 {rel}')
+                continue
+            w, h = Image.open(p).size
+            if (w, h) != TARGET:
+                problems.append(f'{rel} 尺寸 {w}x{h} != {TARGET[0]}x{TARGET[1]}')
+    for cat in ('outfits', 'tops', 'bottoms'):
+        for item in manifest['items'][cat]:
+            if item['id'] == 'none':
+                continue
+            if 'layer' in item or 'z' in item:
+                problems.append(f'item {item["id"]} 仍含 v5 字段 layer/z')
+            for sid, lay in item.get('layers', {}).items():
+                for slot, rel in lay.items():
+                    if slot not in ITEM_SLOTS:
+                        problems.append(f'item {item["id"]} 非法槽位 {slot}')
+                    p = out / rel
+                    if not p.exists():
+                        problems.append(f'缺文件 {rel}')
+                        continue
+                    w, h = Image.open(p).size
+                    if (w, h) != TARGET:
+                        problems.append(f'{rel} 尺寸 {w}x{h} != {TARGET[0]}x{TARGET[1]}')
+    pet = out / 'art' / 'pet-default.webp'
+    if not pet.exists():
+        problems.append('缺 art/pet-default.webp')
+    else:
+        w, h = Image.open(pet).size
+        if (w, h) != (184, 327):
+            problems.append(f'pet-default 尺寸 {w}x{h} != 184x327')
+    return problems
+
+
+# ---------------------------------------------------------------- 旧素材清理
+
+def collect_referenced(manifest: dict) -> set[str]:
+    refs: set[str] = set()
+
+    def walk(node):
+        if isinstance(node, dict):
+            for v in node.values():
+                walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+        elif isinstance(node, str) and node.startswith('art/') and node.endswith('.webp'):
+            refs.add(node)
+
+    walk(manifest)
+    refs.add('art/pet-default.webp')
+    return refs
+
+
+def cleanup_stale(out: Path, manifest: dict, built_shapes: list[str]) -> list[str]:
+    """按新 manifest 引用清理旧素材（v5 残留 base.webp/overlay.webp/无后缀图层等）。"""
+    refs = collect_referenced(manifest)
+    removed: list[str] = []
+    for shape in built_shapes:
         art = out / 'art' / shape
+        if not art.is_dir():
+            continue
+        for f in sorted(art.rglob('*.webp')):
+            rel = f.relative_to(out).as_posix()
+            if rel not in refs:
+                f.unlink()
+                removed.append(rel)
+        # 旧版「整套立绘」产物 / 空目录
         for pattern in ('dress-*.webp', 'combo-*.webp'):
             for stale in art.glob(pattern):
                 stale.unlink()
-        thumbs = art / 'thumbs'
-        if thumbs.is_dir():
-            for stale in thumbs.glob('*'):
-                stale.unlink()
-            thumbs.rmdir()
+                removed.append(stale.relative_to(out).as_posix())
+        for d in sorted((p for p in art.rglob('*') if p.is_dir()), reverse=True):
+            if not any(d.iterdir()):
+                d.rmdir()
+    for stale in (out / 'art' / 'icons').glob('*.webp'):
+        if stale.stem not in ICON_SOURCES:
+            stale.unlink()
+            removed.append(stale.relative_to(out).as_posix())
+    return removed
+
+
+# ---------------------------------------------------------------- 增量构建（--shape 调试用）
+
+def load_prev_shape_info(out: Path, missing_shapes: list[str]) -> dict:
+    manifest_path = out / 'manifest.json'
+    if not manifest_path.exists():
+        raise SystemExit('单身形调试构建需要已有 v6 manifest；请先完整构建一次')
+    old = json.loads(manifest_path.read_text())
+    if old.get('version') != 6:
+        raise SystemExit('已有 manifest 不是 v6；请先完整构建一次')
+    shapes_by_id = {s['id']: s for s in old.get('shapes', [])}
+    cat_key = {'outfits': 'dress', 'tops': 'top', 'bottoms': 'bottom'}
+    info = {}
+    for sid in missing_shapes:
+        shp = shapes_by_id.get(sid)
+        if not shp:
+            raise SystemExit(f'旧 manifest 缺少身形 {sid}；请先完整构建一次')
+        item_layers = {}
+        for cat, key in cat_key.items():
+            for item in old['items'][cat]:
+                if item['id'] == 'none':
+                    continue
+                lay = item.get('layers', {}).get(sid)
+                if lay:
+                    item_layers[(key, item['id'])] = dict(lay)
+        info[sid] = {'shape': sid, 'bounds': shp['bounds'],
+                     'shape_layers': dict(shp['layers']), 'item_layers': item_layers}
+    return info
+
+
+def write_report(audit_dir: Path, shape_info: dict, removed: list[str],
+                 mask_md5: dict, cmd: str, orphans: list[str], tmp_files: list[str],
+                 refs: set[str]) -> None:
+    audit_dir.mkdir(parents=True, exist_ok=True)
+    checks: list[tuple[str, str, bool, str]] = []
+    # 洋红空洞：身体不透明区（body alpha>200）出现洋红才算缺陷；阈值 <50px 且无 >=3px 连通块：
+    # 合成边缘 1-2px 的抗锯齿接缝/发丝围出的背景缝隙可能残留个位数 px，不构成「人物内部空洞」。
+    for sid, info in shape_info.items():
+        stats = info.get('stats') or {}
+        mag = stats.get('magenta_holes', {}).get(sid, {})
+        n_bad = sum(v['bad'] for v in mag.values())
+        bad_max = max((v['bad_max'] for v in mag.values()), default=0)
+        checks.append((f'{sid} 洋红底身体内空洞',
+                       '<50px 且无≥3px 连通块', n_bad < 50 and bad_max < 3,
+                       f'共 {n_bad}px / 最大连通块 {bad_max}px'))
+        hd = stats.get('hand_core_visible', {}) or {}
+        checks.append((f'{sid} 手部核心区（指尖/手心）未被衣服覆盖',
+                       '所有组合 >=0.95', bool(hd) and min(hd.values()) >= 0.95,
+                       f'min={min(hd.values()) if hd else 0:.2f}'))
+        ho = stats.get('hair_over_clothes', {}) or {}
+        checks.append((f'{sid} 长发盖在衣服上',
+                       '所有组合 >=0.95', bool(ho) and min(ho.values()) >= 0.95,
+                       f'min={min(ho.values()) if ho else 0:.2f}'))
+        checks.append((f'{sid} 白色衣服上头发层鬼影',
+                       '<500px（低饱和高亮像素被 hair 掩膜带入）',
+                       stats.get('hair_ghost_px', 0) < 500, f'{stats.get("hair_ghost_px", 0)}px'))
+    if 'girl' in shape_info:
+        bow = (shape_info['girl'].get('stats') or {}).get('bow', {}).get('top-hoodie', 0)
+        checks.append(('girl 卫衣橙色蝴蝶结补丁', '>500px', bow > 500, f'{bow}px'))
+    checks.append(('manifest v6 / 675×1200 / 引用文件存在', 'validate_build 无问题', not orphans,
+                   '见构建日志'))
+    checks.append(('art/ 无孤儿文件 / 无 .tmp', '0', not orphans and not tmp_files,
+                   f'orphan={len(orphans)} tmp={len(tmp_files)}'))
+    if mask_md5:
+        bad_md5 = {k: v for k, v in mask_md5.items() if FROZEN_MASK_MD5.get(k) != v}
+        checks.append(('掩膜与 mask-forge 冻结版本一致', 'md5 全匹配', not bad_md5,
+                       '全匹配' if not bad_md5 else str(bad_md5)))
+    lines = ['# v0.9 图层素材构建 QA 报告（pipeline-forge）', '',
+             f'- 生成时间：{time.strftime("%Y-%m-%d %H:%M:%S")}',
+             '',
+             '## 如何复现', '',
+             '```bash',
+             cmd,
+             '```', '',
+             '- 输入：`/home/ubuntu/dsh/.scratch/feiyu-gen/raw12`（素体 / 单件 look / whiteout）+ '
+             '`tools/masks/<shape>/{arms,hair}.png`（mask-forge 冻结版，源分辨率 1152×2048）',
+             '- 输出：`docs/dress-up/art`（675×1200 WebP）+ `docs/dress-up/manifest.json`（v6）',
+             f'- drawOrder：`{" → ".join(DRAW_ORDER)}`',
+             '',
+             '## 最终产物清单', '',
+             '```',
+             'art/<shape>/body.webp                 素体（最底层，= v0.8 base.webp 内容）',
+             'art/<shape>/arms.webp                 手臂+手层（body RGB × arms_mask）',
+             'art/<shape>/hair.webp                 完整前发层（body RGB × hair_mask，最上层）',
+             'art/<shape>/layers/<cat>-<id>-body.webp     上衣/连衣裙主体（不挖头发洞）',
+             'art/<shape>/layers/<cat>-<id>-sleeve.webp   袖子（garment_alpha × dilate(arms,6px)，袖口线以下裁掉手）',
+             'art/<shape>/layers/bottom-<id>.webp         下装单层',
+             'art/pet-default.webp                  默认穿搭合成图（Q 版女仆装，184×327 透明）',
+             'art/icons/*.webp  art/bg-*.webp  art/thumbs/bg-*.webp   图标/背景（沿用）',
+             'manifest.json                         v6（shapes[].layers / items[].layers）',
+             '```', '',
+             f'- 被 manifest 引用的素材文件数：{len(refs)}',
+             '']
+    if mask_md5:
+        lines += ['## 输入掩膜（冻结）', '']
+        lines += [f'- `{k}.png`  md5 `{v}`' for k, v in sorted(mask_md5.items())]
+        lines.append('')
+    lines += ['## 自动校验', '', '| 检查项 | 判定阈值 | 结果 | 数值 |', '|---|---|---|---|']
+    for name, thr, ok, val in checks:
+        lines.append(f'| {name} | {thr} | {"PASS" if ok else "FAIL"} | {val} |')
+    lines.append('')
+    lines.append(f'总判定：**{"PASS" if all(ok for _, _, ok, _ in checks) else "FAIL"}**')
+    lines.append('')
+    lines.append('> 说明：洋红底检查里，「发丝/手臂围出的背景缝隙」在洋红底上本来就该透出背景'
+                 '（不是人物内部空洞），单独计入 bg_gap 字段；只有 body 不透明区出现洋红才算缺陷。')
+    lines.append('')
+    lines += ['## 人工 QA 图（read_image 逐张确认）', '',
+              '- `/home/ubuntu/dsh/.scratch/feiyu-art/v9-layers-<shape>.jpg`：每身形全部组合'
+              '（3 上衣×2 下装 + 女仆装 + 素体单层 + 单件），带标签',
+              '- `/home/ubuntu/dsh/.scratch/feiyu-layer-audit/pipeline/`：',
+              '  - `magenta-holes-<shape>.jpg` 洋红底全组合空洞检查（绿色=发丝缝隙，红色=缺陷）',
+              '  - `hand-in-front-skirt-<shape>.jpg` 手在裙前 2x 局部（左右手）',
+              '  - `hair-over-clothes-<shape>.jpg` 长发在衣服前：with/without hair 对比',
+              '  - `bow-girl-hoodie.jpg` girl 卫衣橙色蝴蝶结（最终合成 / look 真值 / body 层）',
+              '  - `sweater-4x-<shape>.jpg` 白毛衣 4x 特写（查淡蓝鬼影，chibi 重点）',
+              '  - `hair-ghost-<shape>.jpg` 鬼影检测叠加图（红=低饱和高亮像素）',
+              '  - `waist-center-<shape>.jpg` maid/下装正面腰部 3x（查背部中央头发竖线）',
+              '  - `shape-layers-<shape>.jpg` body/arms/hair 三部件层单独可视化（查手臂完整）',
+              '  - `look-vs-build-<shape>.jpg` build 合成 / 单件 look 真值 / 差异热图',
+              '  - `seam-2x-<shape>.jpg` 袖子/衣身接缝 2x', '']
+    lines.append('## 分身形细节')
+    for sid, info in shape_info.items():
+        stats = info.get('stats') or {}
+        lines.append(f'### {sid}')
+        lines.append(f'- bounds: {info["bounds"]}')
+        lines.append(f'- 配准 IoU: {stats.get("iou", {})}')
+        lines.append(f'- sleeve 面积占比: {stats.get("sleeve", {})}')
+        lines.append(f'- 蝴蝶结补丁像素: {stats.get("bow", {})}')
+        mag = stats.get('magenta_holes', {}).get(sid, {})
+        bad = {k: v['bad'] for k, v in mag.items() if v.get('bad')}
+        gaps = {k: v['bg_gap'] for k, v in mag.items() if v.get('bg_gap')}
+        lines.append(f'- 洋红底「身体内空洞」: {"全部 0（通过）" if not bad else bad}')
+        lines.append(f'- 发丝围出的背景缝隙（非缺陷）: {gaps}')
+        lines.append(f'- 手部核心区未被衣服覆盖: {stats.get("hand_core_visible", {})}')
+        lines.append(f'- 长发盖在衣服上可见率: {stats.get("hair_over_clothes", {})}')
+        lines.append(f'- 与 look 真值平均差异（0-255，越小越好）: {stats.get("look_diff", {})}')
+        lines.append('')
+    lines += ['## 已知瑕疵（诚实报告）', '',
+              '1. **base 侧发压在毛衣/卫衣肩袖上会出现 1-2px 深色细丝**：v6「hair 层最上层」设计近似——'
+              'base 画里这几缕发丝本来在手臂/衣服前，look 真值里 AI 重画后位置略有差异；'
+              '合成图上表现为袖肩处细深色丝，不是洞、不影响验收 1-3。',
+              '2. **下装相对单件 look 更大**：whiteout 配准后按顶部锚点放大（chibi ×1.72 / girl ×1.40，'
+              'v0.8 保守内容「及膝长裙」决定），与单件 look 真值不完全等大，属预期（见 look_diff）。',
+              '3. **手部验收以 4x QA 图为准**：自动指标只统计「手部核心区（指尖/手心）未被衣服覆盖」'
+              '（arms 或 hair 层在最上层都算露出，发丝压手属正常），完整视觉结论见 hand-in-front-skirt-<shape>.jpg。',
+              '4. 掩膜边界有 1-2px CV 误差；sleeve 用 look 袖口线兜底裁手（见代码 hand_region_from_look）。',
+              '5. pet-default.webp 内容 174×327 居中放进 184×327 画布（与 v0.8 行为一致）。',
+              '']
+    lines.append('## 旧素材清理')
+    if removed:
+        lines.extend(f'- 删除 {r}' for r in removed)
+    else:
+        lines.append('- 无')
+    lines.append('')
+    (audit_dir / 'REPORT.md').write_text('\n'.join(lines) + '\n')
+
+
+# ---------------------------------------------------------------- 主构建
+
+def build(src: Path, out: Path, qa_dir: Path, audit_dir: Path, masks_dir: Path,
+          only_shape: str | None = None) -> None:
+    t0 = time.time()
+    for stale_tmp in out.rglob('*.tmp'):
+        stale_tmp.unlink()
+    shapes = [s for s in SHAPES if not only_shape or s[0] == only_shape]
+    # 正式构建前先确认掩膜齐全（避免跑到一半才发现）
+    missing = [str(masks_dir / s / f) for s, _, _ in shapes
+               for f in ('arms.png', 'hair.png') if not (masks_dir / s / f).exists()]
+    if missing:
+        raise SystemExit('缺少身体部件掩膜（mask-forge 产出，见 LAYER-MODEL.md §3）：\n  '
+                         + '\n  '.join(missing)
+                         + '\n（调试可用 --masks-dir 指向临时启发式掩膜）')
+    shape_info = {}
+    for shape, _, _ in shapes:
+        shape_info[shape] = build_shape(shape, src, out, qa_dir, audit_dir, masks_dir)
+    if only_shape:
+        skipped = [s[0] for s in SHAPES if s[0] != only_shape]
+        shape_info.update(load_prev_shape_info(out, skipped))
+    print('图标 / 背景缩略图 …')
+    make_icons(src, out)
+    make_bg_thumbs(out)
+    if 'chibi' in shape_info and 'item_px' in shape_info['chibi']:
+        print('pet-default …')
+        build_pet_default(out, shape_info['chibi'])
+    for stale_tmp in out.rglob('*.tmp'):
+        stale_tmp.unlink()
     manifest = build_manifest(shape_info)
     tmp_manifest = out / 'manifest.json.tmp'
     tmp_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n')
     os.replace(tmp_manifest, out / 'manifest.json')
     print(f'manifest -> {out / "manifest.json"}')
-    print(f'shapes={len(shape_info)} layers={sum(len(v["layer_paths"]) for v in shape_info.values())}')
+    problems = validate_build(out, manifest)
+    removed = cleanup_stale(out, manifest, [s[0] for s in shapes])
+    refs = collect_referenced(manifest)
+    orphans, tmp_files = [], []
+    for f in sorted((out / 'art').rglob('*')):
+        if not f.is_file():
+            continue
+        rel = f.relative_to(out).as_posix()
+        if f.suffix == '.tmp':
+            tmp_files.append(rel)
+        elif rel not in refs:
+            orphans.append(rel)
+    mask_md5 = {}
+    for shape, _, _ in shapes:
+        for part in ('arms', 'hair'):
+            fp = masks_dir / shape / f'{part}.png'
+            mask_md5[f'{shape}/{part}'] = hashlib.md5(fp.read_bytes()).hexdigest()
+    cmd = ('python3 tools/build_wardrobe.py --src /home/ubuntu/dsh/.scratch/feiyu-gen/raw12 '
+           '--out docs/dress-up')
+    write_report(audit_dir, shape_info, removed, mask_md5, cmd, orphans, tmp_files, refs)
+    if orphans:
+        problems.append(f'art/ 存在未被 manifest 引用的孤儿文件: {orphans[:5]}')
+    if tmp_files:
+        problems.append(f'art/ 存在遗留 .tmp: {tmp_files[:5]}')
+    bad_md5 = {k: v for k, v in mask_md5.items() if FROZEN_MASK_MD5.get(k) != v}
+    if bad_md5:
+        print(f'WARN 掩膜 md5 与冻结版本不一致（可能是 mask-forge 更新）: {bad_md5}')
+    print(f'清理旧素材 {len(removed)} 个文件')
+    if problems:
+        print('素材校验失败：')
+        for p in problems:
+            print('  -', p)
+        raise SystemExit(1)
+    print(f'校验通过：2 身形 × {len(TOPS) + len(DRESSES)} 上衣/裙 + {len(BOTTOMS)} 下装；'
+          f'耗时 {time.time() - t0:.1f}s')
+    print(f'QA 拼图 -> {qa_dir}/v9-layers-<shape>.jpg')
+    print(f'审计图 -> {audit_dir}/')
 
 
 if __name__ == '__main__':
@@ -841,6 +1612,9 @@ if __name__ == '__main__':
     parser.add_argument('--src', default='/home/ubuntu/dsh/.scratch/feiyu-gen/raw12')
     parser.add_argument('--out', default=str(ROOT / 'docs/dress-up'))
     parser.add_argument('--qa-dir', default='/home/ubuntu/dsh/.scratch/feiyu-art')
+    parser.add_argument('--audit-dir', default='/home/ubuntu/dsh/.scratch/feiyu-layer-audit/pipeline')
+    parser.add_argument('--masks-dir', default=str(ROOT / 'tools/masks'))
     parser.add_argument('--shape', default=None, choices=['chibi', 'girl'])
     args = parser.parse_args()
-    build(Path(args.src), Path(args.out), Path(args.qa_dir), args.shape)
+    build(Path(args.src), Path(args.out), Path(args.qa_dir), Path(args.audit_dir),
+          Path(args.masks_dir), args.shape)

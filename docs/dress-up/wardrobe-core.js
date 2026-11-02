@@ -1,12 +1,15 @@
 /**
  * 大肥鱼衣橱 · 换装间核心规则（纯函数，浏览器与单元测试共用）
  *
- * 换装模型（v5 · 真·分层换装 / 纸娃娃）：
- *   - 每个身形一张「素体（base）」+ 一张「头发/尾巴叠层（overlay）」；
- *   - 每件衣服是一张与素体同画布、同坐标的透明图层，运行时按 z 序叠放：
- *     base(0) → 下装(20) → 上装(30) → overlay(100)；
- *   - 套装（连衣裙）占 z=30 的一层，与「上衣 + 下装」互斥；
- *   - 背景、特效独立可叠。
+ * 换装模型（v6 · 七槽位纸娃娃）：
+ *   - `manifest.drawOrder` 定义从下到上的深度槽位：
+ *     body → topUnder → bottom → topBody → arms → sleeve → hair；
+ *   - 身形固定提供 body / arms / hair 三层（素体、手臂+手、完整前发）；
+ *   - 衣服按槽位拆层：上衣主体 topUnder（塞进裙子）或 topBody（盖在裙子外）、
+ *     袖子 sleeve（盖在手臂上）、下装 bottom（在手臂层之下）；
+ *   - 套装（连衣裙）走 topBody + sleeve，与「上衣 + 下装」互斥；
+ *   - `resolveLayers` 把「身形层 + 当前穿搭层」按 drawOrder 排成一次绘制序列，
+ *     页面 DOM、立绘卡、悬浮鲸鱼小图都按这个序列叠图。
  *
  * 图层都由「同一张素体上生成的单件穿着 look」经像素级 matte 得到，
  * 所有 look 都继承素体的构图（位置/比例/姿势），天然对齐，
@@ -18,9 +21,9 @@
 /**
  * 一个可渲染的图层。
  * @typedef {object} Layer
- * @property {'base' | 'bottom' | 'top' | 'outfit' | 'overlay'} kind 图层种类（同时决定渲染槽位）
- * @property {string} file 相对 `docs/dress-up/` 的图片路径（空串表示该层没有素材）
- * @property {number} z 叠放层级，越大越靠上
+ * @property {string} slot 槽位名（`manifest.drawOrder` 中的一项）
+ * @property {string} file 相对 `docs/dress-up/` 的图片路径
+ * @property {number} z 叠放层级（= 该槽位在 drawOrder 里的下标），越大越靠上
  */
 
 /**
@@ -54,67 +57,96 @@ function findItem(manifest, categoryId, itemId) {
 }
 
 /**
- * 单品在指定身形下的图层路径；缺失时返回空串。
+ * drawOrder 里合法的槽位列表（去重、忽略非字符串项；manifest 没给时为 []）。
+ * @param {any} manifest
+ * @returns {string[]}
+ */
+function drawOrderOf(manifest) {
+	const order = manifest && Array.isArray(manifest.drawOrder) ? manifest.drawOrder : [];
+	/** @type {string[]} */
+	const slots = [];
+	for (const slot of order) {
+		if (typeof slot !== 'string' || !slot || slots.includes(slot)) continue;
+		slots.push(slot);
+	}
+	return slots;
+}
+
+/**
+ * 把「slot → 文件路径」映射里合法且存在的图层收进槽位表。
+ * - 文件为空 / 不是字符串 → 视为缺文件，跳过；
+ * - 槽位不在 drawOrder 里 → 视为非法槽位，跳过；
+ * - 同一槽位只保留先出现的文件（身形层优先于单品层）。
+ * @param {any} layers slot → 相对图片路径
+ * @param {string[]} drawOrder
+ * @param {Map<string, string>} out
+ */
+function collectSlots(layers, drawOrder, out) {
+	if (!layers || typeof layers !== 'object') return;
+	for (const [slot, file] of Object.entries(layers)) {
+		if (typeof file !== 'string' || !file) continue;
+		if (!drawOrder.includes(slot)) continue;
+		if (out.has(slot)) continue;
+		out.set(slot, file);
+	}
+}
+
+/**
+ * 收进某件单品在指定身形下的图层（manifest v6：`items[].layers[shapeId]`）。
  * @param {any} item
  * @param {string} shapeId
- * @returns {string}
+ * @param {string[]} drawOrder
+ * @param {Map<string, string>} out
  */
-function layerFile(item, shapeId) {
-	const file = item && item.layer && item.layer[shapeId];
-	return typeof file === 'string' && file ? file : '';
+function collectItemSlots(item, shapeId, drawOrder, out) {
+	if (!item || !shapeId) return;
+	collectSlots(item.layers && item.layers[shapeId], drawOrder, out);
 }
 
 /**
- * 单品的 z 值（缺省时用默认值）。
- * @param {any} item
- * @param {number} fallback
- * @returns {number}
- */
-function zOf(item, fallback) {
-	return item && typeof item.z === 'number' ? item.z : fallback;
-}
-
-/**
- * 当前穿搭需要渲染的图层，按 z 稳定升序（同 z 保持 base→下装→上装→overlay 的插入顺序）。
+ * 当前穿搭需要渲染的图层，按 `manifest.drawOrder` 从下到上排序。
  *
- * 规则：
+ * 规则（v6 契约 §4）：
+ *   - `z` = 槽位在 `manifest.drawOrder` 里的下标，返回值按 z 升序；
+ *   - 身形层恒在（body / arms / hair 等，无文件则跳过）；
+ *   - 套装非空且不为 `'none'` → 只加套装的槽位层，与上衣 / 下装互斥；
+ *   - 否则加下装层 + 上衣层（水手服的主体在 topUnder 槽位）；
  *   - `state.shape` 非法时回退 `shapes[0].id`；
- *   - 恒含 `base` 与 `overlay` 两层；
- *   - `state.outfit` 非空且不为 `'none'` → 只加套装层，不加 top / bottom；
- *   - 否则加 bottom（默认 z=20）与 top（默认 z=30）；
- *   - 单品在 manifest 里找不到、或缺少当前身形的图层路径 → 跳过该层，不抛错。
+ *   - 单品找不到、缺当前身形的图层、槽位非法、文件为空 → 跳过，不抛错。
  *
  * @param {any} manifest
- * @param {Record<string, string>} state
+ * @param {Record<string, string> | null | undefined} state
  * @returns {Layer[]}
  */
 export function resolveLayers(manifest, state) {
 	const snapshot = state || {};
-	const shape = findShape(manifest, snapshot.shape);
+	const mf = manifest && typeof manifest === 'object' ? manifest : {};
+	const drawOrder = drawOrderOf(mf);
+	const shape = findShape(mf, snapshot.shape);
 	const shapeId = shape ? shape.id : '';
-	/** @type {Layer[]} */
-	const layers = [];
 
-	// 素体与头发/尾巴叠层恒在（缺字段时 file 为空串，由调用方决定是否渲染）
-	layers.push({ kind: 'base', file: (shape && shape.base) || '', z: 0 });
+	/** @type {Map<string, string>} */
+	const bySlot = new Map();
+	// 身形层（body / arms / hair）恒在
+	collectSlots(shape && shape.layers, drawOrder, bySlot);
 
-	if (snapshot.outfit && snapshot.outfit !== 'none') {
-		// 套装模式：连衣裙独占衣服层，与上衣 / 下装互斥
-		const outfit = findItem(manifest, 'outfits', snapshot.outfit);
-		const file = layerFile(outfit, shapeId);
-		if (file) layers.push({ kind: 'outfit', file, z: zOf(outfit, 30) });
+	const outfitId = snapshot.outfit;
+	if (typeof outfitId === 'string' && outfitId && outfitId !== 'none') {
+		// 套装模式：只叠套装层（topBody + sleeve 等），不加上衣 / 下装
+		collectItemSlots(findItem(mf, 'outfits', outfitId), shapeId, drawOrder, bySlot);
 	} else {
-		// 上下装模式：下装在里、上装在外
-		const bottom = findItem(manifest, 'bottoms', snapshot.bottom);
-		const bottomFile = layerFile(bottom, shapeId);
-		if (bottomFile) layers.push({ kind: 'bottom', file: bottomFile, z: zOf(bottom, 20) });
-		const top = findItem(manifest, 'tops', snapshot.top);
-		const topFile = layerFile(top, shapeId);
-		if (topFile) layers.push({ kind: 'top', file: topFile, z: zOf(top, 30) });
+		// 上下装模式：下装在下、上衣在上（各自可能占多个槽位）
+		collectItemSlots(findItem(mf, 'bottoms', snapshot.bottom), shapeId, drawOrder, bySlot);
+		collectItemSlots(findItem(mf, 'tops', snapshot.top), shapeId, drawOrder, bySlot);
 	}
 
-	layers.push({ kind: 'overlay', file: (shape && shape.overlay) || '', z: 100 });
-	return layers.sort((a, b) => a.z - b.z);
+	/** @type {Layer[]} */
+	const layers = [];
+	for (let z = 0; z < drawOrder.length; z += 1) {
+		const file = bySlot.get(drawOrder[z]);
+		if (file) layers.push({ slot: drawOrder[z], file, z });
+	}
+	return layers;
 }
 
 /**

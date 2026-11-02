@@ -1,5 +1,63 @@
 # Changelog
 
+## 0.9.0 — 2026-11-02
+
+「图层叠加层次重做：7 槽位纸娃娃分层 v2（技术选型 + manifest v6）」。用户反馈「图层叠加层次关系还是不对」后，
+先做缺陷取证与技术选型，结论是**问题不在渲染引擎、在素材分层与遮挡数据模型**：
+v0.8 的「5 槽位 + 全局 z」只能表达一条直线上的先后，而真实穿着是分层夹心的。
+
+### 取证（v0.8 → 修复前）
+
+- **P0 手/前臂消失**：手在 `base(z=0)` 里，`bottom`/`top` 任意一层都在其上——组合模式手部真值像素可见率仅 0–5.6%（girl）/0–0.6%（chibi），女仆装 0%；裙子层单独就盖住手部 2871–3804px。
+- **P1 长发截断**：`overlay` 只取「与头部相连」的蓝发块，手臂挡断的下半段发丝（girl 20,801px / chibi 17,249px）不在叠层里，衣服层又正好挖了头发洞 → 腰线附近发丝消失。
+- **P1 水手服连体**：look/whiteout 生成成了连体式（含白色下装），整件盖在裙外像白色连体衣。
+- **P1 少女版卫衣丢橙色蝴蝶结**：whiteout 里没有蝴蝶结。
+- **P1 袖口/手前后关系无法表达**：长袖应盖住手臂、手在袖口外，单一上装 z 装不下。
+
+### 技术选型（docs/dress-up/LAYER-ARCHITECTURE.md）
+
+对比 DOM+CSS 多槽位纸娃娃 / Canvas2D 合成 / WebGL 逐像素深度 / 2D 骨骼（Live2D·Inochi2D·Spine）/ 3D VRM 五种方案；
+结论 **继续 DOM+CSS，但把「固定 z」升级为「7 槽位 drawOrder + 身体部件拆层 + 衣服袖·身拆分」**。
+理由：换 Canvas/WebGL 而不改素材分层，手依旧会消失；方案 A 零运行时依赖、纯本地离线、保留 v0.8 全部性能优化，
+且与未来配饰层 / 骨骼动画兼容。Canvas/WebGL/骨骼的触发条件写入选型文档。
+
+### 实现
+
+- **manifest v6**：`drawOrder = body → topUnder → bottom → topBody → arms → sleeve → hair`；
+  `shapes[].layers`（body/arms/hair）+ `items[].layers[shape][slot]`；删除 v5 的 `base/overlay/layer/z` 字段。
+- **身体部件层（新）**：`tools/build_masks.py` + `tools/masks/<shape>/{arms,hair}.png`（1152×2048，人工 QA）：
+  arms = 完整手臂+手（含描边）；hair = 完整前发（含手臂下方长发丝，排除尾巴与后背中央那缕，剔除低饱和亮投影）。
+  `--check` 支持逐字节回归。
+- **素材重建（build_wardrobe.py v6）**：每身形输出 `body/arms/hair.webp`；每件上衣/连衣裙拆成
+  `*-body.webp`（衣身）+ `*-sleeve.webp`（袖子 = 衣身 ∩ 膨胀手臂掩膜，并用 look 真值手部区域减掉手）；
+  衣服不再挖头发洞；水手服主体映射到 `topUnder`（下摆塞进裙子）；少女版卫衣从 look 补回橙色蝴蝶结；
+  下装单层 `bottom-*.webp`；QA 新增 14 组合拼图 + 手在裙前 / 长发盖衣 / 鬼影 / 蝴蝶结 / 接缝 / 洋红空洞专项图。
+- **前端**：`resolveLayers` 改为按 `drawOrder` 返回槽位层；`.figure` 按 drawOrder 动态创建图层 `<img>`
+  （不再写死 5 槽位）；立绘卡与悬浮鲸鱼小图按同一 drawOrder 合成；cache-bust 升 `?v=10`；保留 v0.8 的
+  点击路径性能优化（不变图层不动、DOM 不重建、异步合成小图、decoding=async）。
+- **文档**：新增 `docs/dress-up/LAYER-ARCHITECTURE.md`（选型）与 `LAYER-MODEL.md`（v6 契约/验收），
+  `PROMPTS.md` / `README.md` 同步更新；新增 `tools/masks/README.md`。
+
+### 修复结果（视觉回测）
+
+- 手/前臂在所有组合里都在裙子前面；长袖袖口正确盖住手腕、手在袖口外。
+- 手臂下方长发丝补回，衣服不再出现「头发洞」；白衣服上的淡蓝鬼影（头发投影污染）清除。
+- 水手服下摆塞进裙子（不再是连体衣盖裙外）；少女版卫衣橙色蝴蝶结恢复（build patch，3680px）。
+- 已知近似：`hair` 为最上层，个别长袖肩侧发缕在真值里本应在衣服后，现表现为衣服上的短发缕硬边；
+  掩膜边界 1–2px 保守外扩。均记录在 LAYER-MODEL.md §6。
+
+### 变更
+
+- 图层：5 槽位 → 7 槽位；每身形素材文件 8 → 13（body/arms/hair + 上衣 2 片 + 下装 1 片）
+- 素材体积：约 1.6MB → 1.7MB（`docs/dress-up/art`）；运行仍零依赖、纯本地离线
+- 内容基调不变：套装只留经典女仆装、及膝长裙、保守台词
+
+### 验证
+
+- `npm run verify`：`tsc --checkJs` + 全量测试全绿
+- 浏览器回测：双身形 × 14 组合截图、7 槽位顺序、立绘卡、悬浮小鲸鱼、真机 /feiyu/dress-up/ 页面
+- 素材构建一键复现：`python3 tools/build_masks.py && python3 tools/build_wardrobe.py ...`（含 QA 拼图）
+
 ## 0.8.0 — 2026-11-02
 
 「养女儿向内容收敛 + 换装性能修复」：内容更保守（套装只留经典女仆装、裙长改及膝、互动台词改成陪伴向），
