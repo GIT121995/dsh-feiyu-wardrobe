@@ -10,7 +10,12 @@
 1. **「效果上限」不在渲染器，在「美术拆件/补画 + 绑定 + 动效设计」**。同一个渲染器，素材是"烘焙了遮挡的平面图"就只能做出静态纸娃娃；素材是"完整可动部件"才能做出 Live2D 级看板娘。
 2. **本项目最合适的效果目标是 T2 档：2.5D 骨骼/网格看板娘**（保留现有 AI 插画风格，可眨眼/呼吸/转头/发丝裙摆物理/换装过渡/摸头反馈）。**不建议现在上 3D**：3D 的上限更高，但要把美术全部重做成 3D 资产（包体 +15–40MB、双身形×6 套衣服建模绑定、画风漂移），成本高一个数量级，且丢掉 Seedream 插画这一产品身份。
 3. **推荐主路线：自研轻量 WebGL2 2.5D runtime（PixiJS v8 Mesh 或等价实现）+「共享骨架 + 服装部件」换装模型 + 拆件补画资产管线**。理由：MIT/离线/零许可风险，复用现有画风，运行时能力可达 Live2D 的约 9 成、最终观感手工调优 7–8 成（全自动 4–5 成）。
-4. **备选对比路线**：Live2D Cubism 商业管线（效果天花板最高、生态最成熟，但 SDK 专有 + 发布许可 + Editor PRO 付费 + 编辑器 FREE 限制不够用；与"MIT 开源"定位冲突，需你拍板是否接受）或开源 puppet 格式 Iki/Inochi2D（许可干净、但工具链/质量上限较新或较弱）。
+4. **备选/对照路线（许可核实后修正）**：
+   - **纯 MIT 项目不能打包官方 Live2D Core/Framework**（Core 是专有 Redistributable Code，Live2D 协议明确把 MIT 列为 excluded license；Framework 是 Live2D Open Software License）——官方 Live2D 只能选「放弃纯 MIT」，或走「MIT 加载器 + 用户自备 Core」「复合许可包」等折中；
+   - **Inochi2D（BSD-2）许可干净，但官方没有可用的 web runtime**：SDK 有 WASM 构建配置/预编译库，但无官方 JS runtime；第三方 `inochi2d-ts`（2023 停更）、`inox2d`（Rust WASM/WebGL 原型，缺动画/MeshGroup，官方称 prototype）都不达生产——选它 ≈ 自建 WASM runtime（+4–8 人周）；
+   - **值得新增的候选：Purism Core**（MIT 的 clean-room Live2D Core 重实现，WASM viewer 可用，v1.1.0 2026-08；自称无需 Live2D 授权，**法律未证实**）——若成立，可「用 Live2D 资产 + MIT runtime」把效果上限推到约 9/10，但需 1 周技术 PoC + 法律评估；
+   - **Iki**（MIT、WebGL2、`.iki` JSON、AI auto-rig）仍是"AI 生成角色"路线里最贴合的开源 runtime，但 0.x 早期；
+   - 其余：Spine（runtime 需 Spine Editor 许可，$379 PRO，MIT 不成立）、DragonBones（runtime MIT 但编辑器停更/工具链死亡）、E-mote（闭源、企业 30 万日元/年/平台）——仅作参考/排除。
 5. **建议下一步做 4–6 周 POC**：少女版 × 1 套衣服，约 22 层完整部件，跑通呼吸/眨眼/视线/转头 ±15°/发丝/裙摆/换装过渡，并与 Live2D/开源方案做同素材对照，再决定全量路线。
 
 ---
@@ -63,13 +68,26 @@
 | 方案 | 效果上限 | 许可/开源兼容 | 离线/包体 | 工程/美术成本 | 主要风险 | 结论 |
 |---|---|---|---|---|---|---|
 | **A. 自研 WebGL2 2.5D**（PixiJS v8 Mesh + 自建骨骼/权重/物理/mask/表情/状态机） | 运行时 ≈ Live2D 90%；观感 70–80%（人工调优）/40–50%（全自动） | **MIT 干净**（PixiJS MIT、自研代码 MIT） | 纯离线；图集 2–3 张 2048²，显存 50MB 级、包体 +1–3MB | runtime 4–8k 行 TS；POC 4–6 周；全量 2–3 个月（含美术 QA） | 拆件质量、权重鬼影、每套衣服工时（数小时起）、自研编辑器范围失控 | **推荐主路线** |
-| **B. Live2D Cubism** | **最高**（商业看板娘标准，10/10） | ❌ 专有 SDK；发布需许可（个人/小规模豁免，但 **Expandable Application 需特别许可**）；Editor FREE 限制：1 张 2048 贴图 / 100 ArtMesh / 30 参数 / 50 变形器 / 30 部件（双身形×6 套不够）→ 需 **PRO 付费**；与 MIT 定位冲突 | Web SDK 可离线；资产小 | 美术拆件补画同 A + 绑定调参（有 [live2d-agent-kit] 的 AI-agent 流程可借）；人工绑定 1–3 周/模型量级 | 许可/合规、PRO 订阅、人工绑定质量决定观感、用户上传衣服可能触发 Expandable 许可 | **仅当"质量 > 许可纯度"时选** |
-| **C1. Iki**（`@ikijs/engine`，MIT，`.iki` JSON，WebGL2） | 架构与 Live2D 同构（网格/变形器/物理/mask/表情/动作）；成熟度 0.x，效果未知 | ✅ MIT，无发布许可 | 纯离线 npm 运行时 | 借它的 AI auto-rig 与 MCP 流程；早期项目需自己兜底 | 早期（29★，2026-06 建；npm ~2.9k 下载/月），格式仍可能变，单维护者 | **POC 对比候选** |
-| **C2. Inochi2D**（BSD-2，inate） | 中高（Live2D 同类，生态小） | ✅ BSD-2；有 WASM 构建 + 第三方 web runtime（inochi-avatar BSD-2、inochi2d-ts BSD-2） | 纯离线；WASM 运行时体积中 | 绑定工具 Inochi Creator（开源但小众、手动绑定） | 工具链/生态弱、绑定人力 | **许可干净时的备选** |
+| **B. Live2D 官方 Cubism** | **最高**（商业看板娘标准，10/10；呼吸/眨眼/口型/物理/表情/5.3 blend+offscreen） | ❌ **MIT 项目不可打包**：Core 是专有 Redistributable Code（只允许原样随衍生作品分发），MIT 被 Live2D 协议列为 excluded license；Framework 是 Live2D Open Software License（非 MIT/Apache/BSD）。个人/小规模（年销<1000 万日元）免发行许可但**不能 MIT 再许可**；Expandable App 需预批 | Web SDK 可离线；Core 207KB（61KB gzip） | 集成 1–2 人周 + 绑定 3–6 人周；Editor FREE 限制（1 张 2048 贴图/100 ArtMesh/30 参数/50 变形器/30 部件）→ 双身形×6 套需 **PRO 付费**；可用 [live2d-agent-kit] 的 AI-agent 流程辅助 | 许可/合规是硬阻断；PRO 订阅；人工绑定质量决定观感 | **纯 MIT 下排除；仅当愿放弃纯 MIT** |
+| **C1. Purism Core**（MIT clean-room 重实现 Live2D Core） | 若成立 ≈ Live2D 9/10（可播放 Live2D 资产） | ⚠️ MIT（v1.1.0 2026-08，WASM viewer 可用）；**自称无需 Live2D 授权，法律未证实** | 纯离线 | 1 周技术+法律 PoC；资产仍按 Live2D 流程拆件绑定 | 法律风险（clean-room 是否成立未证实）；生态/工具未知 | **高杠杆候选，先 1 周 PoC + 法律评估** |
+| **C2. Iki**（`@ikijs/engine`，MIT，`.iki` JSON，WebGL2） | 架构与 Live2D 同构（网格/变形器/物理/mask/表情/动作）；成熟度 0.x，效果未知 | ✅ MIT，无发布许可 | 纯离线 npm 运行时 | 借它的 AI auto-rig 与 MCP 流程；早期项目需自己兜底 | 早期（29★，2026-06 建；npm ~2.9k 下载/月），格式仍可能变，单维护者 | **POC 对比候选** |
+| **C3. Inochi2D 0.8**（BSD-2） | 7.5/10（网格/参数/物理/动画齐，打磨与生态落后） | ✅ BSD-2，可随 MIT 分发（留声明） | 纯离线 | **官方无可用 web runtime**：SDK 有 WASM 构建/预编译库但无官方 JS runtime；`inochi2d-ts`（2023 停更）、`inox2d`（Rust WASM/WebGL 原型，缺动画/MeshGroup，官方称 prototype）不达生产 → 选它 ≈ **自建 WASM runtime +4–8 人周**；绑定 Inochi Creator 3–6 人周 | 运行时自建；官方 FAQ 称仍 WIP、不保证游戏生产可用 | **许可干净但 web 端成本高，降级为备选** |
+| **C4. Spine 4.3** | 8/10（皮肤换装、物理约束、mesh/IK；头部 2.5D 需手工权重） | ❌ Runtimes License；PRO $379（Essential $69 无 mesh/权重/IK/物理）；作为库分发每个下游需 Editor 授权 | ✅ spine-webgl 251KB/76KB gzip | 绑定 3–5 + 集成 1 人周 | 费用 + 许可；MIT 不成立 | 排除（闭源商业可考虑） |
+| **C5. DragonBones / E-mote** | DragonBones 6.5/10；E-mote 9/10（VN 级） | DragonBones runtime MIT 但编辑器停更（官网转商业 LoongBones）；E-mote 闭源、企业 30 万日元/年/平台、WebGL SDK 2018 | — | DragonBones 3–5 人周；E-mote 模板化 1–2 人周 | 工具链死亡 / 许可与费用 | 仅参考 / 排除 |
 | **D. 3D（three.js + three-vrm）** | 最高（全角度/布料/光影/动作） | ✅ three-vrm MIT；VRM 生态许可友好 | ❌ 包体 +15–40MB；单角色 5–15MB 常见；VRM BlendShape 会膨胀 | 建模+绑定 2–4 周/角色；每套衣服 2–5 天；双身形近乎翻倍；AI 3D 尚不能产出可换装动漫服装 | 画风漂移、穿模、低端性能、美术重做 | **不做主路径**（触发条件见 §7） |
 | **E. 静态微动效（现状+）** | T1 档 | ✅ MIT | +0.2–1MB | 2–4 人周 | 上限低，不满足"上限"目标 | 仅 fallback |
 
 **关键判断**：A/B/C 的运行时能力差距没有想象中大；**决定观感的是"拆件补画 + 绑定调参"质量**。对我们这种 MIT/离线/免费开源项目，**A（自研）+ PixiJS** 是唯一许可零风险的路线；Iki/Inochi2D 可作为 runtime 层面的加速或对照；Live2D 是"如果愿意放弃许可纯度"的最高天花板。
+
+### 3.1 许可事实核实（2026-11，决定性）
+
+**① MIT 项目能合法打包官方 Live2D Core 吗？→ 不能。** Core 是专有 Redistributable Code，只允许作为 `live2dcubismcore.js/.min.js/.d.ts` 原样随衍生作品分发（[RedistributableFiles.txt](https://github.com/Live2D/CubismWebSamples/blob/develop/Core/RedistributableFiles.txt)）；Live2D 专有协议明确把 MIT 列为 excluded license（§5.3.2/§6.8），Framework 又受 Live2D Open Software License 约束（非 MIT/Apache/BSD）。现实折中只有三种：MIT 加载器 + 用户自备 Core（如 [pixi-live2d-display](https://github.com/guansss/pixi-live2d-display)，MIT 但 PIXI v6、2024 后停更）、复合许可包（如 [charivo](https://github.com/zeikar/charivo)，整体不再是 MIT）、或 **Purism Core**（法律未证实）。**结论：坚持纯 MIT → 官方 Live2D 路线应排除。**
+
+**② Spine runtime 能作为 MIT 打包吗？→ 不能。** runtime 是 source-available 的 Spine Runtimes License；随产品分发需附许可，开发者需 Editor 授权（PRO $379；Essential $69 无 mesh/权重/IK/物理）；作为库供下游二次开发时每个下游都需 Editor 授权（§2.4）。
+
+**③ Inochi2D 有可用 web runtime 吗？→ 没有官方可用 runtime。** SDK 提供 WASM 构建配置/预编译库（0.9+），但无官方 JS runtime；第三方 `inochi2d-ts`（2023 停更）、`inox2d`（Rust WASM/WebGL 原型，缺动画/MeshGroup，官方称 prototype）不达生产。选 Inochi2D ≈ 自建 WASM runtime（+4–8 人周）。其 FAQ 亦明确项目仍 WIP、不保证游戏生产可用。
+
+> 另：E-mote 闭源（企业 30 万日元/年/平台，WebGL SDK 2018）；DragonBones runtime MIT 但编辑器停更（官网转商业 LoongBones）；SkelForm（编辑器 GPL-3.0 / JS runtime MIT，v0.7）太新——均只作参考或排除。
 
 ### 补充：为什么"换 Canvas/WebGL 引擎"不是答案
 
@@ -133,7 +151,8 @@ slot: backHair → skirtBack → legs → bottom → torso → top → armBack �
 1. **现有立绘 → 拆件+补画**（最快复用现有画风）
    - 拆件：用 [See-through]（SIGGRAPH 2026，Apache-2.0，单图→最多 23 层语义 PSD，含被遮挡区域补画、深度排序；1280 分辨率需 12–16GB 显存，HF ZeroGPU 约 2–3 分钟/张）、SAM2/anime-seg 兜底；
    - 补隐藏区：FLUX.1 Fill / SD inpainting / LaMa，或项目已有 **Seedream 图像编辑**（同会话带参考图减少风格漂移）；只补"会被运动暴露"的区域；
-   - 人工修：1–3 天/身形套（接缝、线宽、色差、发丝连贯性）。
+   - 人工修：1–3 天/身形套（接缝、线宽、色差、发丝连贯性）；
+   - 业界经验：**AI 平图→分层补图的美术返工约 3–6 人周**，往往高于 runtime 工程——这是所有路线的共同瓶颈。
 2. **部件化重新生成**（上限更稳，成本更高）
    - 按部件（眼白/虹膜/眼睑/眉/口/前后发/身体各段/每件衣服）分别生成，保持同一角色参考与风格；
    - 需要角色 Bible + 参考图 + 多轮 QA；一致性风险高但可控；
@@ -162,7 +181,8 @@ slot: backHair → skirtBack → legs → bottom → torso → top → armBack �
 |---|---|---|
 | **POC（4–6 周）** | 少女版 × 1 套衣服（约 22 层）：拆件补画 → 共享骨架 + 自动权重 + 手调 → runtime（呼吸/眨眼/视线/转头±15°/发丝/裙摆/换装过渡/表情）→ 性能与观感对照（vs Live2D/开源 demo） | 4–6 人周（含 2–3 天拆件修图）；每周出对比截图/视频 |
 | **全量（2–3 个月）** | 双身形 × 6 套 + 互动（摸头/喂食/表情/心情）+ 换装过渡 + 图集/性能优化 + 保底回退 | 2–3 人月（不含请画师/绑定师）；主风险在美术 QA |
-| **可选：Live2D 对照/升级** | 同素材做 Live2D 模型（agent kit 辅助）对比上限；若选 Live2D，需 PRO 订阅 + 发布许可评估 | +2–4 周/模型 + 许可/费用 |
+| **可选：Live2D 效果基准（仅评估，不发布）** | 同素材做一版 Live2D 模型作为"上限基准"（agent kit 辅助），量化差距；发布仍受许可阻断 | +2–4 周/模型 + PRO 订阅（评估用） |
+| **可选：Purism Core 路线 PoC（1 周）** | 用 Purism Core MIT runtime 播放一版 Live2D 资产，验证"纯 MIT runtime + 最高效果资产"是否成立 + 法律评估 | 1 周（技术+法律）；风险：clean-room 合法性未证实 |
 | **可选：3D 展示模式** | VRM 角色 + 3 套衣服 + SpringBone + MToon，720p/30fps 验证 | 3–6 人月 + 美术外包（$1k–2k+/角色，双身形翻倍） |
 
 **风险清单（诚实）**：
@@ -180,7 +200,7 @@ slot: backHair → skirtBack → legs → bottom → torso → top → armBack �
 ### 7.1 推荐：先 POC 双轨对照（4–6 周），再全量
 
 - **Track 1（主）**：自研 WebGL2 2.5D（PixiJS v8 + 自建 runtime），素材走"现有立绘 → See-through/Seedream 拆件补画 → 共享骨架/模板权重"。
-- **Track 2（对照）**：同素材做一版 **Live2D（live2d-agent-kit 流程）** 或 **Iki/Inochi2D 自动绑定**，量化同素材下的观感上限差异。
+- **Track 2（对照）**：同素材做一版 **Live2D（live2d-agent-kit 流程，仅作效果基准，不发布）**；另加 **1 周 Purism Core PoC**（MIT runtime 播 Live2D 资产，评估是否可绕过许可阻断）与 **Iki 自动绑定**对照，量化同素材下的观感上限差异。
 - 同场景对比：转头 ±15°、眨眼、发丝/裙摆、换装过渡、摸头反应；记录 FPS/内存/工时/接缝问题。
 - POC 验收：1080p 集显 60fps、低端手机 ≥30fps；转头/眨眼/发丝无穿帮；换装 <300ms 无闪白；和现有 v0.9 静态版并排能一眼看出"活了"。
 
@@ -216,7 +236,8 @@ v0.9（7 槽位纸娃娃）**不是"效果上限"，但它是必要的正确性�
 - 暖暖：环游世界拆包（[blog](https://blog.exz.me/post/nikki-up2u/)）、奇迹暖暖 Live2D（[kamigame](https://kamigame.jp/%E3%83%9F%E3%83%A9%E3%82%AF%E3%83%AB%E3%83%8B%E3%82%AD/%E6%94%BB%E7%95%A5%E3%82%AC%E3%82%A4%E3%83%89/Live2D.html)）、闪耀暖暖 3D 复盘（[游戏那点事](http://www.nadianshi.com/2019/05/241218)、[gameres](https://www.gameres.com/844271.html)）
 - Live2D 许可：SDK Release License（[live2d.com/en/sdk/license](https://www.live2d.com/en/sdk/license/)）、Editor FREE/PRO 对比（[comparison](https://www.live2d.com/en/cubism/comparison/)）、Open Software License（[EULA](https://www.live2d.com/eula/live2d-open-software-license-agreement_en.html)）
 - 开源 puppet：Inochi2D（[repo BSD-2](https://github.com/Inochi2D/inochi2d)、[WASM SDK 说明](https://raw.githubusercontent.com/Inochi2D/inochi2d/main/README.md)）、Iki（[repo MIT](https://github.com/zeikar/iki)、[npm @ikijs/engine](https://www.npmjs.com/package/@ikijs/engine)）、inochi-avatar（[npm BSD-2](https://www.npmjs.com/package/inochi-avatar)）、Rev2D（[repo](https://github.com/revstudio/rev2d)）
-- 运行时：PixiJS v8 Mesh（[guide](https://pixijs.com/8.x/guides/components/scene-objects/mesh)）、three-vrm（[MIT](https://github.com/pixiv/three-vrm)）、VRM SpringBone（[doc](https://vrm.dev/en/univrm/springbone/univrm_secondary/)）、MToon（[doc](https://vrm.dev/en/univrm/shaders/shader_mtoon/)）、Spine runtime 许可（[doc](https://esotericsoftware.com/spine-runtimes-license)）
+- 运行时：PixiJS v8 Mesh（[guide](https://pixijs.com/8.x/guides/components/scene-objects/mesh)）、three-vrm（[MIT](https://github.com/pixiv/three-vrm)）、VRM SpringBone（[doc](https://vrm.dev/en/univrm/springbone/univrm_secondary/)）、MToon（[doc](https://vrm.dev/en/univrm/shaders/shader_mtoon/)）
+- 许可（2026-11 核实）：Live2D 专有软件许可（[EULA](https://www.live2d.com/eula/live2d-proprietary-software-license-agreement_en.html)）、[Core 可再分发文件清单](https://github.com/Live2D/CubismWebSamples/blob/develop/Core/RedistributableFiles.txt)、[SDK Release License](https://www.live2d.com/en/sdk/license/)、[Editor FREE/PRO 对比](https://www.live2d.com/en/cubism/comparison/)、[Spine Editor 许可](https://esotericsoftware.com/spine-editor-license)/[价格](https://esotericsoftware.com/spine-purchase)、[DragonBonesJS](https://github.com/DragonBones/DragonBonesJS)、[E-mote](https://emote.mtwo.co.jp/about/)、[Purism Core](https://github.com/Sakuramotion/PurismCore)、[pixi-live2d-display](https://github.com/guansss/pixi-live2d-display)、[charivo 许可](https://github.com/zeikar/charivo/blob/main/packages/render-live2d/LICENSE.md)、[SkelForm](https://github.com/Retropaint/skelform-js)
 - AI 资产管线：See-through（[GitHub](https://github.com/shitagaki-lab/see-through)）、Anime2.5DRig（[GitHub](https://github.com/852wa/Anime2.5DRig)）、StretchyStudio（[GitHub](https://github.com/MangoLion/stretchystudio)）、live2d-agent-kit（[GitHub](https://github.com/Ariakage/live2d-agent-kit)）、Bunraku（[项目页](https://bunraku-live2d.github.io/)）、LayerAnimate（[ICCV 2025](https://openaccess.thecvf.com/content/ICCV2025/html/Yang_LayerAnimate_Layer-level_Control_for_Animation_ICCV_2025_paper.html)）、SAM2（[GitHub](https://github.com/facebookresearch/sam2)）、FLUX.1 Fill（[doc](https://docs.bfl.ai/flux_1_fill)）、Seedream 4.0 图像编辑（[blog](https://seed.bytedance.com/zh/blog/)）
 - 成本参考：VIVERSE VTuber 成本（[news](https://news.viverse.com/post/vtuber-cost-2025)）
 
