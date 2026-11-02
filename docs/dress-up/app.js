@@ -8,7 +8,7 @@ import {
 	randomOutfit,
 	resolveLayers,
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；这里加版本号是为了让浏览器绕过 wardrobe-core 的旧缓存
-} from './wardrobe-core.js?v=8';
+} from './wardrobe-core.js?v=9';
 
 (() => {
 	'use strict';
@@ -59,6 +59,16 @@ import {
 	let renderSeq = 0;
 	/** persist 序号：只让最新一次穿搭落盘。 */
 	let persistSeq = 0;
+	/** 上一次渲染的状态（背景/特效/布局/图层栈），用来跳过没变化的重复工作。 */
+	const lastRendered = { bg: '', effect: '', layoutKey: '', figureKey: '' };
+	/** persist 的 debounce 定时器。 */
+	let persistTimer = 0;
+	/** 上一次落盘的穿搭签名（同一穿搭不重复合成小图）。 */
+	let lastPersistKey = '';
+	/** 身形切换按钮是否已构建（只构建一次）。 */
+	let shapeToggleBuilt = false;
+	/** 衣柜格子当前构建的分类（同一分类只更新选中态）。 */
+	let shelfBuiltCat = '';
 	/** @type {HTMLCanvasElement | null} */
 	let petCanvasEl = null;
 
@@ -137,26 +147,59 @@ import {
 	}
 
 	/**
-	 * 若图层图片都已加载，同步把当前穿搭合成为小图 data URL；否则返回空串。
+	 * 把 canvas 异步转成 data URL：优先 `toBlob` + `FileReader`（异步，不阻塞主线程），
+	 * 环境不支持时退回 `toDataURL`。
+	 * @param {HTMLCanvasElement} canvas
+	 * @returns {Promise<string>}
+	 */
+	function canvasToDataURL(canvas) {
+		return new Promise((resolve) => {
+			if (typeof canvas.toBlob === 'function') {
+				canvas.toBlob(
+					(blob) => {
+						if (!blob || typeof FileReader !== 'function') {
+							try {
+								resolve(canvas.toDataURL('image/webp', 0.85));
+							} catch {
+								resolve('');
+							}
+							return;
+						}
+						const reader = new FileReader();
+						reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+						reader.onerror = () => resolve('');
+						reader.readAsDataURL(blob);
+					},
+					'image/webp',
+					0.85,
+				);
+				return;
+			}
+			try {
+				resolve(canvas.toDataURL('image/webp', 0.85));
+			} catch {
+				resolve('');
+			}
+		});
+	}
+
+	/**
+	 * 把当前穿搭合成为悬浮小鲸鱼用的小图 data URL（异步，不阻塞点击/换装）。
 	 * 图层共用同一张 675×1200 画布坐标，直接整幅缩放叠放即可，不需要任何锚点。
 	 * @param {Array<{ file: string }>} layers
-	 * @returns {string}
+	 * @returns {Promise<string>}
 	 */
-	function composePetImageNow(layers) {
-		const images = [];
-		for (const layer of layers) {
-			if (!layer.file) continue;
-			const img = loaded.get(layer.file);
-			if (!img) return '';
-			images.push(img);
-		}
-		const canvas = petCanvas();
-		const ctx = canvas.getContext('2d');
-		if (!ctx) return '';
-		ctx.clearRect(0, 0, PET_IMAGE_W, PET_IMAGE_H);
-		for (const img of images) ctx.drawImage(img, 0, 0, PET_IMAGE_W, PET_IMAGE_H);
+	async function composePetImage(layers) {
+		const files = layers.map((layer) => layer.file).filter(Boolean);
+		if (!files.length) return '';
 		try {
-			return canvas.toDataURL('image/webp', 0.85);
+			const images = await Promise.all(files.map((file) => preload(file)));
+			const canvas = petCanvas();
+			const ctx = canvas.getContext('2d');
+			if (!ctx) return '';
+			ctx.clearRect(0, 0, PET_IMAGE_W, PET_IMAGE_H);
+			for (const img of images) if (img) ctx.drawImage(img, 0, 0, PET_IMAGE_W, PET_IMAGE_H);
+			return await canvasToDataURL(canvas);
 		} catch {
 			return '';
 		}
@@ -179,30 +222,36 @@ import {
 		}
 	}
 
+	/** 穿搭签名：决定是否需要重新写 localStorage / 重新合成小图。 */
+	function outfitKey(snapshot) {
+		return `${snapshot.shape}|${snapshot.outfit}|${snapshot.top}|${snapshot.bottom}|${snapshot.bg}|${snapshot.effect}`;
+	}
+
 	/**
-	 * 保存当前穿搭：除各槽位字段外，把当前图层合成成一张小图（184×328）存进 `image`，
-	 * 悬浮小鲸鱼直接显示它，不用自己去叠图层。
+	 * 保存当前穿搭：debounce 250ms + 浏览器空闲时合成小图并写 localStorage。
+	 * 重活（drawImage + toBlob）全部移出点击路径；同一穿搭不重复合成。
 	 */
 	function persist() {
-		const seq = (persistSeq += 1);
 		const snapshot = { ...state };
-		const layers = resolveLayers(manifest, snapshot);
-		const image = composePetImageNow(layers);
-		if (image) {
-			writeOutfit(snapshot, image);
-			return;
-		}
-		// 冷启动时图层还没加载完：先写一份同步数据（image 兜底素体），加载完再补合成图
-		writeOutfit(snapshot, '');
-		Promise.all(layers.map((layer) => (layer.file ? preload(layer.file) : null))).then(
-			() => {
+		const key = outfitKey(snapshot);
+		if (key === lastPersistKey) return;
+		lastPersistKey = key;
+		const seq = (persistSeq += 1);
+		clearTimeout(persistTimer);
+		persistTimer = setTimeout(() => {
+			const run = () => {
 				if (seq !== persistSeq) return;
-				writeOutfit(snapshot, composePetImageNow(resolveLayers(manifest, snapshot)));
-			},
-			() => {
-				/* 图层加载失败：保留兜底小图 */
-			},
-		);
+				composePetImage(resolveLayers(manifest, snapshot)).then((image) => {
+					if (seq !== persistSeq) return;
+					writeOutfit(snapshot, image);
+				});
+			};
+			if (typeof requestIdleCallback === 'function') {
+				requestIdleCallback(run, { timeout: 800 });
+			} else {
+				setTimeout(run, 16);
+			}
+		}, 250);
 	}
 
 	/* ---------------- 人物图层栈 ---------------- */
@@ -212,8 +261,11 @@ import {
 	 * 隐藏当前穿搭用不到的槽位（套装与上下装互斥，槽位数量固定为 5 个）。
 	 */
 	function renderFigure() {
-		const seq = (renderSeq += 1);
 		const layers = resolveLayers(manifest, state);
+		const key = layers.map((layer) => `${layer.kind}:${layer.file}:${layer.z}`).join('|');
+		if (key === lastRendered.figureKey) return; // 只换背景/特效时整个图层栈都不用动
+		lastRendered.figureKey = key;
+		const seq = (renderSeq += 1);
 		/** @type {Map<string, { file: string, z: number }>} */
 		const byKind = new Map();
 		for (const layer of layers) {
@@ -252,6 +304,10 @@ import {
 
 	function renderScene() {
 		const bg = currentBackground();
+		if (!bg) return;
+		if (lastRendered.bg === bg.file) return; // 背景没变就不重设大图 src
+		lastRendered.bg = bg.file;
+		els.scene.decoding = 'async';
 		els.scene.classList.add('fading');
 		const apply = () => {
 			els.scene.src = bg.file;
@@ -261,14 +317,21 @@ import {
 		preload(bg.file).then(apply, apply);
 	}
 
-	/** 按背景地面线站位 + 内容边界自动缩放（人物像站在场景里，而不是浮在壁纸上）。 */
-	function layoutFigure() {
-		const stage = els.stage;
-		const H = stage.clientHeight;
-		const W = stage.clientWidth;
+	/**
+	 * 按背景地面线站位 + 内容边界自动缩放。
+	 * 用 resizeFx 缓存的舞台尺寸做 key：换装/换背景没变时直接跳过（避免每次都强制 reflow）。
+	 * @param {boolean} [force] 窗口尺寸变化时强制重算
+	 */
+	function layoutFigure(force) {
+		const H = fx.h;
+		const W = fx.w;
 		if (!H || !W) return;
+		const bg = currentBackground();
+		const key = `${state.shape}|${bg ? bg.file : ''}|${W}x${H}`;
+		if (!force && lastRendered.layoutKey === key) return;
+		lastRendered.layoutKey = key;
 		const bounds = currentBounds(manifest, state);
-		const floor = (currentBackground() && currentBackground().floor) || 0.86;
+		const floor = (bg && bg.floor) || 0.86;
 		const usable = Math.max(0.2, bounds.bottom - bounds.top);
 		const topMargin = H * 0.07;
 		const floorY = H * floor;
@@ -304,20 +367,28 @@ import {
 	/* ---------------- 身形切换 / 衣柜 ---------------- */
 
 	function renderShapeToggle() {
-		els.shapeToggle.innerHTML = '';
-		for (const shape of manifest.shapes) {
-			const btn = document.createElement('button');
-			btn.type = 'button';
-			btn.className = 'shape-btn' + (shape.id === state.shape ? ' active' : '');
-			btn.textContent = shape.name;
-			btn.title = shape.desc || shape.name;
-			btn.setAttribute('aria-pressed', shape.id === state.shape ? 'true' : 'false');
-			btn.addEventListener('click', () => {
-				state = applyShape(manifest, state, shape.id);
-				applyState();
-				say(`换成「${shape.name}」啦！`);
-			});
-			els.shapeToggle.appendChild(btn);
+		if (!shapeToggleBuilt) {
+			els.shapeToggle.innerHTML = '';
+			for (const shape of manifest.shapes) {
+				const btn = document.createElement('button');
+				btn.type = 'button';
+				btn.className = 'shape-btn';
+				btn.dataset.shape = shape.id;
+				btn.textContent = shape.name;
+				btn.title = shape.desc || shape.name;
+				btn.addEventListener('click', () => {
+					state = applyShape(manifest, state, shape.id);
+					applyState();
+					say(`换成「${shape.name}」啦～`);
+				});
+				els.shapeToggle.appendChild(btn);
+			}
+			shapeToggleBuilt = true;
+		}
+		for (const btn of els.shapeToggle.children) {
+			const active = btn.dataset.shape === state.shape;
+			btn.classList.toggle('active', active);
+			btn.setAttribute('aria-pressed', active ? 'true' : 'false');
 		}
 	}
 
@@ -354,26 +425,39 @@ import {
 		return cat && state[cat.stateKey] === itemId;
 	}
 
+	/** 衣柜格子：同一分类只构建一次，换装只更新选中态（省掉整片 DOM 重建）。 */
 	function renderShelf() {
 		const cat = manifest.categories.find((entry) => entry.id === tab);
 		if (!cat) return;
+		if (shelfBuiltCat !== cat.id) {
+			buildShelf(cat);
+			shelfBuiltCat = cat.id;
+		}
+		for (const button of els.shelf.children) {
+			const active = isActiveItem(cat.id, button.dataset.id);
+			button.classList.toggle('active', active);
+			button.setAttribute('aria-pressed', active ? 'true' : 'false');
+		}
+	}
+
+	/** 构建某个分类的衣柜格子（只在切换分类时执行）。 */
+	function buildShelf(cat) {
 		const backgroundTab = cat.id === 'backgrounds';
 		els.shelf.innerHTML = '';
 		for (const item of category(cat.id)) {
 			const button = document.createElement('button');
 			button.type = 'button';
-			const active = isActiveItem(cat.id, item.id);
-			button.className = 'item' + (backgroundTab ? ' bg' : '') + (active ? ' active' : '');
+			button.className = 'item' + (backgroundTab ? ' bg' : '');
 			button.dataset.id = item.id;
 			button.title = item.desc || item.name;
 			button.setAttribute('aria-label', item.name);
-			button.setAttribute('aria-pressed', active ? 'true' : 'false');
 			const pic = item.icon || item.thumb;
 			if (pic) {
 				const img = document.createElement('img');
 				img.src = pic;
 				img.alt = '';
 				img.loading = 'lazy';
+				img.decoding = 'async';
 				button.appendChild(img);
 			} else {
 				const span = document.createElement('span');
@@ -390,10 +474,12 @@ import {
 	}
 
 	function popFigure() {
+		// 下一帧再加类名来重启动画，避免同步读 offsetWidth 触发强制 reflow
 		els.figure.classList.remove('pop');
-		void els.figure.offsetWidth;
-		els.figure.classList.add('pop');
-		setTimeout(() => els.figure.classList.remove('pop'), 420);
+		requestAnimationFrame(() => {
+			els.figure.classList.add('pop');
+			setTimeout(() => els.figure.classList.remove('pop'), 420);
+		});
 	}
 
 	function select(catId, itemId) {
@@ -401,7 +487,7 @@ import {
 		applyState();
 		popFigure();
 		const item = findItem(catId, itemId);
-		say(`换上「${item ? item.name : itemId}」啦！`);
+		say(`换上「${item ? item.name : itemId}」啦，好看吗？`);
 	}
 
 	/* ---------------- 说话 / 随机 / 保存 ---------------- */
@@ -425,7 +511,7 @@ import {
 	function randomLook() {
 		state = randomOutfit(manifest, state);
 		applyState();
-		const lines = ['这样好不好看？', '转一圈——怎么样！', '嘿嘿，随机出来的也挺配。', '换好啦，像不像新的我？'];
+		const lines = ['随机换好啦，一起看看？', '这样搭配也不错吧？', '今天想穿哪一套呢？', '换好啦，陪你玩一会儿～'];
 		say(lines[Math.floor(Math.random() * lines.length)]);
 	}
 
@@ -497,7 +583,7 @@ import {
 		a.download = `feiyu-${state.shape}-${state.outfit !== 'none' ? state.outfit : `${state.top}-${state.bottom}`}.png`;
 		a.href = canvas.toDataURL('image/png');
 		a.click();
-		say('立绘卡保存好啦，发群里给朋友看看～');
+		say('立绘卡保存好啦，可以留作纪念～');
 	}
 
 	/* ---------------- 图鉴 ---------------- */
@@ -576,6 +662,8 @@ import {
 	}
 
 	function setEffect(id) {
+		if (lastRendered.effect === id) return; // 特效没变就不重造粒子
+		lastRendered.effect = id;
 		fx.type = id;
 		spawnParticles(id);
 		if (!fx.raf) startFx();
@@ -685,7 +773,7 @@ import {
 		window.addEventListener('resize', () => {
 			resizeFx();
 			spawnParticles(fx.type);
-			layoutFigure();
+			layoutFigure(true);
 		});
 	}
 

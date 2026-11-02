@@ -41,13 +41,10 @@ GLOBAL = TARGET[0] / 1152.0
 
 SHAPES = [('chibi', 'Q版', '大头小身子的可爱版本'), ('girl', '少女版', '六头身的少女比例')]
 
+# 内容基调：养女儿向 / 保守——套装只保留最保守的经典女仆装（长袖长裙 + 围裙）
+# 其余礼服类（抹胸/蕾丝/大裙摆）已从 v0.8.0 移除
 DRESSES = [
     ('maid', '经典女仆装', '她本来的样子。'),
-    ('starry', '星空礼服', '把银河穿在身上。'),
-    ('strawberry', '草莓蛋糕裙', '三层奶油，一层少女心。'),
-    ('gothic', '黑金哥特', '暗夜玫瑰，黑金蕾丝。'),
-    ('forest', '森系花仙', '把一整个春天缝进裙摆。'),
-    ('sakura', '樱花茶会裙', '花瓣落在蕾丝上，春天来啦。'),
 ]
 TOPS = [
     ('sweater', '白色高领毛衣', '软乎乎的，像一条围巾。'),
@@ -74,15 +71,10 @@ LAYER_PLAN = {
                         'align_probe': 'light', 'extra_scale': {'chibi': 1.0, 'girl': 0.95}},
     # 下装：同样走 whiteout 配准；单独生成时裙子偏短，按「衣服顶部中点」锚定放大，
     # 保证上衣下摆之下还能露出明显裙摆（组合模式好看）。
-    ('bottom', 'plaid'): {'mode': 'whiteout', 'extra_scale': {'chibi': 1.42, 'girl': 1.22}},
-    ('bottom', 'pleated'): {'mode': 'whiteout', 'extra_scale': {'chibi': 1.42, 'girl': 1.22}},
+    ('bottom', 'plaid'): {'mode': 'whiteout', 'extra_scale': {'chibi': 1.72, 'girl': 1.40}},
+    ('bottom', 'pleated'): {'mode': 'whiteout', 'extra_scale': {'chibi': 1.72, 'girl': 1.40}},
     # 连衣裙：直接对 look 做 diff 主块 matte（v1/v2 两轮 QA 已确认位置/大小正确）
     ('dress', 'maid'): {'mode': 'diff', 'thr': 30},
-    ('dress', 'starry'): {'mode': 'diff', 'thr': 30},
-    ('dress', 'strawberry'): {'mode': 'diff', 'thr': 28},
-    ('dress', 'gothic'): {'mode': 'diff', 'thr': 30},
-    ('dress', 'forest'): {'mode': 'diff', 'thr': 30},
-    ('dress', 'sakura'): {'mode': 'diff', 'thr': 22},
 }
 # 图层 z 序：下装在下、上装在上（毛衣/卫衣下摆盖住裙腰）
 Z_ORDER = {'bottom': 20, 'top': 30, 'dress': 30}
@@ -97,11 +89,6 @@ BACKGROUNDS = [
 ]
 ICON_SOURCES = {
     'maid': 'maid-dress.png',
-    'starry': 'dress-starry.png',
-    'strawberry': 'dress-strawberry.png',
-    'gothic': 'dress-gothic.png',
-    'forest': 'dress-forest.png',
-    'sakura': 'dress-sakura.png',
     'sweater': 'top-sweater.png',
     'hoodie': 'top-hoodie.png',
     'sailor': 'top-sailor.png',
@@ -115,16 +102,16 @@ EFFECTS = [
     ('stars', '星光', '四周浮着小小的光。', '✨'),
 ]
 BUBBLES = [
-    '这条裙子…会不会太夸张了？不过我喜欢。',
-    '转一圈给你看——怎么样！',
-    '今天的鱼粮，够买新裙子吗？',
-    '唔…不许偷看裙底！',
+    '今天也要好好吃饭呀。',
+    '换好衣服啦，可以出门玩了吗？',
+    '这件裙子转起来，像一朵小花。',
+    '你回来啦！我等你好久了。',
     '这个背景好漂亮，像画一样。',
-    '我是不是…又吃多了。',
-    '再换一条嘛，就一条。',
-    '拍立绘卡的时候，记得把我拍得好看一点。',
-    '你看你看，这个发型配这身是不是很搭？',
-    '要是每天都能换新衣服就好了。',
+    '一起在窗边坐一会儿吧。',
+    '鱼粮我都收好啦，没有乱花。',
+    '拍立绘卡的时候，记得把我拍得可爱一点。',
+    '今天的天气，适合出去走走。',
+    '要是每天都能和你一起玩就好了。',
 ]
 CREDITS = ('立绘 / 服装：本项目用 Seedream 5.0（火山方舟）基于自建素体生成 · '
            '角色参考：大肥鱼社区二创（仅作风格参考，未直接使用原画）· 非官方，禁止商用')
@@ -818,6 +805,18 @@ def build(src: Path, out: Path, qa_dir: Path, only_shape: str | None = None) -> 
                         if item['id'] == 'none':
                             continue
                         shape_info[sid]['layer_paths'][(key, item['id'])] = item['layer'][sid]
+    # 清理不再被 manifest 引用的旧图层 / 图标（内容收敛后删掉历史素材）
+    referenced_layers = set()
+    for info in shape_info.values():
+        referenced_layers.update(info['layer_paths'].values())
+    for shape, _, _ in shapes:
+        for stale in (out / 'art' / shape / 'layers').glob('*.webp'):
+            rel = f'art/{shape}/layers/{stale.name}'
+            if rel not in referenced_layers:
+                stale.unlink()
+    for stale in (out / 'art' / 'icons').glob('*.webp'):
+        if stale.stem not in ICON_SOURCES:
+            stale.unlink()
     # 清理旧版「整套立绘」产物（新素材写完之后再删，避免构建期间素材缺失）
     for shape, _, _ in shapes:
         art = out / 'art' / shape

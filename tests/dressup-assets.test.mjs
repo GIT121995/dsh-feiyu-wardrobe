@@ -55,7 +55,23 @@ test('每个身形的素体与头发叠层齐全（透明 WebP）', () => {
 	}
 });
 
-test('每个身形 × 每件衣服单品的图层齐全且是 WebP', () => {
+test('v0.8 保守范围：套装只保留「经典女仆装」，其余 5 套已移除', () => {
+	const outfits = MANIFEST.items.outfits;
+	assert.deepEqual(
+		outfits.map((item) => item.id),
+		['none', 'maid'],
+		'套装应只剩 none + maid',
+	);
+	const removed = ['starry', 'strawberry', 'gothic', 'forest', 'sakura'];
+	for (const shape of MANIFEST.shapes) {
+		for (const id of removed) {
+			const rel = `art/${shape.id}/layers/dress-${id}.webp`;
+			assert.ok(!existsSync(join(ROOT, rel)), `已移除的套装图层不应再存在：${rel}`);
+		}
+	}
+});
+
+test('每个身形 × 每件衣服单品的图层齐全且是 WebP（保守范围共 6 件/身形）', () => {
 	const clothing = ['outfits', 'tops', 'bottoms'];
 	let count = 0;
 	for (const categoryId of clothing) {
@@ -73,7 +89,8 @@ test('每个身形 × 每件衣服单品的图层齐全且是 WebP', () => {
 			}
 		}
 	}
-	assert.ok(count > 0, '没有任何衣服图层');
+	const perShape = 6; // 1 连衣裙 + 3 上衣 + 2 下装
+	assert.equal(count, MANIFEST.shapes.length * perShape, `衣服图层总数应为 ${MANIFEST.shapes.length * perShape}（每身形 ${perShape} 件）`);
 });
 
 test('每个身形的 bounds 合理（同一身形固定，不随穿搭变化）', () => {
@@ -145,7 +162,7 @@ test('宿主半区 readOutfit 接受 data URL / art 路径，并 fallback 到 pe
 	);
 });
 
-test('游戏页改为图层栈、通过 ESM 共享核心逻辑并 cache-bust 到 v8', () => {
+test('游戏页改为图层栈、通过 ESM 共享核心逻辑并 cache-bust 到 v9', () => {
 	const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
 	assert.match(html, /app\.js\?v=\d+/);
 	assert.match(html, /style\.css\?v=\d+/);
@@ -161,6 +178,16 @@ test('游戏页改为图层栈、通过 ESM 共享核心逻辑并 cache-bust 到
 	assert.ok(app.includes('resolveLayers'), 'app.js 应按 resolveLayers 叠图层');
 	assert.ok(!app.includes('resolveImage'), 'app.js 不应再用 v4 的 resolveImage');
 	assert.ok(app.includes('feiyu:outfit'), 'app.js 必须把当前穿搭写进 localStorage 给悬浮鲸鱼用');
-	assert.match(app, /toDataURL\('image\/webp'/, 'app.js 应把合成小图写成 WebP data URL');
+	// v0.8 性能：小图合成移出点击路径（debounce + 空闲回调 + 异步 toBlob）
+	assert.ok(app.includes('toBlob'), '小图合成应走异步 canvas.toBlob');
+	assert.ok(app.includes('requestIdleCallback'), '小图合成应放到浏览器空闲时执行');
+	assert.ok(!app.includes('composePetImageNow'), '不应再在点击路径里同步合成小图');
+	assert.ok(app.includes('persistTimer'), 'persist 应有 debounce 定时器');
+
+	// v0.8 保守文案：去掉性感/身体评价/撒娇过头的台词
+	const banned = ['转一圈', '裙底', '性感', '身材', '偷看', '亲亲', '抱抱'];
+	for (const word of banned) assert.ok(!app.includes(word), `app.js 不应包含不保守文案「${word}」`);
+	assert.ok(!html.includes('裙底'), 'index.html 不应包含不保守文案');
+
 	assert.ok(!app.includes('github.io'), 'app.js should not hardcode GitHub Pages');
 });

@@ -4,30 +4,30 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>大肥鱼衣橱 · 换装间</title>
-<meta name="description" content="给大肥鱼分层换装：套装或上衣 + 下装自由搭配、切换 Q版/少女版、换背景和特效——开源免费。">
+<meta name="description" content="陪大肥鱼换衣服、一起过日子：分层自由搭配、切换 Q版/少女版、换背景和特效——开源免费。">
 <meta name="theme-color" content="#f6ecff">
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 <main class="app">
   <section class="stage" id="stage" aria-label="换装舞台">
-    <img class="scene" id="scene" src="art/bg-snow.webp" alt="">
+    <img class="scene" id="scene" src="art/bg-snow.webp" alt="" decoding="async">
     <div class="scene-veil"></div>
 
     <div class="figure-wrap" id="figureWrap">
       <div class="figure-shadow" id="figureShadow"></div>
       <div class="figure" id="figure" role="button" tabindex="0" aria-label="大肥鱼，点一下说话">
-        <img class="figure-layer" data-layer="base" alt="大肥鱼" draggable="false" hidden>
-        <img class="figure-layer" data-layer="bottom" alt="" draggable="false" hidden>
-        <img class="figure-layer" data-layer="top" alt="" draggable="false" hidden>
-        <img class="figure-layer" data-layer="outfit" alt="" draggable="false" hidden>
-        <img class="figure-layer" data-layer="overlay" alt="" draggable="false" hidden>
+        <img class="figure-layer" data-layer="base" alt="大肥鱼" draggable="false" decoding="async" hidden>
+        <img class="figure-layer" data-layer="bottom" alt="" draggable="false" decoding="async" hidden>
+        <img class="figure-layer" data-layer="top" alt="" draggable="false" decoding="async" hidden>
+        <img class="figure-layer" data-layer="outfit" alt="" draggable="false" decoding="async" hidden>
+        <img class="figure-layer" data-layer="overlay" alt="" draggable="false" decoding="async" hidden>
       </div>
     </div>
 
     <canvas class="fx" id="fx" aria-hidden="true"></canvas>
     <div class="bubble" id="bubble" role="status" aria-live="polite" hidden></div>
-    <div class="stage-tip" id="stageTip">点她一下 · 说点什么</div>
+    <div class="stage-tip" id="stageTip">点一下 · 陪她说说话</div>
     <div class="stage-credit">立绘 / 服装：Seedream 生成 · 角色参考：大肥鱼社区二创 · 非官方 · 禁止商用</div>
 
     <header class="brand-bar">
@@ -61,6 +61,6 @@
   </div>
 </main>
 <canvas id="exportCanvas" width="900" height="1350" hidden></canvas>
-<script type="module" src="app.js?v=8"></script>
+<script type="module" src="app.js?v=9"></script>
 </body>
 </html>

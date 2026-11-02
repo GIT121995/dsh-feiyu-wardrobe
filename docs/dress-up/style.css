@@ -26,7 +26,7 @@ button { font: inherit; }
 .figure-wrap { position: absolute; z-index: 3; will-change: transform; }
 .figure { position: relative; height: 100%; aspect-ratio: 9 / 16; cursor: pointer; outline: none;
   transform-origin: 50% 100%;
-  filter: drop-shadow(0 18px 22px rgba(10, 6, 24, .35));
+  /* 不再用 drop-shadow 滤镜：5 张图层叠加时每帧重算滤镜太贵，地面阴影由 .figure-shadow 承担 */
   /* 待机浮空用 transform、呼吸用独立 scale 属性，两者互不覆盖；
      动态统一放在容器上，图层之间才不会因为动画相位不同而错位 */
   animation: feiyu-idle 5.4s ease-in-out infinite, feiyu-breathe 4.6s ease-in-out infinite; }
@@ -53,7 +53,7 @@ button { font: inherit; }
   70% { transform: translateY(3px) rotate(1deg); }
   100% { transform: translateY(0) rotate(0); }
 }
-.figure.pop .figure-layer { animation: feiyu-pop .38s ease-out; }
+.figure.pop { animation: feiyu-pop .38s ease-out; }
 @keyframes feiyu-pop {
   0% { opacity: .4; transform: scale(.985); }
   100% { opacity: 1; transform: scale(1); }

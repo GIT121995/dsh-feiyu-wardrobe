@@ -77,61 +77,6 @@
           "chibi": "art/chibi/layers/dress-maid.webp",
           "girl": "art/girl/layers/dress-maid.webp"
         }
-      },
-      {
-        "id": "starry",
-        "name": "星空礼服",
-        "desc": "把银河穿在身上。",
-        "icon": "art/icons/starry.webp",
-        "z": 30,
-        "layer": {
-          "chibi": "art/chibi/layers/dress-starry.webp",
-          "girl": "art/girl/layers/dress-starry.webp"
-        }
-      },
-      {
-        "id": "strawberry",
-        "name": "草莓蛋糕裙",
-        "desc": "三层奶油，一层少女心。",
-        "icon": "art/icons/strawberry.webp",
-        "z": 30,
-        "layer": {
-          "chibi": "art/chibi/layers/dress-strawberry.webp",
-          "girl": "art/girl/layers/dress-strawberry.webp"
-        }
-      },
-      {
-        "id": "gothic",
-        "name": "黑金哥特",
-        "desc": "暗夜玫瑰，黑金蕾丝。",
-        "icon": "art/icons/gothic.webp",
-        "z": 30,
-        "layer": {
-          "chibi": "art/chibi/layers/dress-gothic.webp",
-          "girl": "art/girl/layers/dress-gothic.webp"
-        }
-      },
-      {
-        "id": "forest",
-        "name": "森系花仙",
-        "desc": "把一整个春天缝进裙摆。",
-        "icon": "art/icons/forest.webp",
-        "z": 30,
-        "layer": {
-          "chibi": "art/chibi/layers/dress-forest.webp",
-          "girl": "art/girl/layers/dress-forest.webp"
-        }
-      },
-      {
-        "id": "sakura",
-        "name": "樱花茶会裙",
-        "desc": "花瓣落在蕾丝上，春天来啦。",
-        "icon": "art/icons/sakura.webp",
-        "z": 30,
-        "layer": {
-          "chibi": "art/chibi/layers/dress-sakura.webp",
-          "girl": "art/girl/layers/dress-sakura.webp"
-        }
       }
     ],
     "tops": [
@@ -279,15 +224,15 @@
     "effect": "snow"
   },
   "bubbles": [
-    "这条裙子…会不会太夸张了？不过我喜欢。",
-    "转一圈给你看——怎么样！",
-    "今天的鱼粮，够买新裙子吗？",
-    "唔…不许偷看裙底！",
+    "今天也要好好吃饭呀。",
+    "换好衣服啦，可以出门玩了吗？",
+    "这件裙子转起来，像一朵小花。",
+    "你回来啦！我等你好久了。",
     "这个背景好漂亮，像画一样。",
-    "我是不是…又吃多了。",
-    "再换一条嘛，就一条。",
-    "拍立绘卡的时候，记得把我拍得好看一点。",
-    "你看你看，这个发型配这身是不是很搭？",
-    "要是每天都能换新衣服就好了。"
+    "一起在窗边坐一会儿吧。",
+    "鱼粮我都收好啦，没有乱花。",
+    "拍立绘卡的时候，记得把我拍得可爱一点。",
+    "今天的天气，适合出去走走。",
+    "要是每天都能和你一起玩就好了。"
   ]
 }
