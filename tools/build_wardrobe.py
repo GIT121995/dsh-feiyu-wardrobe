@@ -86,10 +86,13 @@ LAYER_PLAN = {
     # 统一走「白底单件图 + 形状 IoU 配准」——图层只含衣服本体，位置/大小由配准决定。
     ('top', 'sweater'): {'mode': 'whiteout', 'target_frac': {'chibi': 0.57, 'girl': 0.46}},
     ('top', 'hoodie'): {'mode': 'whiteout', 'target_frac': {'chibi': 0.57, 'girl': 0.46}},
-    # 水手服：AI 抠图时把深色水手领/蝴蝶结画得比衬衫主体大，直接用整体 alpha 配准会被拉小，
-    # 改成只拿「衬衫的浅色主体」做形状配准（probe），再套用到整件衣服。
+    # 水手服（v0.9.1 修）：look 里的水手服是「连体式」（衬衫 + 白色下装连成一片），
+    # 用「浅色衬衫主体 ↔ look 白色区域」配准会被连体衣下摆拉偏/拉小 → 衣领整体偏下、
+    # 缩 5%，合成时脖子/肩膀露出素体皮肤（用户反馈「肩膀肉露出来」）。
+    # 改成用「领结」配准：whiteout 与 look 里领结都完整可见且形状一致（质心差 <2px），
+    # 深蓝领子外翼在 look 里被头发挡住（形状不一致）故不参与；水手服不需要额外缩放。
     ('top', 'sailor'): {'mode': 'whiteout', 'target_frac': {'chibi': 0.57, 'girl': 0.46},
-                        'align_probe': 'light', 'extra_scale': {'chibi': 1.0, 'girl': 0.95}},
+                        'align_probe': 'bow'},
     # 下装：同样走 whiteout 配准；单独生成时裙子偏短，按「衣服顶部中点」锚定放大，
     # 保证上衣下摆之下还能露出明显裙摆（组合模式好看）。v6 下装只有一层（bottom 槽位）。
     ('bottom', 'plaid'): {'mode': 'whiteout', 'extra_scale': {'chibi': 1.72, 'girl': 1.40}},
@@ -146,6 +149,14 @@ CREDITS = ('立绘 / 服装：本项目用 Seedream 5.0（火山方舟）基于�
 SLEEVE_DILATE_PX = 6
 SLEEVE_FEATHER_SIGMA = 1.0
 SLEEVE_MIN_FRAC = 0.002  # 袖子像素占比低于此值视为无袖 → 不产出 sleeve 层
+
+# 水手服「领结」配准（v0.9.1）：领结在 whiteout 与 look 里都是完整可见的实心亮蓝，
+# 用它做 probe/target 做 scale+translation 搜索；领子外翼在 look 里被头发挡住、形状不一致，
+# 只用来在 whiteout 里框定「领结在领子下方」的位置，不参与形状匹配。
+SAILOR_BOW_SCALES = np.arange(0.80, 1.25, 0.01)  # 领结尺度搜索范围（AI 两张图重画误差 ±25%）
+SAILOR_BOW_MIN_PX = 300      # 领结掩膜最少像素（太少说明特征没提取到）
+SAILOR_BOW_MIN_IOU = 0.45    # 配准 IoU 低于此判定失败 → 回退默认整件形状配准
+SAILOR_BOW_SCALE_RANGE = (0.50, 1.60)  # 配准尺度合法区间
 
 # 少女版卫衣橙色蝴蝶结在 whiteout 里丢失 → build patch 从 look 补回（契约 §6）
 BOW_ORANGE_MIN_LOOK = 400      # look 里至少这么多橙色像素才认为「有蝴蝶结」
@@ -571,8 +582,12 @@ def whiteout_target(look: np.ndarray, base: np.ndarray, wo: np.ndarray, wa: np.n
     return cv2.morphologyEx(keep, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8)) * 255
 
 
-def register_shape(alpha: np.ndarray, target: np.ndarray) -> tuple[float, float, float, float]:
-    """形状 IoU 配准（FFT 互相关做全图平移搜索 + 缩放扫描）。"""
+def register_shape(alpha: np.ndarray, target: np.ndarray,
+                   scales: np.ndarray | None = None) -> tuple[float, float, float, float]:
+    """形状 IoU 配准（FFT 互相关做全图平移搜索 + 缩放扫描）。
+
+    scales 缺省用粗网格 0.30–1.55（整件衣服）；领结这类小特征传细网格。
+    """
     ys, xs = np.nonzero(alpha > 127)
     if len(ys) == 0:
         return 1.0, 0.0, 0.0, 0.0
@@ -582,7 +597,7 @@ def register_shape(alpha: np.ndarray, target: np.ndarray) -> tuple[float, float,
     th, tw = tgt.shape
     ii = cv2.integral(tgt)
     best = (1.0, 0.0, 0.0, -1.0)
-    for s in np.arange(0.30, 1.55, 0.03):
+    for s in (np.arange(0.30, 1.55, 0.03) if scales is None else scales):
         nh, nw = max(8, int(round(a.shape[0] * s))), max(8, int(round(a.shape[1] * s)))
         if nh >= th or nw >= tw:
             continue
@@ -598,20 +613,110 @@ def register_shape(alpha: np.ndarray, target: np.ndarray) -> tuple[float, float,
     return best
 
 
+# ---- 水手服显著特征（深蓝领子 + 亮蓝领结）掩膜 ----
+
+def vivid_blue(rgb: np.ndarray) -> np.ndarray:
+    """亮蓝（领结填充色）：b 高、b-r 大、亮度中等；深蓝领子/暗发阴影不在此范围。"""
+    r, g, b = rgb[:, :, 0].astype(np.int32), rgb[:, :, 1].astype(np.int32), rgb[:, :, 2].astype(np.int32)
+    lum = rgb.mean(axis=2)
+    return (b - r > 45) & (b > 115) & (lum > 80) & (lum < 190)
+
+
+def dark_navy(rgb: np.ndarray) -> np.ndarray:
+    """深蓝（水手领 / 领结描边）：蓝主导且暗。"""
+    r, g, b = rgb[:, :, 0].astype(np.int32), rgb[:, :, 1].astype(np.int32), rgb[:, :, 2].astype(np.int32)
+    lum = rgb.mean(axis=2)
+    return (b - r > 25) & (b > 45) & (lum < 125)
+
+
+def sailor_accent(rgb: np.ndarray) -> np.ndarray:
+    """水手服显著特征并集（深蓝领子 + 亮蓝领结）。"""
+    return dark_navy(rgb) | vivid_blue(rgb)
+
+
+def sailor_bow_probe(wo: np.ndarray, wa: np.ndarray) -> np.ndarray | None:
+    """从白底单件图里提取「领结」掩膜（源分辨率 bool，找不到返回 None）。
+
+    做法：先用深蓝领子+亮蓝领结的并集框出领子区域；领结 = 领子区域下半部、
+    身体中线附近的亮蓝连通块（领子高光/描边在上半部，被排除；外翼也会被排除）。
+    """
+    acc = sailor_accent(wo) & (wa > 127)
+    ys, xs = np.nonzero(acc)
+    if len(xs) < SAILOR_BOW_MIN_PX:
+        return None
+    ax0, ax1, ay0, ay1 = int(xs.min()), int(xs.max()), int(ys.min()), int(ys.max())
+    aw, ah = ax1 - ax0 + 1, ay1 - ay0 + 1
+    bow = (vivid_blue(wo) & (wa > 127)).astype(np.uint8)
+    n, lab, stats, cent = cv2.connectedComponentsWithStats(bow, 8)
+    keep = np.zeros_like(bow)
+    for i in range(1, n):
+        if stats[i, cv2.CC_STAT_AREA] < 200:
+            continue
+        if stats[i, cv2.CC_STAT_TOP] < ay0 + 0.35 * ah:  # 领子上半部的高光/描边
+            continue
+        if abs(cent[i][0] - (ax0 + ax1) / 2.0) > 0.40 * aw:  # 离衣服中线太远 → 不是领结
+            continue
+        keep[lab == i] = 1
+    if int(keep.sum()) < SAILOR_BOW_MIN_PX:
+        return None
+    return keep
+
+
+def register_sailor_bow(wo: np.ndarray, wa: np.ndarray,
+                        look: np.ndarray) -> tuple[float, float, float, float] | None:
+    """用领结做配准：whiteout 领结为 probe，look 亮蓝领结为 target。
+
+    领结在两张图里都完整可见、形状一致；蓝色头发虽然也是亮蓝，但领结是唯一的
+    「小型实心领结形状」，全图 IoU 搜索不会被头发带走（实测 IoU≈0.91，发丝不干扰）。
+    返回 (scale, dx, dy, iou)；特征提取失败/配准不可信返回 None（调用方回退）。
+    """
+    probe = sailor_bow_probe(wo, wa)
+    if probe is None:
+        return None
+    target = vivid_blue(look).astype(np.uint8) * 255
+    if int((target > 127).sum()) < SAILOR_BOW_MIN_PX:
+        return None
+    s, dx, dy, iou = register_shape(probe.astype(np.uint8) * 255, target, scales=SAILOR_BOW_SCALES)
+    lo, hi = SAILOR_BOW_SCALE_RANGE
+    if not (lo <= s <= hi) or iou < SAILOR_BOW_MIN_IOU:
+        return None
+    return s, dx, dy, iou
+
+
 def layer_from_whiteout(wo: np.ndarray, wa: np.ndarray, target: np.ndarray,
                         extra_scale: float = 1.0,
-                        align_probe: str | None = None) -> tuple[np.ndarray, np.ndarray, float]:
-    """白底单件图按形状配准回 look 坐标 → (rgb, alpha, iou)。
+                        align_probe: str | None = None,
+                        look: np.ndarray | None = None,
+                        ) -> tuple[np.ndarray, np.ndarray, float, dict]:
+    """白底单件图按形状配准回 look 坐标 → (rgb, alpha, iou, 配准信息)。
+
+    配准方式（align_probe）：
+      - `bow`（水手服）：用「领结」做显著特征配准（见 register_sailor_bow）。
+        领结配准失败 → 回退默认整件形状配准，并在结果里标 fallback。
+      - `light`：只拿浅色像素（衬衫主体）做形状配准，深色领子/蝴蝶结不参与。
+      - None：整件 alpha 默认形状配准。
 
     extra_scale > 1 时以「衣服顶部中点」为锚点整体放大（下摆向下同时变宽），
     用来补偿 AI 单独画裙子时偏短的问题，保证叠在上衣下面还能露出裙摆。
     """
-    probe = wa
-    if align_probe == 'light':
-        # 只拿浅色像素（衬衫主体）做形状配准，深色领子/蝴蝶结不参与
-        light = np.clip(wo, 0, 255).astype(np.uint8).mean(axis=2) > 150
-        probe = ((wa > 127) & light).astype(np.uint8) * 255
-    s, dx, dy, iou = register_shape(probe, target)
+    info = {'mode': 'shape', 'fallback': False}
+    s = dx = dy = iou = 0.0
+    registered = False
+    if align_probe == 'bow':
+        bow = register_sailor_bow(wo, wa, look) if look is not None else None
+        if bow is not None:
+            s, dx, dy, iou = bow
+            info['mode'] = 'bow'
+            registered = True
+        else:
+            info['fallback'] = True   # 回退默认整件形状配准
+    if not registered:
+        probe = wa
+        if align_probe == 'light':
+            light = np.clip(wo, 0, 255).astype(np.uint8).mean(axis=2) > 150
+            probe = ((wa > 127) & light).astype(np.uint8) * 255
+            info['mode'] = 'light'
+        s, dx, dy, iou = register_shape(probe, target)
     if extra_scale != 1.0:
         ys, xs = np.nonzero(wa > 127)
         top_y, cx = float(ys.min()), float((xs.min() + xs.max()) / 2)
@@ -620,11 +725,13 @@ def layer_from_whiteout(wo: np.ndarray, wa: np.ndarray, target: np.ndarray,
         dx = center_x - s2 * cx
         dy = waist_y - s2 * top_y
         s = s2
+    info.update({'scale': round(float(s), 4), 'dx': round(float(dx), 2),
+                 'dy': round(float(dy), 2), 'iou': round(float(iou), 4)})
     h, w = wo.shape[:2]
     M = np.float32([[s, 0, dx], [0, s, dy]])
     rgb = cv2.warpAffine(np.clip(wo, 0, 255).astype(np.uint8), M, (w, h), flags=cv2.INTER_LINEAR)
     a = cv2.warpAffine(wa, M, (w, h), flags=cv2.INTER_LINEAR)
-    return rgb, a, iou
+    return rgb, a, iou, info
 
 
 # ---------------------------------------------------------------- 蝴蝶结补丁（v6 build patch）
@@ -719,6 +826,7 @@ def build_garment(shape: str, cat: str, ident: str, src: Path, base: np.ndarray,
     look_fg = remove_white_alpha(look) > 40  # 该 look 自身的前景（白底图的轮廓内部都算）
     iou = 0.0
     bow_px = 0
+    align: dict = {}
     if cfg['mode'] == 'whiteout':
         wo_path = src / f'{shape}-whiteout-{cat}-{ident}-v2.png'
         if not wo_path.exists():
@@ -734,8 +842,9 @@ def build_garment(shape: str, cat: str, ident: str, src: Path, base: np.ndarray,
         extra = cfg.get('extra_scale', 1.0)
         if isinstance(extra, dict):
             extra = extra[shape]
-        rgb1152, a1152, iou = layer_from_whiteout(wo, wa, target, extra_scale=extra,
-                                                  align_probe=cfg.get('align_probe'))
+        rgb1152, a1152, iou, align = layer_from_whiteout(
+            wo, wa, target, extra_scale=extra,
+            align_probe=cfg.get('align_probe'), look=look)
         # v6：不再挖头发洞（最上层 hair 负责盖回）；只做羽化，保持衣服完整
         a1152 = np.clip(cv2.GaussianBlur(a1152.astype(np.float32), (0, 0), 0.9) * 1.05 - 6, 0, 255)
         if (cat, ident) == ('top', 'hoodie'):
@@ -767,7 +876,7 @@ def build_garment(shape: str, cat: str, ident: str, src: Path, base: np.ndarray,
         if float((sleeve > 20).mean()) >= SLEEVE_MIN_FRAC:
             layers['sleeve'] = (l_rgb.copy(), sleeve)
     return {'layers': layers, 'iou': float(iou), 'bow_px': bow_px, 'look': look,
-            'cuffs': cuffs if cat != 'bottom' else []}
+            'align': align, 'cuffs': cuffs if cat != 'bottom' else []}
 
 
 def build_qa_sheet(shape: str, name: str, qa_dir: Path, shape_px: dict,
@@ -1093,16 +1202,26 @@ def build_shape(shape: str, src: Path, out: Path, qa_dir: Path, audit_dir: Path,
             item_px[(cat, ident)] = g['layers']
             stats['iou'][f'{cat}-{ident}'] = round(g['iou'], 3)
             stats['bow'][f'{cat}-{ident}'] = g['bow_px']
+            if g.get('align'):
+                stats.setdefault('align', {})[f'{cat}-{ident}'] = g['align']
             if g.get('cuffs'):
                 stats.setdefault('cuffs', {})[f'{cat}-{ident}'] = g['cuffs']
             sleeve_a = g['layers'].get('sleeve')
             if sleeve_a is not None:
                 stats['sleeve'][f'{cat}-{ident}'] = round(float((sleeve_a[1] > 40).mean()), 4)
             area = round(float((g['layers'][main_slot][1] > 40).mean()), 4)
+            align_note = ''
+            if g.get('align') and g['align'].get('mode') == 'bow':
+                al = g['align']
+                align_note = (f' 领结配准 s={al["scale"]:.2f} dx={al["dx"]:.0f} '
+                              f'dy={al["dy"]:.0f} iou={al["iou"]:.2f}')
+            elif g.get('align') and g['align'].get('fallback'):
+                align_note = ' 领结配准失败→回退整件形状配准'
             print(f'  {cat}-{ident}: 主体面积 {area:.1%}'
                   + (f' sleeve {stats["sleeve"].get(f"{cat}-{ident}", 0):.1%}'
                      if 'sleeve' in g['layers'] else ' 无袖')
-                  + (f' 蝴蝶结补丁 {g["bow_px"]}px' if g['bow_px'] else ''))
+                  + (f' 蝴蝶结补丁 {g["bow_px"]}px' if g['bow_px'] else '')
+                  + align_note)
 
     build_qa_sheet(shape, shape, qa_dir, shape_px, item_px)
     build_audit(shape, audit_dir, shape_px, item_px, look_src, stats)
@@ -1436,6 +1555,15 @@ def write_report(audit_dir: Path, shape_info: dict, removed: list[str],
     if 'girl' in shape_info:
         bow = (shape_info['girl'].get('stats') or {}).get('bow', {}).get('top-hoodie', 0)
         checks.append(('girl 卫衣橙色蝴蝶结补丁', '>500px', bow > 500, f'{bow}px'))
+    # 水手服领结配准（v0.9.1）：没走 fallback、IoU 足够、尺度接近 1 → 衣领不会被拉偏/拉小
+    for sid, info in shape_info.items():
+        al = (info.get('stats') or {}).get('align', {}).get('top-sailor')
+        if not al:
+            continue
+        ok = (al.get('mode') == 'bow' and not al.get('fallback')
+              and al.get('iou', 0) >= 0.5 and 0.85 <= al.get('scale', 0) <= 1.15)
+        checks.append((f'{sid} 水手服领结配准', 'bow 配准 IoU>=0.5 且 scale∈[0.85,1.15]',
+                       ok, str(al)))
     checks.append(('manifest v6 / 675×1200 / 引用文件存在', 'validate_build 无问题', not orphans,
                    '见构建日志'))
     checks.append(('art/ 无孤儿文件 / 无 .tmp', '0', not orphans and not tmp_files,
@@ -1503,6 +1631,8 @@ def write_report(audit_dir: Path, shape_info: dict, removed: list[str],
         lines.append(f'### {sid}')
         lines.append(f'- bounds: {info["bounds"]}')
         lines.append(f'- 配准 IoU: {stats.get("iou", {})}')
+        if stats.get('align'):
+            lines.append(f'- 白底单品配准方式: {stats.get("align")}')
         lines.append(f'- sleeve 面积占比: {stats.get("sleeve", {})}')
         lines.append(f'- 蝴蝶结补丁像素: {stats.get("bow", {})}')
         mag = stats.get('magenta_holes', {}).get(sid, {})
