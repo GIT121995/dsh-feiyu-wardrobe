@@ -190,3 +190,15 @@ body.embed .wardrobe { flex-basis: clamp(280px, 34vw, 380px); }
   .figure, .figure-layer { animation: none !important; }
   .scene, .figure-layer { transition: none !important; }
 }
+
+/* ---------------- 脸部叠加动画（B1-lite · 运行时特效层） ---------------- */
+/* 补丁是 675×1200 画布上的裁剪矩形，app.js 用百分比 left/top/width/height 定位；
+   只切 opacity，不参与布局、不触发回流。层级在 hair 之下（刘海压住补丁上缘）。 */
+.face-layer { position: absolute; opacity: 0; pointer-events: none; user-select: none;
+  -webkit-user-drag: none; transition: opacity 32ms linear; will-change: opacity; }
+.face-layer.on { opacity: 1; }
+/* 口型 2 帧按 ~130ms 直接切换（不加淡入淡出，避免两张嘴短暂重叠成双影） */
+.face-layer[data-face="mouthMid"], .face-layer[data-face="mouthOpen"] { transition: none; }
+@media (prefers-reduced-motion: reduce) {
+  .face-layer { transition: none !important; }
+}

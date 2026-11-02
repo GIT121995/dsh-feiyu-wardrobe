@@ -289,6 +289,119 @@ export function randomOutfit(manifest, state, random = Math.random) {
 	return next;
 }
 
+/* ---------------- 脸部叠加动画（B1-lite · v0.10） ---------------- */
+
+/** 脸部补丁使用的画布尺寸（与全部 675×1200 分层素材一致）。 */
+export const FACE_CANVAS = { width: 675, height: 1200 };
+
+/**
+ * 脸部动画时序（毫秒）。app.js 只用这些常量起定时器，不参与 manifest。
+ * - blinkMin/blinkMax：随机眨眼间隔
+ * - blinkClose：闭眼停留时长
+ * - smileMin/smileMax：随机笑眼间隔；smileHold：笑眼持续
+ * - mouthPeriod：说话时口型帧切换间隔
+ */
+export const FACE_TIMING = {
+	blinkMin: 2000,
+	blinkMax: 6000,
+	blinkClose: 110,
+	smileMin: 20000,
+	smileMax: 40000,
+	smileHold: 1200,
+	mouthPeriod: 130,
+};
+
+/** 每身形固定 4 个补丁 key（眼：眨眼/笑眼，嘴：微开/张开）。 */
+export const FACE_PATCH_KEYS = ['eyeBlink', 'eyeSmile', 'mouthMid', 'mouthOpen'];
+
+/**
+ * 脸部补丁（运行时特效层，不进 manifest.drawOrder / 构建管线）。
+ *
+ * 补丁是从 Seedream 脸部关键帧里「diff ∩ 脸/嘴 ROI」提取的透明底 WebP，
+ * 按 675×1200 画布坐标裁剪成小图 + 偏移定位，渲染层级在 hair 之下（刘海压住补丁上缘）。
+ * 坐标为 675 画布像素（由 `.scratch/b1-lite/scripts/extract_face_patches.py` 生成）。
+ *
+ * @typedef {object} FacePatch
+ * @property {string} file 相对 `docs/dress-up/` 的 WebP 路径
+ * @property {number} x 裁剪矩形左上角 x（675 画布坐标）
+ * @property {number} y 裁剪矩形左上角 y（675 画布坐标）
+ * @property {number} w 裁剪矩形宽
+ * @property {number} h 裁剪矩形高
+ */
+
+/** @type {Record<string, Record<string, FacePatch>>} */
+export const FACE_PATCHES = {
+	girl: {
+		eyeBlink: { file: 'art/girl/face/eye_blink.webp', x: 249.61, y: 226.17, w: 189, h: 88 },
+		eyeSmile: { file: 'art/girl/face/eye_smile.webp', x: 249.61, y: 226.17, w: 189, h: 88 },
+		mouthMid: { file: 'art/girl/face/mouth_mid.webp', x: 294.14, y: 285.94, w: 100, h: 80 },
+		mouthOpen: { file: 'art/girl/face/mouth_open.webp', x: 294.14, y: 285.94, w: 100, h: 80 },
+	},
+	chibi: {
+		eyeBlink: { file: 'art/chibi/face/eye_blink.webp', x: 164.06, y: 333.98, w: 393, h: 152 },
+		eyeSmile: { file: 'art/chibi/face/eye_smile.webp', x: 172.85, y: 333.98, w: 388, h: 152 },
+		mouthMid: { file: 'art/chibi/face/mouth_mid.webp', x: 285.35, y: 450, w: 115, h: 96 },
+		mouthOpen: { file: 'art/chibi/face/mouth_open.webp', x: 285.35, y: 450, w: 115, h: 96 },
+	},
+};
+
+/**
+ * 取某个身形的脸部补丁表。
+ * 未配置该身形时回退到第一个有补丁的身形（与 findShape 的容错口径一致）。
+ * @param {string} [shapeId]
+ * @returns {Record<string, FacePatch> | null}
+ */
+export function facePatchesOf(shapeId) {
+	const patches = shapeId ? FACE_PATCHES[shapeId] : null;
+	if (patches && Object.keys(patches).length) return patches;
+	for (const shape of Object.keys(FACE_PATCHES)) {
+		if (FACE_PATCHES[shape] && Object.keys(FACE_PATCHES[shape]).length) return FACE_PATCHES[shape];
+	}
+	return null;
+}
+
+/**
+ * 取单个补丁；身形回退规则同 `facePatchesOf`，key 不存在返回 null。
+ * @param {string | null | undefined} shapeId
+ * @param {string} key `FACE_PATCH_KEYS` 之一
+ * @returns {FacePatch | null}
+ */
+export function facePatchOf(shapeId, key) {
+	const patches = facePatchesOf(shapeId);
+	return (patches && patches[key]) || null;
+}
+
+/**
+ * 把补丁的 675 画布像素矩形换算成 `.figure` 容器内的百分比定位（纯函数）。
+ * 分层素材与画布同为 9:16，百分比定位天然跟随容器缩放。
+ * @param {FacePatch | null | undefined} patch
+ * @returns {{ left: string, top: string, width: string, height: string } | null}
+ */
+export function facePatchStyle(patch) {
+	if (!patch || !FACE_CANVAS.width || !FACE_CANVAS.height) return null;
+	const pct = (value, total) => `${Number(((value / total) * 100).toFixed(4))}%`;
+	return {
+		left: pct(patch.x, FACE_CANVAS.width),
+		top: pct(patch.y, FACE_CANVAS.height),
+		width: pct(patch.w, FACE_CANVAS.width),
+		height: pct(patch.h, FACE_CANVAS.height),
+	};
+}
+
+/**
+ * 闭区间 `[min, max]` 内取随机整数（注入 random 便于单测）。
+ * 参数顺序写反时自动交换，保证返回值总在区间内。
+ * @param {number} min
+ * @param {number} max
+ * @param {() => number} [random]
+ * @returns {number}
+ */
+export function randomBetween(min, max, random = Math.random) {
+	const lo = Math.min(min, max);
+	const hi = Math.max(min, max);
+	return lo + Math.floor(random() * (hi - lo + 1));
+}
+
 /** 衣柜里所有可展示的单品（图鉴用）。 */
 export function collectItems(manifest) {
 	const groups = [];

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.10.0 — 2026-11-02
+
+「会眨眼的纸娃娃：B1-lite 脸部叠加动画（眨眼 / 口型 / 笑眼，双身形）」。
+
+### 新特性
+
+- **运行时脸部特效层（不改 manifest/schema/构建管线）**：8 个由 Seedream 生成的透明补丁（每身形 4 个：闭眼 / 笑眼 / 口型微开 / 口型张开）；`app.js` 在 `.figure` 内插到 hair 之下（z-index = hair−1，DOM 最后插入），与 v6 drawOrder 兼容；补丁裁剪矩形/偏移常量在 `wardrobe-core.FACE_PATCHES`。
+- **行为**：随机眨眼 2–6s（闭眼 ~110ms）、气泡显示期间 ~130ms 口型循环、偶尔笑眼 20–40s（1.2s）；`prefers-reduced-motion` 默认关闭，`?facefx=0/1` 强制开关，`window.__feiyuFace` 供 QA；纯定时器切 class/opacity，无 rAF、不重建 DOM。
+- **导出策略 B**：立绘卡固定睁眼/闭嘴静态帧（实测眨眼态与睁眼态导出卡 sha256 相同）。
+- **素材/成本**：Seedream 8 张 = **$0.24 ≈ ¥1.7**（8/8 成功、0 重试、107.4s）；补丁合计 **99.0 KiB**（lossy q95，alpha 无损）；关键帧位移 **8/8 = 0.00px@675**（整像素对齐）。
+- **QA**：14 组合×2 身形×4 姿态 = 56/56 项 diff 100% 落在补丁 DOM 矩形内（最大外溢 0.9px）→ 无接缝/重影/错位；深色底 2x 放大无白边；动画开 57.9fps / 关 59.0fps、长任务 0、3s 内 `#figure` DOM 变更 0；`npm run verify` 108 → **115 tests** 全绿。
+- **文档**：`LAYER-MODEL.md` §4 补充运行时脸部特效层说明；`tests/face-animation.test.mjs` 新增 7 个测试。
+
+> 本条为 B1-lite（脸部动效）；2.5D 全绑定（C）POC 进行中，后续版本再上。
+
 ## 0.9.1 — 2026-11-02
 
 「水手服露肩修复：白底单件图配准从『浅色衬衫主体 ↔ look 白色区域』改为『领结锚点配准』」。

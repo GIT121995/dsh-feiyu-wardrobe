@@ -63,6 +63,11 @@ function isLegacyShapeFile(rel) {
 	return /^art\/(?:chibi|girl)\/(?:base|overlay)\.webp$/.test(rel);
 }
 
+/** B1-lite 脸部动画补丁：运行时特效层，由 wardrobe-core.FACE_PATCHES 引用，不进 manifest。 */
+function isFacePatch(rel) {
+	return /^art\/(?:chibi|girl)\/face\/(?:eye_blink|eye_smile|mouth_mid|mouth_open)\.webp$/.test(rel);
+}
+
 /** v5 保守范围里「无槽位后缀」的旧上衣 / 套装图层（新文件名带 -topBody/-topUnder/-sleeve 等槽位后缀）。 */
 function isLegacyBareLayer(rel) {
 	return /^art\/(?:chibi|girl)\/layers\/(?:dress-maid|top-sweater|top-hoodie|top-sailor)\.webp$/.test(rel);
@@ -265,7 +270,8 @@ test('旧 v5 字段不再被引用，旧素材文件已清理', () => {
 			.filter((value) => /^art\//.test(value)),
 	);
 	referenced.add('art/pet-default.webp'); // 悬浮鲸鱼兜底图由 lib/client.js 引用，不在 manifest 里
-	const orphans = files.filter((rel) => !referenced.has(rel));
+	// 脸部动画补丁由 wardrobe-core.FACE_PATCHES 运行时引用（不进 manifest），不算孤儿
+	const orphans = files.filter((rel) => !referenced.has(rel) && !isFacePatch(rel));
 	assert.deepEqual(orphans, [], `art/ 里不应有未被引用的文件：${orphans.join(', ')}`);
 });
 

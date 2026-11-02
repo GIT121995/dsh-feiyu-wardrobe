@@ -1,11 +1,16 @@
 import {
+	FACE_PATCH_KEYS,
+	FACE_TIMING,
 	applySelection,
 	applyShape,
 	collectItems,
 	currentBounds,
 	describeOutfit,
+	facePatchStyle,
+	facePatchesOf,
 	normalizeState,
 	randomOutfit,
+	randomBetween,
 	resolveLayers,
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；这里加版本号是为了让浏览器绕过 wardrobe-core 的旧缓存
 } from './wardrobe-core.js?v=10';
@@ -69,6 +74,32 @@ import {
 	let shelfBuiltCat = '';
 	/** @type {HTMLCanvasElement | null} */
 	let petCanvasEl = null;
+
+	/* ---------------- 脸部叠加动画状态（B1-lite） ---------------- */
+
+	/**
+	 * 脸部特效层运行时状态：只靠定时器切 class/opacity，不重建 DOM、不跑 rAF、不碰 manifest。
+	 * 补丁本身是 675×1200 画布上的裁剪矩形（透明底 WebP），由 wardrobe-core.FACE_PATCHES 描述。
+	 */
+	const face = {
+		/** @type {Record<string, HTMLImageElement>} */
+		els: {},
+		ready: false,
+		/** 当前补丁对应的身形（切身形时才重新赋值 src / 定位）。 */
+		shape: '',
+		enabled: true,
+		blinking: false,
+		smiling: false,
+		mouthTalking: false,
+		mouthOpenFrame: false,
+		blinkTimer: 0,
+		blinkOffTimer: 0,
+		smileTimer: 0,
+		smileOffTimer: 0,
+		mouthTimer: 0,
+	};
+	/** QA 冻结姿态：'' = 正常播放；'open' | 'blink' | 'smile' | 'mouthMid' | 'mouthOpen'。 */
+	let facePose = '';
 
 	/* ---------------- 工具 ---------------- */
 
@@ -328,6 +359,249 @@ import {
 		els.figure.setAttribute('aria-label', `大肥鱼：${text.name}，点一下说话`);
 	}
 
+	/* ---------------- 脸部叠加动画（B1-lite · 眨眼 / 口型 / 笑眼） ---------------- */
+
+	/**
+	 * 建脸部 overlay `<img>`：运行时特效层，不改 manifest / drawOrder / 构建管线。
+	 * 层级取 drawOrder 里 hair 的下一层（v6 契约里 hair 恒为最上层），
+	 * 于是刘海压住补丁上缘，补丁里不会出现和头发层打架的发丝。
+	 * 只在 boot 时建一次，之后只切 src / class（CSS opacity），不重建 DOM。
+	 */
+	function buildFaceLayers() {
+		const hairIndex = layerSlots.lastIndexOf('hair');
+		const zIndex = String(hairIndex > 0 ? hairIndex - 1 : layerSlots.length);
+		for (const key of FACE_PATCH_KEYS) {
+			const img = document.createElement('img');
+			img.className = 'face-layer';
+			img.dataset.face = key;
+			img.alt = '';
+			img.draggable = false;
+			img.decoding = 'async';
+			img.style.zIndex = zIndex;
+			els.figure.appendChild(img);
+			face.els[key] = img;
+		}
+		face.ready = true;
+	}
+
+	/** 按当前身形切换补丁 src + 百分比定位；同身形重复调用直接返回（换装不重设）。 */
+	function syncFaceShape() {
+		if (!face.ready || face.shape === state.shape) return;
+		const patches = facePatchesOf(state.shape);
+		if (!patches) return;
+		face.shape = state.shape;
+		for (const key of FACE_PATCH_KEYS) {
+			const img = face.els[key];
+			const patch = patches[key];
+			if (!img) continue;
+			if (!patch) {
+				img.hidden = true;
+				continue;
+			}
+			const rect = facePatchStyle(patch);
+			img.style.left = rect.left;
+			img.style.top = rect.top;
+			img.style.width = rect.width;
+			img.style.height = rect.height;
+			if (img.dataset.file !== patch.file) {
+				img.dataset.file = patch.file;
+				img.src = patch.file;
+			}
+			img.hidden = false;
+		}
+		// 切身形先回到睁眼/闭嘴静态帧，避免残留上一个身形的动画状态
+		face.blinking = false;
+		face.smiling = false;
+		face.mouthOpenFrame = false;
+		faceApply();
+	}
+
+	/** 单个补丁显隐：只切 class（CSS opacity 过渡）。 */
+	function faceToggle(key, on) {
+		const img = face.els[key];
+		if (img) img.classList.toggle('on', !!on);
+	}
+
+	/** 按状态机刷新 4 个补丁；只在状态变化 / 定时器 tick 时调用，不每帧、不读布局。 */
+	function faceApply() {
+		const on = face.enabled;
+		const pose = facePose;
+		faceToggle('eyeBlink', on && (pose ? pose === 'blink' : face.blinking && !face.smiling));
+		faceToggle('eyeSmile', on && (pose ? pose === 'smile' : face.smiling));
+		faceToggle('mouthMid', on && (pose ? pose === 'mouthMid' : face.mouthTalking && !face.mouthOpenFrame));
+		faceToggle('mouthOpen', on && (pose ? pose === 'mouthOpen' : face.mouthTalking && face.mouthOpenFrame));
+	}
+
+	/** 随机眨眼：2–6s 一次，闭眼 ~110ms（关闭时间由 CSS opacity 过渡提供）。 */
+	function scheduleBlink() {
+		clearTimeout(face.blinkTimer);
+		if (!face.enabled || facePose) return;
+		face.blinkTimer = setTimeout(() => {
+			if (!face.enabled || facePose) return;
+			if (face.smiling) {
+				scheduleBlink(); // 笑眼期间不叠加眨眼
+				return;
+			}
+			face.blinking = true;
+			faceApply();
+			face.blinkOffTimer = setTimeout(() => {
+				face.blinking = false;
+				faceApply();
+				scheduleBlink();
+			}, FACE_TIMING.blinkClose);
+		}, randomBetween(FACE_TIMING.blinkMin, FACE_TIMING.blinkMax));
+	}
+
+	/** 偶尔笑眼：20–40s 一次，持续 1.2s。 */
+	function scheduleSmile() {
+		clearTimeout(face.smileTimer);
+		if (!face.enabled || facePose) return;
+		face.smileTimer = setTimeout(() => {
+			if (!face.enabled || facePose) return;
+			face.smiling = true;
+			faceApply();
+			face.smileOffTimer = setTimeout(() => {
+				face.smiling = false;
+				faceApply();
+				scheduleSmile();
+			}, FACE_TIMING.smileHold);
+		}, randomBetween(FACE_TIMING.smileMin, FACE_TIMING.smileMax));
+	}
+
+	/** 气泡显示期间启动口型循环：~130ms 交替 mouth_mid / mouth_open。 */
+	function startMouth() {
+		if (!face.enabled || face.mouthTalking) return;
+		face.mouthTalking = true;
+		face.mouthOpenFrame = false;
+		faceApply();
+		clearInterval(face.mouthTimer);
+		face.mouthTimer = setInterval(() => {
+			face.mouthOpenFrame = !face.mouthOpenFrame;
+			faceApply();
+		}, FACE_TIMING.mouthPeriod);
+	}
+
+	function stopMouth() {
+		clearInterval(face.mouthTimer);
+		face.mouthTalking = false;
+		face.mouthOpenFrame = false;
+		if (face.ready) faceApply();
+	}
+
+	/** 总开关（reduced-motion / `?facefx=0` 可关闭）：关掉时清空全部定时器与补丁显隐。 */
+	function setFaceEnabled(enabled) {
+		face.enabled = !!enabled;
+		clearTimeout(face.blinkTimer);
+		clearTimeout(face.blinkOffTimer);
+		clearTimeout(face.smileTimer);
+		clearTimeout(face.smileOffTimer);
+		clearInterval(face.mouthTimer);
+		face.blinking = false;
+		face.smiling = false;
+		face.mouthTalking = false;
+		face.mouthOpenFrame = false;
+		if (face.enabled && !facePose) {
+			scheduleBlink();
+			scheduleSmile();
+			if (!els.bubble.hidden) startMouth();
+		}
+		if (face.ready) faceApply();
+	}
+
+	/** 启动脸部动画：预加载补丁、监听气泡显隐（口型）、跟随系统「减少动态效果」偏好。 */
+	function startFace() {
+		if (!face.ready) return;
+		// 预加载两身形补丁（各 4 张，小图），换身形时切 src 不闪
+		for (const shape of manifest.shapes) {
+			const patches = facePatchesOf(shape.id);
+			if (!patches) continue;
+			for (const key of FACE_PATCH_KEYS) {
+				if (patches[key]) preload(patches[key].file).catch(() => {});
+			}
+		}
+		// 口型跟现有气泡走：只监听 #bubble 的 hidden 属性，不改 say() 逻辑
+		const syncMouth = () => {
+			if (!face.enabled || els.bubble.hidden) stopMouth();
+			else startMouth();
+		};
+		new MutationObserver(syncMouth).observe(els.bubble, { attributes: true, attributeFilter: ['hidden'] });
+		syncMouth();
+		// 开关：?facefx=1/0 强制，否则默认跟随系统 reduced-motion
+		const forced = params.get('facefx');
+		const reduce = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+		const applyMotion = () => {
+			if (forced === '1') setFaceEnabled(true);
+			else if (forced === '0') setFaceEnabled(false);
+			else setFaceEnabled(!(reduce && reduce.matches));
+		};
+		applyMotion();
+		if (reduce && typeof reduce.addEventListener === 'function' && !forced) {
+			reduce.addEventListener('change', applyMotion);
+		}
+		/** QA / 自动化接口：冻结姿态、手动触发，正常播放不受影响。 */
+		window.__feiyuFace = {
+			timing: FACE_TIMING,
+			state: () => ({
+				ready: face.ready,
+				enabled: face.enabled,
+				pose: facePose,
+				shape: face.shape,
+				blinking: face.blinking,
+				smiling: face.smiling,
+				mouthTalking: face.mouthTalking,
+				mouthOpenFrame: face.mouthOpenFrame,
+			}),
+			setEnabled: setFaceEnabled,
+			/** 冻结到指定姿态（'open' | 'blink' | 'smile' | 'mouthMid' | 'mouthOpen'）。 */
+			freeze(pose) {
+				facePose = pose || '';
+				clearTimeout(face.blinkTimer);
+				clearTimeout(face.blinkOffTimer);
+				clearTimeout(face.smileTimer);
+				clearTimeout(face.smileOffTimer);
+				clearInterval(face.mouthTimer);
+				face.blinking = false;
+				face.smiling = false;
+				face.mouthTalking = false;
+				face.mouthOpenFrame = false;
+				faceApply();
+			},
+			unfreeze() {
+				facePose = '';
+				setFaceEnabled(face.enabled);
+			},
+			triggerBlink() {
+				if (!face.enabled || facePose) return;
+				clearTimeout(face.blinkTimer);
+				face.blinkTimer = 0;
+				face.blinking = true;
+				faceApply();
+				face.blinkOffTimer = setTimeout(() => {
+					face.blinking = false;
+					faceApply();
+					scheduleBlink();
+				}, FACE_TIMING.blinkClose);
+			},
+			triggerSmile() {
+				if (!face.enabled || facePose) return;
+				clearTimeout(face.smileTimer);
+				face.smileTimer = 0;
+				face.smiling = true;
+				faceApply();
+				face.smileOffTimer = setTimeout(() => {
+					face.smiling = false;
+					faceApply();
+					scheduleSmile();
+				}, FACE_TIMING.smileHold);
+			},
+			triggerMouth(on) {
+				if (!face.enabled || facePose) return;
+				if (on) startMouth();
+				else stopMouth();
+			},
+		};
+	}
+
 	function renderScene() {
 		const bg = currentBackground();
 		if (!bg) return;
@@ -381,6 +655,7 @@ import {
 
 	function applyState() {
 		renderFigure();
+		syncFaceShape();
 		renderScene();
 		renderMeta();
 		setEffect(state.effect);
@@ -562,6 +837,8 @@ import {
 			alert('图片还没准备好，稍等一下再试～');
 			return;
 		}
+		// 导出策略 B：立绘卡只画 resolveLayers 的静态分层，脸部特效层（眨眼/笑眼/口型）不参与导出，
+		// 保证「点一下立绘卡」在任意播放时刻都得到确定的睁眼/闭嘴静态立绘，点击路径也不多一次合成。
 		const scaleBg = Math.max(W / bgImg.width, H / bgImg.height);
 		const bw = bgImg.width * scaleBg;
 		const bh = bgImg.height * scaleBg;
@@ -849,12 +1126,14 @@ import {
 		manifest = await res.json();
 		state = normalizeState(manifest, { ...readSaved(), ...readUrlOverrides() });
 		buildFigureLayers();
+		buildFaceLayers();
 		document.title = `${manifest.character} · 大肥鱼衣橱`;
 		renderShapeToggle();
 		renderTabs();
 		setTab('outfits');
 		resizeFx();
 		applyState();
+		startFace();
 		bind();
 		startParallax();
 		if (params.has('embed')) els.tip.classList.add('gone');

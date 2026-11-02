@@ -107,6 +107,15 @@
 - 约束：点击路径里仍禁止同步 `toDataURL`；图层数从 5 增到最多 7（实际 7 槽位里通常只用到 5–6 个），
   仍然只更新变化图层，不能每帧重绘。
 
+### 4.1 运行时脸部特效层（v0.10.0，不占 manifest 槽位）
+
+- 8 个透明 WebP 补丁（`art/<shape>/face/{eye_blink,eye_smile,mouth_mid,mouth_open}.webp`，675 画布坐标的裁剪图）；
+- `app.js` 在 `.figure` 内插入 4 个 `.face-layer` img（z-index = hair−1，DOM 最后插入 → 位于 sleeve 之上、hair 之下），
+  百分比定位由 `wardrobe-core.facePatchStyle()` 从 `FACE_PATCHES` 的裁剪矩形换算；
+- 行为：随机眨眼 2–6s / 气泡驱动口型 ~130ms / 偶尔笑眼；`prefers-reduced-motion` 默认关闭，`?facefx=0/1` 强制；
+- 导出立绘卡不包含该层（固定睁眼/闭嘴，策略 B）；`tests/face-animation.test.mjs` 保证素材与纯函数回归；
+- 未来 2.5D（C）可把同一批补丁作为 head 子 drawable 的纹理帧复用。
+
 ## 5. 验收标准（v0.9.0 回测）
 
 1. 手/手臂不再消失：所有上衣×下装组合（2 身形 × 3×2）手都在裙子前面；长袖袖口正确盖住手腕、手在袖口外。
