@@ -1,0 +1,4 @@
+# 仅构建期依赖（游戏运行时零依赖；npm 包不含这些）
+pillow>=10
+numpy>=1.26
+opencv-python-headless>=4.9

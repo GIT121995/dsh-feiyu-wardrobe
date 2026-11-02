@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "title": "大肥鱼衣橱 · 换装间",
   "character": "大肥鱼 · 经典鲸鱼娘",
   "credits": "立绘 / 服装：本项目用 Seedream 5.0（火山方舟）基于自建素体生成 · 角色参考：大肥鱼社区二创（仅作风格参考，未直接使用原画）· 非官方，禁止商用",
@@ -7,112 +7,26 @@
     {
       "id": "chibi",
       "name": "Q版",
-      "desc": "大头小身子的可爱版本"
+      "desc": "大头小身子的可爱版本",
+      "base": "art/chibi/base.webp",
+      "overlay": "art/chibi/overlay.webp",
+      "bounds": {
+        "top": 0.04,
+        "bottom": 0.9725
+      }
     },
     {
       "id": "girl",
       "name": "少女版",
-      "desc": "六头身的少女比例"
+      "desc": "六头身的少女比例",
+      "base": "art/girl/base.webp",
+      "overlay": "art/girl/overlay.webp",
+      "bounds": {
+        "top": 0.0292,
+        "bottom": 0.9725
+      }
     }
   ],
-  "bounds": {
-    "art/chibi/dress-maid.webp": {
-      "top": 0.0375,
-      "bottom": 0.975
-    },
-    "art/chibi/dress-starry.webp": {
-      "top": 0.0392,
-      "bottom": 0.975
-    },
-    "art/chibi/dress-strawberry.webp": {
-      "top": 0.0367,
-      "bottom": 0.975
-    },
-    "art/chibi/dress-gothic.webp": {
-      "top": 0.0367,
-      "bottom": 0.975
-    },
-    "art/chibi/dress-forest.webp": {
-      "top": 0.0367,
-      "bottom": 0.975
-    },
-    "art/chibi/dress-sakura.webp": {
-      "top": 0.0367,
-      "bottom": 0.975
-    },
-    "art/chibi/combo-sweater-plaid.webp": {
-      "top": 0.0383,
-      "bottom": 0.975
-    },
-    "art/chibi/combo-sweater-pleated.webp": {
-      "top": 0.0375,
-      "bottom": 0.975
-    },
-    "art/chibi/combo-hoodie-plaid.webp": {
-      "top": 0.0367,
-      "bottom": 0.975
-    },
-    "art/chibi/combo-hoodie-pleated.webp": {
-      "top": 0.04,
-      "bottom": 0.975
-    },
-    "art/chibi/combo-sailor-plaid.webp": {
-      "top": 0.0367,
-      "bottom": 0.975
-    },
-    "art/chibi/combo-sailor-pleated.webp": {
-      "top": 0.0367,
-      "bottom": 0.975
-    },
-    "art/girl/dress-maid.webp": {
-      "top": 0.0283,
-      "bottom": 0.975
-    },
-    "art/girl/dress-starry.webp": {
-      "top": 0.03,
-      "bottom": 0.9708
-    },
-    "art/girl/dress-strawberry.webp": {
-      "top": 0.0292,
-      "bottom": 0.975
-    },
-    "art/girl/dress-gothic.webp": {
-      "top": 0.0283,
-      "bottom": 0.975
-    },
-    "art/girl/dress-forest.webp": {
-      "top": 0.03,
-      "bottom": 0.9742
-    },
-    "art/girl/dress-sakura.webp": {
-      "top": 0.0025,
-      "bottom": 0.975
-    },
-    "art/girl/combo-sweater-plaid.webp": {
-      "top": 0.0283,
-      "bottom": 0.975
-    },
-    "art/girl/combo-sweater-pleated.webp": {
-      "top": 0.0283,
-      "bottom": 0.975
-    },
-    "art/girl/combo-hoodie-plaid.webp": {
-      "top": 0.0283,
-      "bottom": 0.975
-    },
-    "art/girl/combo-hoodie-pleated.webp": {
-      "top": 0.0283,
-      "bottom": 0.975
-    },
-    "art/girl/combo-sailor-plaid.webp": {
-      "top": 0.0283,
-      "bottom": 0.975
-    },
-    "art/girl/combo-sailor-pleated.webp": {
-      "top": 0.0283,
-      "bottom": 0.975
-    }
-  },
   "categories": [
     {
       "id": "outfits",
@@ -157,37 +71,67 @@
         "id": "maid",
         "name": "经典女仆装",
         "desc": "她本来的样子。",
-        "icon": "art/icons/maid.webp"
+        "icon": "art/icons/maid.webp",
+        "z": 30,
+        "layer": {
+          "chibi": "art/chibi/layers/dress-maid.webp",
+          "girl": "art/girl/layers/dress-maid.webp"
+        }
       },
       {
         "id": "starry",
         "name": "星空礼服",
         "desc": "把银河穿在身上。",
-        "icon": "art/icons/starry.webp"
+        "icon": "art/icons/starry.webp",
+        "z": 30,
+        "layer": {
+          "chibi": "art/chibi/layers/dress-starry.webp",
+          "girl": "art/girl/layers/dress-starry.webp"
+        }
       },
       {
         "id": "strawberry",
         "name": "草莓蛋糕裙",
         "desc": "三层奶油，一层少女心。",
-        "icon": "art/icons/strawberry.webp"
+        "icon": "art/icons/strawberry.webp",
+        "z": 30,
+        "layer": {
+          "chibi": "art/chibi/layers/dress-strawberry.webp",
+          "girl": "art/girl/layers/dress-strawberry.webp"
+        }
       },
       {
         "id": "gothic",
         "name": "黑金哥特",
         "desc": "暗夜玫瑰，黑金蕾丝。",
-        "icon": "art/icons/gothic.webp"
+        "icon": "art/icons/gothic.webp",
+        "z": 30,
+        "layer": {
+          "chibi": "art/chibi/layers/dress-gothic.webp",
+          "girl": "art/girl/layers/dress-gothic.webp"
+        }
       },
       {
         "id": "forest",
         "name": "森系花仙",
         "desc": "把一整个春天缝进裙摆。",
-        "icon": "art/icons/forest.webp"
+        "icon": "art/icons/forest.webp",
+        "z": 30,
+        "layer": {
+          "chibi": "art/chibi/layers/dress-forest.webp",
+          "girl": "art/girl/layers/dress-forest.webp"
+        }
       },
       {
         "id": "sakura",
         "name": "樱花茶会裙",
         "desc": "花瓣落在蕾丝上，春天来啦。",
-        "icon": "art/icons/sakura.webp"
+        "icon": "art/icons/sakura.webp",
+        "z": 30,
+        "layer": {
+          "chibi": "art/chibi/layers/dress-sakura.webp",
+          "girl": "art/girl/layers/dress-sakura.webp"
+        }
       }
     ],
     "tops": [
@@ -195,19 +139,34 @@
         "id": "sweater",
         "name": "白色高领毛衣",
         "desc": "软乎乎的，像一条围巾。",
-        "icon": "art/icons/sweater.webp"
+        "icon": "art/icons/sweater.webp",
+        "z": 30,
+        "layer": {
+          "chibi": "art/chibi/layers/top-sweater.webp",
+          "girl": "art/girl/layers/top-sweater.webp"
+        }
       },
       {
         "id": "hoodie",
         "name": "白色连帽卫衣",
         "desc": "宽宽松松，把自己藏进去。",
-        "icon": "art/icons/hoodie.webp"
+        "icon": "art/icons/hoodie.webp",
+        "z": 30,
+        "layer": {
+          "chibi": "art/chibi/layers/top-hoodie.webp",
+          "girl": "art/girl/layers/top-hoodie.webp"
+        }
       },
       {
         "id": "sailor",
         "name": "水手服上衣",
         "desc": "海风味的日常。",
-        "icon": "art/icons/sailor.webp"
+        "icon": "art/icons/sailor.webp",
+        "z": 30,
+        "layer": {
+          "chibi": "art/chibi/layers/top-sailor.webp",
+          "girl": "art/girl/layers/top-sailor.webp"
+        }
       }
     ],
     "bottoms": [
@@ -215,13 +174,23 @@
         "id": "plaid",
         "name": "格纹百褶裙",
         "desc": "校园里最普通也最好看的那条。",
-        "icon": "art/icons/plaid.webp"
+        "icon": "art/icons/plaid.webp",
+        "z": 20,
+        "layer": {
+          "chibi": "art/chibi/layers/bottom-plaid.webp",
+          "girl": "art/girl/layers/bottom-plaid.webp"
+        }
       },
       {
         "id": "pleated",
         "name": "深蓝百褶裙",
         "desc": "转一圈，裙摆会开成花。",
-        "icon": "art/icons/pleated.webp"
+        "icon": "art/icons/pleated.webp",
+        "z": 20,
+        "layer": {
+          "chibi": "art/chibi/layers/bottom-pleated.webp",
+          "girl": "art/girl/layers/bottom-pleated.webp"
+        }
       }
     ],
     "backgrounds": [

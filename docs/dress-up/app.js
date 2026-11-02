@@ -6,8 +6,9 @@ import {
 	describeOutfit,
 	normalizeState,
 	randomOutfit,
-	resolveImage,
-} from './wardrobe-core.js';
+	resolveLayers,
+	// @ts-ignore tsc 不认识带 ?v= 的模块路径；这里加版本号是为了让浏览器绕过 wardrobe-core 的旧缓存
+} from './wardrobe-core.js?v=8';
 
 (() => {
 	'use strict';
@@ -16,13 +17,20 @@ import {
 	const STORAGE_KEY = 'feiyu:outfit';
 	const params = new URLSearchParams(location.search);
 
+	/** 图层栈的 5 个固定槽位（与 resolveLayers 的 kind 一一对应）。 */
+	const LAYER_SLOTS = ['base', 'bottom', 'top', 'outfit', 'overlay'];
+	/** 悬浮小鲸鱼用的小图尺寸（9:16，与旧整套立绘同构）。 */
+	const PET_IMAGE_W = 184;
+	const PET_IMAGE_H = 328;
+
 	const els = {
 		stage: $('#stage'),
 		scene: $('#scene'),
 		figureWrap: $('#figureWrap'),
 		figureShadow: $('#figureShadow'),
 		figure: $('#figure'),
-		figureImg: $('#figureImg'),
+		/** @type {Record<string, HTMLImageElement>} */
+		figureLayers: {},
 		fx: $('#fx'),
 		bubble: $('#bubble'),
 		tip: $('#stageTip'),
@@ -36,11 +44,23 @@ import {
 		sheetStat: $('#sheetStat'),
 		canvas: $('#exportCanvas'),
 	};
+	for (const slot of LAYER_SLOTS) {
+		els.figureLayers[slot] = /** @type {HTMLImageElement} */ (document.querySelector(`.figure-layer[data-layer="${slot}"]`));
+	}
 
 	let manifest = null;
 	let state = null;
 	let tab = 'outfits';
+	/** 图片加载缓存：src → Promise<HTMLImageElement> */
 	const cache = new Map();
+	/** 已加载完成的图片：src → HTMLImageElement（合成小图时可以同步取用） */
+	const loaded = new Map();
+	/** 图层渲染序号：快速连续换装时，只让最新一次渲染落地，避免旧图后到覆盖新图。 */
+	let renderSeq = 0;
+	/** persist 序号：只让最新一次穿搭落盘。 */
+	let persistSeq = 0;
+	/** @type {HTMLCanvasElement | null} */
+	let petCanvasEl = null;
 
 	/* ---------------- 工具 ---------------- */
 
@@ -60,15 +80,30 @@ import {
 		return findItem('effects', state.effect) || category('effects')[0];
 	}
 
+	/**
+	 * 预加载图片（带缓存；失败时从缓存移除，允许稍后重试）。
+	 * @param {string} src
+	 * @returns {Promise<HTMLImageElement | null>}
+	 */
 	function preload(src) {
 		if (!src) return Promise.resolve(null);
+		if (loaded.has(src)) return Promise.resolve(loaded.get(src));
 		if (!cache.has(src)) {
-			cache.set(src, new Promise((resolve, reject) => {
-				const img = new Image();
-				img.onload = () => resolve(img);
-				img.onerror = reject;
-				img.src = src;
-			}));
+			cache.set(
+				src,
+				new Promise((resolve, reject) => {
+					const img = new Image();
+					img.onload = () => {
+						loaded.set(src, img);
+						resolve(img);
+					};
+					img.onerror = () => {
+						cache.delete(src);
+						reject(new Error(`图片加载失败：${src}`));
+					};
+					img.src = src;
+				}),
+			);
 		}
 		return cache.get(src);
 	}
@@ -81,27 +116,138 @@ import {
 		}
 	}
 
-	function persist() {
-		const image = resolveImage(manifest, state);
+	/**
+	 * 当前穿搭的兜底小图（图层小图还没合成好时用素体顶上）。
+	 * @param {string} shapeId
+	 * @returns {string}
+	 */
+	function petFallbackImage(shapeId) {
+		const shape = manifest.shapes.find((entry) => entry.id === shapeId) || manifest.shapes[0];
+		return (shape && shape.base) || 'art/chibi/base.webp';
+	}
+
+	/** 小图合公用 canvas（透明背景，不显示在页面上）。 */
+	function petCanvas() {
+		if (!petCanvasEl) {
+			petCanvasEl = document.createElement('canvas');
+			petCanvasEl.width = PET_IMAGE_W;
+			petCanvasEl.height = PET_IMAGE_H;
+		}
+		return petCanvasEl;
+	}
+
+	/**
+	 * 若图层图片都已加载，同步把当前穿搭合成为小图 data URL；否则返回空串。
+	 * 图层共用同一张 675×1200 画布坐标，直接整幅缩放叠放即可，不需要任何锚点。
+	 * @param {Array<{ file: string }>} layers
+	 * @returns {string}
+	 */
+	function composePetImageNow(layers) {
+		const images = [];
+		for (const layer of layers) {
+			if (!layer.file) continue;
+			const img = loaded.get(layer.file);
+			if (!img) return '';
+			images.push(img);
+		}
+		const canvas = petCanvas();
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return '';
+		ctx.clearRect(0, 0, PET_IMAGE_W, PET_IMAGE_H);
+		for (const img of images) ctx.drawImage(img, 0, 0, PET_IMAGE_W, PET_IMAGE_H);
 		try {
-			localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...state, image, updatedAt: Date.now() }));
+			return canvas.toDataURL('image/webp', 0.85);
 		} catch {
-			/* 隐身模式忽略 */
+			return '';
 		}
 	}
 
-	/* ---------------- 舞台 ---------------- */
+	/**
+	 * 把穿搭写进 localStorage 给悬浮小鲸鱼用。
+	 * image 是合成好的小图 data URL（readOutfit 同时接受 art/ 路径兜底）。
+	 * @param {Record<string, string>} snapshot 穿搭状态快照
+	 * @param {string} [image] 合成好的小图 data URL；为空时用素体兜底
+	 */
+	function writeOutfit(snapshot, image) {
+		try {
+			localStorage.setItem(
+				STORAGE_KEY,
+				JSON.stringify({ ...snapshot, image: image || petFallbackImage(snapshot.shape), updatedAt: Date.now() }),
+			);
+		} catch {
+			/* 隐身模式 / 配额不足时忽略 */
+		}
+	}
 
-	function swapFigure() {
-		const file = resolveImage(manifest, state);
-		const alt = describeOutfit(manifest, state).name;
-		els.figureImg.classList.add('fading');
-		const apply = () => {
-			els.figureImg.src = file;
-			els.figureImg.alt = alt;
-			requestAnimationFrame(() => els.figureImg.classList.remove('fading'));
-		};
-		preload(file).then(apply, apply);
+	/**
+	 * 保存当前穿搭：除各槽位字段外，把当前图层合成成一张小图（184×328）存进 `image`，
+	 * 悬浮小鲸鱼直接显示它，不用自己去叠图层。
+	 */
+	function persist() {
+		const seq = (persistSeq += 1);
+		const snapshot = { ...state };
+		const layers = resolveLayers(manifest, snapshot);
+		const image = composePetImageNow(layers);
+		if (image) {
+			writeOutfit(snapshot, image);
+			return;
+		}
+		// 冷启动时图层还没加载完：先写一份同步数据（image 兜底素体），加载完再补合成图
+		writeOutfit(snapshot, '');
+		Promise.all(layers.map((layer) => (layer.file ? preload(layer.file) : null))).then(
+			() => {
+				if (seq !== persistSeq) return;
+				writeOutfit(snapshot, composePetImageNow(resolveLayers(manifest, snapshot)));
+			},
+			() => {
+				/* 图层加载失败：保留兜底小图 */
+			},
+		);
+	}
+
+	/* ---------------- 人物图层栈 ---------------- */
+
+	/**
+	 * 按 `resolveLayers` 把变化过的槽位换成新图；未变化的槽位不重建、不重新赋值。
+	 * 隐藏当前穿搭用不到的槽位（套装与上下装互斥，槽位数量固定为 5 个）。
+	 */
+	function renderFigure() {
+		const seq = (renderSeq += 1);
+		const layers = resolveLayers(manifest, state);
+		/** @type {Map<string, { file: string, z: number }>} */
+		const byKind = new Map();
+		for (const layer of layers) {
+			if (layer.file) byKind.set(layer.kind, layer);
+		}
+		for (const slot of LAYER_SLOTS) {
+			const el = els.figureLayers[slot];
+			if (!el) continue;
+			const layer = byKind.get(slot);
+			if (!layer) {
+				el.hidden = true;
+				continue;
+			}
+			el.style.zIndex = String(layer.z);
+			if (el.dataset.file === layer.file && el.getAttribute('src')) {
+				el.hidden = false;
+				continue; // 未变化：什么都不动
+			}
+			el.dataset.file = layer.file;
+			preload(layer.file).then(
+				(img) => {
+					if (seq !== renderSeq || el.dataset.file !== layer.file) return; // 已被更新的渲染取代
+					el.src = layer.file;
+					el.alt = slot === 'base' ? '大肥鱼' : '';
+					el.hidden = false;
+				},
+				() => {
+					console.warn(`[衣橱] 图层加载失败：${layer.file}`);
+					if (seq === renderSeq) el.hidden = true;
+				},
+			);
+		}
+		const text = describeOutfit(manifest, state);
+		els.figure.setAttribute('aria-label', `大肥鱼：${text.name}，点一下说话`);
 	}
 
 	function renderScene() {
@@ -145,7 +291,7 @@ import {
 	}
 
 	function applyState() {
-		swapFigure();
+		renderFigure();
 		renderScene();
 		renderMeta();
 		setEffect(state.effect);
@@ -286,15 +432,20 @@ import {
 	async function saveCard() {
 		const canvas = els.canvas;
 		const ctx = canvas.getContext('2d');
+		if (!ctx) return;
 		const W = canvas.width;
 		const H = canvas.height;
 		const bg = currentBackground();
-		const file = resolveImage(manifest, state);
+		const layers = resolveLayers(manifest, state);
 		const bounds = currentBounds(manifest, state);
 		let bgImg;
-		let figImg;
+		/** @type {Map<string, HTMLImageElement>} */
+		const layerImgs = new Map();
 		try {
-			[bgImg, figImg] = await Promise.all([preload(bg.file), preload(file)]);
+			bgImg = /** @type {HTMLImageElement} */ (await preload(bg.file));
+			const files = layers.map((layer) => layer.file).filter(Boolean);
+			const imgs = await Promise.all(files.map((file) => preload(file)));
+			files.forEach((file, index) => layerImgs.set(file, /** @type {HTMLImageElement} */ (imgs[index])));
 		} catch {
 			alert('图片还没准备好，稍等一下再试～');
 			return;
@@ -302,19 +453,26 @@ import {
 		const scaleBg = Math.max(W / bgImg.width, H / bgImg.height);
 		const bw = bgImg.width * scaleBg;
 		const bh = bgImg.height * scaleBg;
+		ctx.clearRect(0, 0, W, H);
 		ctx.drawImage(bgImg, (W - bw) / 2, (H - bh) / 2, bw, bh);
 		ctx.fillStyle = 'rgba(255,255,255,0.08)';
 		ctx.fillRect(0, 0, W, H);
 
-		// 立绘：按内容边界铺满卡片主体区域
+		// 人物：所有图层共用同一张画布坐标，按 z 序在同一个矩形里依次 drawImage
+		const baseLayer = layers.find((layer) => layer.kind === 'base');
+		const baseImg = baseLayer ? layerImgs.get(baseLayer.file) : null;
+		const ratio = baseImg && baseImg.width && baseImg.height ? baseImg.width / baseImg.height : 9 / 16;
 		const areaTop = H * 0.035;
 		const areaBottom = H * 0.86;
 		const usable = Math.max(0.2, bounds.bottom - bounds.top);
-		const figH = ((areaBottom - areaTop) / usable);
-		const figW = figH * (figImg.width / figImg.height);
+		const figH = (areaBottom - areaTop) / usable;
+		const figW = figH * ratio;
 		const fx0 = (W - figW) / 2;
 		const fy0 = areaTop - bounds.top * figH;
-		ctx.drawImage(figImg, fx0, fy0, figW, figH);
+		for (const layer of layers) {
+			const img = layerImgs.get(layer.file);
+			if (img) ctx.drawImage(img, fx0, fy0, figW, figH);
+		}
 
 		const grad = ctx.createLinearGradient(0, H * 0.62, 0, H);
 		grad.addColorStop(0, 'rgba(20,12,45,0)');
@@ -375,8 +533,7 @@ import {
 				els.sheetBody.appendChild(cell);
 			}
 		}
-		els.sheetStat.textContent =
-			`共 ${total} 件 · 两种身形（Q版 / 少女版）· 角色：${manifest.character}`;
+		els.sheetStat.textContent = `共 ${total} 件 · 两种身形（Q版 / 少女版）· 角色：${manifest.character}`;
 		const credit = document.createElement('p');
 		credit.className = 'sheet-credit';
 		credit.textContent = manifest.credits || '';
@@ -512,7 +669,8 @@ import {
 			}
 		});
 		window.addEventListener('keydown', (event) => {
-			if (event.target && /INPUT|TEXTAREA/.test(event.target.tagName)) return;
+			const target = event.target;
+			if (target instanceof HTMLElement && /INPUT|TEXTAREA/.test(target.tagName)) return;
 			if (event.key === 'ArrowRight') {
 				state = applySelection(manifest, state, 'outfits', cycle('outfits', 1));
 				applyState();
@@ -562,9 +720,9 @@ import {
 
 	function readUrlOverrides() {
 		const raw = {};
-		for (const category of manifest.categories) {
-			const value = params.get(category.stateKey);
-			if (value) raw[category.stateKey] = value;
+		for (const entry of manifest.categories) {
+			const value = params.get(entry.stateKey);
+			if (value) raw[entry.stateKey] = value;
 		}
 		const shape = params.get('shape');
 		if (shape) raw.shape = shape;

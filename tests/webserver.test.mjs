@@ -77,7 +77,7 @@ test('serves scripts, styles and webp art with the right mime types', async () =
 		[`${DRESS_UP_ENTRY}app.js`, /text\/javascript/],
 		[`${DRESS_UP_ENTRY}style.css`, /text\/css/],
 		[`${DRESS_UP_ENTRY}manifest.json`, /application\/json/],
-		[`${DRESS_UP_ENTRY}art/chibi/dress-maid.webp`, /image\/webp/],
+		[`${DRESS_UP_ENTRY}art/chibi/base.webp`, /image\/webp/],
 	]) {
 		const res = await hit(handler, 'GET', url);
 		assert.equal(res.statusCode, 200, url);
@@ -89,7 +89,7 @@ test('serves scripts, styles and webp art with the right mime types', async () =
 
 test('HEAD answers the headers without a body', async () => {
 	const handler = createDressUpHandler(ROOT);
-	const res = await hit(handler, 'HEAD', `${DRESS_UP_ENTRY}art/chibi/dress-maid.webp`);
+	const res = await hit(handler, 'HEAD', `${DRESS_UP_ENTRY}art/chibi/base.webp`);
 	assert.equal(res.statusCode, 200);
 	assert.equal(res.body, undefined);
 	assert.ok(Number(res.headers['content-length']) > 0);

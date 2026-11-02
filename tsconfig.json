@@ -12,5 +12,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["lib/**/*.js", "bin/**/*.mjs"]
+  "include": ["lib/**/*.js", "bin/**/*.mjs", "docs/dress-up/wardrobe-core.js"]
 }
