@@ -15,14 +15,44 @@ import {
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；这里加版本号是为了让浏览器绕过 wardrobe-core 的旧缓存
 } from './wardrobe-core.js?v=11';
 import { createDiy } from './diy-ui.js?v=11';
+import {
+	ACTION_SPECS,
+	actionParams,
+	feedLines,
+	hitZone,
+	moodFacePlan,
+	pickLine,
+} from './interaction-model.js?v=12';
 
 (() => {
 	'use strict';
 
 	const $ = (sel) => document.querySelector(sel);
 	const STORAGE_KEY = 'feiyu:outfit';
+	/** 渲染方式用户选择（M3：'dom' 分层纸娃娃 | '2d5' WebGL2 动态；默认不写）。 */
+	const RENDER_STORAGE_KEY = 'feiyu:render';
+	/** 2.5D runtime 模块与资产根（未开启 2.5D 时不会 import / 不会发请求）。 */
+	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=13';
+	const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/';
+	/** 2.5D 资产版本（图集/rig 的 fetch 查询串；v1.0.0 升级后避免吃旧缓存）。 */
+	const RUNTIME_2D5_ASSET_VERSION = '13';
 	const params = new URLSearchParams(location.search);
 
+	/** M5 互动控制器状态（宿主状态为唯一真相；local = 静态托管降级）。 */
+	const interaction = {
+		enabled: false,
+		host: null,
+		summary: null,
+		mode: 'local',
+		inFlight: false,
+		recentLines: [],
+		action: null,
+		idleTimer: 0,
+		moodTimer: 0,
+		reducedMotion: false,
+		lastGreetDay: null,
+	};
+	const INTERACTION_TIMEOUT_MS = 2500;
 	/** 图层槽位（v6 起由 manifest.drawOrder 决定，boot 时动态建 <img>，不再写死）。 */
 	/** @type {string[]} */
 	let layerSlots = [];
@@ -50,6 +80,16 @@ import { createDiy } from './diy-ui.js?v=11';
 		sheetBody: $('#sheetBody'),
 		sheetStat: $('#sheetStat'),
 		canvas: $('#exportCanvas'),
+		interactionHud: $('#interactionHud'),
+		moodHud: $('#moodHud'),
+		affinityHud: $('#affinityHud'),
+		coinsHud: $('#coinsHud'),
+		moodFace: $('#moodFace'),
+		patBtn: $('#patBtn'),
+		feedSmallBtn: $('#feedSmallBtn'),
+		feedBigBtn: $('#feedBigBtn'),
+		interactionNote: $('#interactionNote'),
+		interactionLocal: $('#interactionLocal'),
 	};
 
 	let manifest = null;
@@ -76,6 +116,31 @@ import { createDiy } from './diy-ui.js?v=11';
 	let shelfBuiltCat = '';
 	/** @type {HTMLCanvasElement | null} */
 	let petCanvasEl = null;
+
+	/* ---------------- 渲染方式状态（M3：DOM 分层纸娃娃 / 2.5D canvas） ---------------- */
+
+	/** 当前渲染方式：'dom' | '2d5'。 */
+	let renderMode = 'dom';
+	/** 页面请求的模式（config / URL / 本地选择解析结果）与来源。 */
+	let renderRequested = 'dom';
+	let renderSource = 'default';
+	/** 2.5D runtime 实例 / canvas / 启动 promise（未开启时全部为 null）。 */
+	/** @type {any} */
+	let render2d5 = null;
+	/** @type {HTMLCanvasElement | null} */
+	let render2d5Canvas = null;
+	/** @type {Promise<any> | null} */
+	let render2d5Starting = null;
+	let render2d5Loading = false;
+	/** 2.5D 启动/运行失败原因（回退到 DOM 后展示）。 */
+	let render2d5Fallback = '';
+	/** 切身形/换装并发序号：只让最新一次同步落地。 */
+	let render2d5Seq = 0;
+	/** DOM 脸部动画是否已启动（2.5D 模式下按需延后）。 */
+	let faceStarted = false;
+	/** @type {MediaQueryList | null} */
+	let faceReduceMotion = null;
+	let talk2d5Timer = 0;
 
 	/* ---------------- 脸部叠加动画状态（B1-lite） ---------------- */
 
@@ -223,6 +288,16 @@ import { createDiy } from './diy-ui.js?v=11';
 	 * @returns {Promise<string>}
 	 */
 	async function composePetImage(layers) {
+		// 2.5D 模式：直接取当前 canvas 帧（透明底）缩成小图；失败再退回 DOM 合成
+		if (renderMode === '2d5' && render2d5) {
+			const image2d5 = render2d5.toDataURL({
+				width: PET_IMAGE_W,
+				height: PET_IMAGE_H,
+				type: 'image/webp',
+				quality: 0.85,
+			});
+			if (image2d5) return image2d5;
+		}
 		const files = layers.map((layer) => layer.file).filter(Boolean);
 		if (!files.length) return '';
 		try {
@@ -255,9 +330,9 @@ import { createDiy } from './diy-ui.js?v=11';
 		}
 	}
 
-	/** 穿搭签名：决定是否需要重新写 localStorage / 重新合成小图。 */
+	/** 穿搭签名：决定是否需要重新写 localStorage / 重新合成小图（渲染方式也计入，2.5D 小图不同）。 */
 	function outfitKey(snapshot) {
-		return `${snapshot.shape}|${snapshot.outfit}|${snapshot.top}|${snapshot.bottom}|${snapshot.bg}|${snapshot.effect}`;
+		return `${snapshot.shape}|${snapshot.outfit}|${snapshot.top}|${snapshot.bottom}|${snapshot.bg}|${snapshot.effect}|${renderMode}`;
 	}
 
 	/**
@@ -285,6 +360,340 @@ import { createDiy } from './diy-ui.js?v=11';
 				setTimeout(run, 16);
 			}
 		}, 250);
+	}
+
+	/* ---------------- 渲染方式控制（M3：2.5D opt-in） ---------------- */
+
+	// 渲染模式决策的内联精简版：app.js 不静态 import runtime-2d5-core.js，
+	// 保证默认 DOM 模式下「零新增请求」（策略逻辑另有一份在 runtime-2d5-core.js，node 单测覆盖）。
+	/** 渲染模式合法值。 */
+	const RENDER_MODE_VALUES = ['dom', '2d5', 'auto'];
+
+	/** @param {unknown} value @returns {'dom'|'2d5'|'auto'|null} */
+	function parseRenderMode(value) {
+		if (typeof value !== 'string') return null;
+		const normalized = value.trim().toLowerCase();
+		return RENDER_MODE_VALUES.includes(normalized) ? /** @type {any} */ (normalized) : null;
+	}
+
+	/**
+	 * 渲染模式决策：URL > 本地用户选择 > 宿主配置 > 默认 dom；auto 按能力解析。
+	 * @param {{ config?: unknown, url?: unknown, stored?: unknown, capable?: any }} options
+	 * @returns {{ mode: 'dom'|'2d5', requested: 'dom'|'2d5'|'auto', source: string, reason: string }}
+	 */
+	function resolveRenderMode(options = {}) {
+		const capable = options.capable || {};
+		const resolveAuto = () => {
+			if (!capable.webgl2) return { mode: 'dom', reason: 'webgl2-unavailable' };
+			if (capable.reducedMotion) return { mode: 'dom', reason: 'prefers-reduced-motion' };
+			if (Number.isFinite(capable.deviceMemory) && capable.deviceMemory > 0 && capable.deviceMemory < 2) {
+				return { mode: 'dom', reason: 'low-device-memory' };
+			}
+			return { mode: '2d5', reason: 'capable' };
+		};
+		for (const [source, requested] of [
+			['url', parseRenderMode(options.url)],
+			['stored', parseRenderMode(options.stored)],
+			['config', parseRenderMode(options.config)],
+		]) {
+			if (!requested) continue;
+			if (requested === 'auto') {
+				const auto = resolveAuto();
+				return { mode: auto.mode, requested, source, reason: auto.reason };
+			}
+			return { mode: requested, requested, source, reason: 'explicit' };
+		}
+		return { mode: 'dom', requested: 'dom', source: 'default', reason: 'default-dom' };
+	}
+
+	/** 探测 2.5D 能力（WebGL2 / 减少动态 / 设备内存）；auto 模式用。 */
+	let cachedRenderCapabilities = null;
+
+	/**
+	 * 探测 2.5D 能力（WebGL2 / 减少动态 / 设备内存）；auto 模式用，结果缓存。
+	 * 探测用的临时 canvas/WebGL2 context 会在探测后立即 loseContext 并丢弃，
+	 * 不把「能力探测 context」留在页面里（避免每次进入 2.5D 多占一个 context）。
+	 */
+	function probeRenderCapabilities() {
+		if (cachedRenderCapabilities) return cachedRenderCapabilities;
+		let webgl2 = false;
+		try {
+			const probe = document.createElement('canvas');
+			const context = probe.getContext('webgl2');
+			if (context) {
+				webgl2 = true;
+				const lose = context.getExtension('WEBGL_lose_context');
+				if (lose && typeof lose.loseContext === 'function') lose.loseContext();
+			}
+			probe.width = 0;
+			probe.height = 0;
+		} catch {
+			webgl2 = false;
+		}
+		const reduce = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+		cachedRenderCapabilities = {
+			webgl2,
+			reducedMotion: !!(reduce && reduce.matches),
+			deviceMemory: Number(navigator.deviceMemory) || null,
+			hardwareConcurrency: Number(navigator.hardwareConcurrency) || null,
+		};
+		return cachedRenderCapabilities;
+	}
+
+	/** 2.5D runtime 需要的设备信息（不创建探测 context）。 */
+	function renderDeviceInfo() {
+		return {
+			deviceMemory: Number(navigator.deviceMemory) || null,
+			hardwareConcurrency: Number(navigator.hardwareConcurrency) || null,
+		};
+	}
+
+	function readStoredRenderMode() {
+		try {
+			return localStorage.getItem(RENDER_STORAGE_KEY);
+		} catch {
+			return null;
+		}
+	}
+
+	function writeStoredRenderMode(mode) {
+		try {
+			localStorage.setItem(RENDER_STORAGE_KEY, mode);
+		} catch {
+			/* 隐身模式 / 配额不足时忽略 */
+		}
+	}
+
+	/**
+	 * 读宿主配置 `render-config.json`（由 lib/webserver.js 提供）。
+	 * 静态托管（GitHub Pages / 本地 http.server）没有该文件时 404 → 回退 'dom'，不报错。
+	 * @returns {Promise<'dom'|'2d5'|'auto'>}
+	 */
+	async function readHostRenderConfig() {
+		return (await readHostConfig()).render;
+	}
+
+	/**
+	 * 读宿主配置（render-config.json v2）：渲染默认值 + M5 互动端点。
+	 * 旧宿主（v1/无 interaction 段）→ interaction.enabled=false，页面 local-only。
+	 */
+	async function readHostConfig() {
+		const fallback = { render: 'dom', interaction: { enabled: false } };
+		try {
+			const response = await fetch('render-config.json', { cache: 'no-store' });
+			if (!response.ok) return fallback;
+			const data = await response.json();
+			const render = parseRenderMode(data && data.render) || 'dom';
+			const raw = data && typeof data.interaction === 'object' ? data.interaction : null;
+			const enabled = !!(
+				raw &&
+				raw.enabled !== false &&
+				typeof raw.stateUrl === 'string' &&
+				typeof raw.actionUrl === 'string'
+			);
+			return {
+				render,
+				interaction: enabled
+					? { enabled: true, stateUrl: raw.stateUrl, actionUrl: raw.actionUrl }
+					: { enabled: false },
+			};
+		} catch {
+			return fallback;
+		}
+	}
+
+	/** 刷新渲染方式按钮（文案/提示/加载态/回退原因）。 */
+	function updateRenderButton() {
+		const button = $('#renderBtn');
+		if (!button) return;
+		button.classList.toggle('loading', render2d5Loading);
+		if (render2d5Loading) {
+			button.textContent = '⏳ 2.5D';
+			button.title = '2.5D 资产加载中…';
+			return;
+		}
+		if (renderMode === '2d5') {
+			button.textContent = '🎨 DOM';
+			button.title = '切回分层纸娃娃（DOM 渲染）';
+			button.classList.add('active');
+			button.setAttribute('aria-pressed', 'true');
+		} else {
+			button.textContent = '🧊 2.5D';
+			button.title = render2d5Fallback
+				? `2.5D 不可用（${render2d5Fallback}），点击重试`
+				: '切到 2.5D 动态渲染（实验：WebGL2，按需加载）';
+			button.classList.remove('active');
+			button.setAttribute('aria-pressed', 'false');
+		}
+	}
+
+	/**
+	 * 懒加载 2.5D runtime：只有真正要进 2.5D 时才 import 模块、建 canvas、拉资产
+	 * （默认 DOM 模式下这里不会执行，因此零新增请求）。
+	 * @returns {Promise<any>}
+	 */
+	function ensureRuntime2d5() {
+		if (render2d5) return Promise.resolve(render2d5);
+		if (render2d5Starting) return render2d5Starting;
+		render2d5Loading = true;
+		updateRenderButton();
+		render2d5Starting = (async () => {
+			const module = await import(RUNTIME_2D5_MODULE);
+			if (!render2d5Canvas) {
+				render2d5Canvas = document.createElement('canvas');
+				render2d5Canvas.className = 'figure-2d5';
+				render2d5Canvas.setAttribute('aria-hidden', 'true');
+				render2d5Canvas.addEventListener('click', onFigureTap);
+				els.figureWrap.appendChild(render2d5Canvas);
+			}
+			const runtime = await module.createRuntime2D5({
+				canvas: render2d5Canvas,
+				assetRoot: RUNTIME_2D5_ASSET_ROOT,
+				assetVersion: RUNTIME_2D5_ASSET_VERSION,
+				quality: 'auto',
+				device: renderDeviceInfo(),
+				onContextLost: () => {
+					// 启动失败时主动 destroy() 也会触发 context lost：只处理已就绪 runtime 的异常
+					if (render2d5 !== runtime) return;
+					render2d5Fallback = 'webglcontextlost';
+					if (renderMode === '2d5') applyRenderMode('dom');
+				},
+			});
+			try {
+				await runtime.setShape(state.shape);
+				runtime.setLook({ outfit: state.outfit, top: state.top, bottom: state.bottom });
+				runtime.renderFrame();
+			} catch (err) {
+				runtime.destroy();
+				throw err;
+			}
+			render2d5 = runtime;
+			document.addEventListener('visibilitychange', sync2d5Visibility);
+			return runtime;
+		})().catch((err) => {
+			// 启动失败：销毁 canvas（其 WebGL context 已 lose），允许下次点击重试
+			if (render2d5Canvas && render2d5Canvas.parentNode) render2d5Canvas.parentNode.removeChild(render2d5Canvas);
+			render2d5Canvas = null;
+			throw err;
+		}).finally(() => {
+			render2d5Starting = null;
+			render2d5Loading = false;
+			updateRenderButton();
+		});
+		return render2d5Starting;
+	}
+
+	/** 把页面状态同步到 2.5D runtime（身形按需加载、造型动态组合、状态保留）。 */
+	function sync2d5() {
+		if (!render2d5 || renderMode !== '2d5') return;
+		const seq = (render2d5Seq += 1);
+		const shape = state.shape;
+		render2d5.setShape(shape).then((result) => {
+			if (seq !== render2d5Seq || renderMode !== '2d5') return;
+			if (result && result.stale) return;
+			render2d5.setLook({ outfit: state.outfit, top: state.top, bottom: state.bottom });
+			render2d5.renderFrame();
+		}).catch((err) => {
+			console.warn('[衣橱] 2.5D 切换失败', err);
+			render2d5Fallback = err instanceof Error ? err.message : String(err);
+			applyRenderMode('dom');
+		});
+	}
+
+	/** 页面隐藏时暂停 2.5D 渲染循环（省电；恢复时从当前状态继续）。 */
+	function sync2d5Visibility() {
+		if (render2d5) render2d5.setPaused(document.hidden);
+	}
+
+	/**
+	 * 切换渲染方式（'dom' | '2d5'）。
+	 * - 2.5D 资产加载完成后才交叉淡入（背景/特效不动 → 无闪白）；失败保持 DOM 并记录原因；
+	 * - DOM ↔ 2.5D 共用同一份穿搭状态（state），切换不重置身形/穿搭/背景/特效。
+	 * @param {'dom'|'2d5'} mode
+	 * @param {{ persist?: boolean, force?: boolean }} [options]
+	 * @returns {Promise<'dom'|'2d5'>}
+	 */
+	async function applyRenderMode(mode, options = {}) {
+		const requested = mode === '2d5' ? '2d5' : 'dom';
+		if (options.persist) writeStoredRenderMode(requested);
+		if (requested === '2d5') {
+			if (renderMode === '2d5' && render2d5) {
+				updateRenderButton();
+				return '2d5';
+			}
+			els.tip.textContent = '2.5D 加载中…';
+			els.tip.classList.remove('gone');
+			try {
+				await ensureRuntime2d5();
+			} catch (err) {
+				render2d5Fallback = err instanceof Error ? err.message : String(err);
+				console.warn('[衣橱] 2.5D 启动失败，保持分层纸娃娃', err);
+				renderMode = 'dom';
+				renderFigure();
+				syncFaceShape();
+				startFace();
+				applyFaceMotionPreference();
+				lastPersistKey = '';
+				applyState();
+				updateRenderButton();
+				els.tip.textContent = '2.5D 暂不可用，已保持分层纸娃娃';
+				els.tip.classList.remove('gone');
+				return 'dom';
+			}
+			renderMode = '2d5';
+			render2d5Fallback = '';
+			render2d5.freeze(false); // 若之前为 QA 冻结，切回 2.5D 时恢复播放
+			render2d5.renderFrame();
+			render2d5.start();
+			if (render2d5Canvas) render2d5Canvas.classList.add('on');
+			els.figure.classList.add('figure-dim');
+			els.figure.setAttribute('aria-hidden', 'true');
+			setFaceEnabled(false);
+			els.tip.classList.add('gone');
+			lastPersistKey = '';
+			applyState();
+			updateRenderButton();
+			return '2d5';
+		}
+		// 切回 DOM
+		const previous = renderMode;
+		renderMode = 'dom';
+		if (previous === '2d5' && render2d5) {
+			if (render2d5Canvas) render2d5Canvas.classList.remove('on');
+			els.figure.classList.remove('figure-dim');
+			els.figure.removeAttribute('aria-hidden');
+			renderFigure();
+			syncFaceShape();
+			const runtime = render2d5;
+			setTimeout(() => {
+				if (renderMode === 'dom') runtime.stop();
+			}, 320);
+		}
+		startFace();
+		applyFaceMotionPreference();
+		lastPersistKey = '';
+		applyState();
+		updateRenderButton();
+		return 'dom';
+	}
+
+	/** 点击角色：头部=摸摸头（M5 互动），身体=说话；2.5D 用参数总线动作，DOM 用 hop+表情帧。 */
+	function onFigureTap(event) {
+		const zone = hitZoneFromEvent(event && typeof event.clientX === 'number' ? event : null);
+		if (zone === 'head' && (interaction.enabled || interaction.mode === 'local')) {
+			void interactPat();
+			return;
+		}
+		if (renderMode === '2d5' && render2d5) {
+			render2d5.tap();
+			speakRandom();
+			return;
+		}
+		els.figure.classList.remove('hop');
+		void els.figure.offsetWidth;
+		els.figure.classList.add('hop');
+		setTimeout(() => els.figure.classList.remove('hop'), 700);
+		speakRandom();
 	}
 
 	/* ---------------- 人物图层栈 ---------------- */
@@ -510,9 +919,22 @@ import { createDiy } from './diy-ui.js?v=11';
 		if (face.ready) faceApply();
 	}
 
+	/**
+	 * 系统「减少动态效果」/ `?facefx=` 解析：控制 B1-lite 脸部动画开关（DOM 模式）。
+	 * 2.5D 模式下脸部动画由 runtime 自己驱动（同参数总线），本函数只影响 DOM 层。
+	 */
+	function applyFaceMotionPreference() {
+		if (!face.ready) return;
+		const forced = params.get('facefx');
+		if (forced === '1') setFaceEnabled(true);
+		else if (forced === '0') setFaceEnabled(false);
+		else setFaceEnabled(!(faceReduceMotion && faceReduceMotion.matches));
+	}
+
 	/** 启动脸部动画：预加载补丁、监听气泡显隐（口型）、跟随系统「减少动态效果」偏好。 */
 	function startFace() {
-		if (!face.ready) return;
+		if (!face.ready || faceStarted) return;
+		faceStarted = true;
 		// 预加载两身形补丁（各 4 张，小图），换身形时切 src 不闪
 		for (const shape of manifest.shapes) {
 			const patches = facePatchesOf(shape.id);
@@ -529,16 +951,12 @@ import { createDiy } from './diy-ui.js?v=11';
 		new MutationObserver(syncMouth).observe(els.bubble, { attributes: true, attributeFilter: ['hidden'] });
 		syncMouth();
 		// 开关：?facefx=1/0 强制，否则默认跟随系统 reduced-motion
-		const forced = params.get('facefx');
-		const reduce = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-		const applyMotion = () => {
-			if (forced === '1') setFaceEnabled(true);
-			else if (forced === '0') setFaceEnabled(false);
-			else setFaceEnabled(!(reduce && reduce.matches));
-		};
-		applyMotion();
-		if (reduce && typeof reduce.addEventListener === 'function' && !forced) {
-			reduce.addEventListener('change', applyMotion);
+		faceReduceMotion = typeof window.matchMedia === 'function'
+			? window.matchMedia('(prefers-reduced-motion: reduce)')
+			: null;
+		applyFaceMotionPreference();
+		if (faceReduceMotion && typeof faceReduceMotion.addEventListener === 'function' && !params.get('facefx')) {
+			faceReduceMotion.addEventListener('change', applyFaceMotionPreference);
 		}
 		/** QA / 自动化接口：冻结姿态、手动触发，正常播放不受影响。 */
 		window.__feiyuFace = {
@@ -656,6 +1074,21 @@ import { createDiy } from './diy-ui.js?v=11';
 	}
 
 	function applyState() {
+		const lookKey = `${state.shape}|${state.outfit}|${state.top}|${state.bottom}`;
+		if (lastLookKey && lastLookKey !== lookKey) flashSwap();
+		lastLookKey = lookKey;
+		if (renderMode === '2d5') {
+			// 2.5D 模式：DOM 人物层不维护，只同步 canvas 与周边 UI（背景/特效/衣柜不变）
+			sync2d5();
+			renderScene();
+			renderMeta();
+			setEffect(state.effect);
+			renderShapeToggle();
+			renderShelf();
+			layoutFigure();
+			persist();
+			return;
+		}
 		renderFigure();
 		syncFaceShape();
 		renderScene();
@@ -777,6 +1210,17 @@ import { createDiy } from './diy-ui.js?v=11';
 	}
 
 	function popFigure() {
+		if (renderMode === '2d5') {
+			// 2.5D：canvas 轻微弹一下（换装过渡无闪白；运行时只重绘当前帧）
+			if (!render2d5Canvas) return;
+			render2d5Canvas.classList.remove('pop-2d5');
+			void render2d5Canvas.offsetWidth;
+			render2d5Canvas.classList.add('pop-2d5');
+			setTimeout(() => {
+				if (render2d5Canvas) render2d5Canvas.classList.remove('pop-2d5');
+			}, 360);
+			return;
+		}
 		// 下一帧再加类名来重启动画，避免同步读 offsetWidth 触发强制 reflow
 		els.figure.classList.remove('pop');
 		requestAnimationFrame(() => {
@@ -790,6 +1234,10 @@ import { createDiy } from './diy-ui.js?v=11';
 		applyState();
 		popFigure();
 		const item = findItem(catId, itemId);
+		if (renderMode === '2d5' && typeof itemId === 'string' && itemId.startsWith('diy-')) {
+			say('2.5D 模式暂时只显示内置服装，切回分层模式就能看到 DIY 单品～');
+			return;
+		}
 		say(`换上「${item ? item.name : itemId}」啦，好看吗？`);
 	}
 
@@ -804,6 +1252,14 @@ import { createDiy } from './diy-ui.js?v=11';
 		bubbleTimer = setTimeout(() => {
 			els.bubble.hidden = true;
 		}, 2800);
+		// 2.5D：说话期间口型走 runtime 参数总线（DOM 模式由 B1-lite 的 MutationObserver 接管）
+		if (renderMode === '2d5' && render2d5) {
+			render2d5.setTalking(true);
+			clearTimeout(talk2d5Timer);
+			talk2d5Timer = setTimeout(() => {
+				if (render2d5) render2d5.setTalking(false);
+			}, 2800);
+		}
 	}
 
 	function speakRandom() {
@@ -818,6 +1274,23 @@ import { createDiy } from './diy-ui.js?v=11';
 		say(lines[Math.floor(Math.random() * lines.length)]);
 	}
 
+	/**
+	 * 立绘卡里人物的绘制区域（DOM 与 2.5D 共用同一套排版，保证两种模式卡片一致）。
+	 * @param {number} W
+	 * @param {number} H
+	 * @param {{ top: number, bottom: number }} bounds
+	 * @returns {{ fx0: number, fy0: number, figW: number, figH: number }}
+	 */
+	function cardFigureArea(W, H, bounds) {
+		const ratio = 9 / 16;
+		const areaTop = H * 0.035;
+		const areaBottom = H * 0.86;
+		const usable = Math.max(0.2, bounds.bottom - bounds.top);
+		const figH = (areaBottom - areaTop) / usable;
+		const figW = figH * ratio;
+		return { fx0: (W - figW) / 2, fy0: areaTop - bounds.top * figH, figW, figH };
+	}
+
 	async function saveCard() {
 		const canvas = els.canvas;
 		const ctx = canvas.getContext('2d');
@@ -825,22 +1298,27 @@ import { createDiy } from './diy-ui.js?v=11';
 		const W = canvas.width;
 		const H = canvas.height;
 		const bg = currentBackground();
-		const layers = resolveLayers(manifest, state);
 		const bounds = currentBounds(manifest, state);
+		const use2d5 = renderMode === '2d5' && render2d5;
 		let bgImg;
 		/** @type {Map<string, HTMLImageElement>} */
 		const layerImgs = new Map();
+		/** @type {Array<{ slot: string, file: string, z: number }>} */
+		let layers = [];
 		try {
 			bgImg = /** @type {HTMLImageElement} */ (await preload(bg.file));
-			const files = layers.map((layer) => layer.file).filter(Boolean);
-			const imgs = await Promise.all(files.map((file) => preload(file)));
-			files.forEach((file, index) => layerImgs.set(file, /** @type {HTMLImageElement} */ (imgs[index])));
+			if (!use2d5) {
+				layers = resolveLayers(manifest, state);
+				const files = layers.map((layer) => layer.file).filter(Boolean);
+				const imgs = await Promise.all(files.map((file) => preload(file)));
+				files.forEach((file, index) => layerImgs.set(file, /** @type {HTMLImageElement} */ (imgs[index])));
+			}
 		} catch {
 			alert('图片还没准备好，稍等一下再试～');
 			return;
 		}
-		// 导出策略 B：立绘卡只画 resolveLayers 的静态分层，脸部特效层（眨眼/笑眼/口型）不参与导出，
-		// 保证「点一下立绘卡」在任意播放时刻都得到确定的睁眼/闭嘴静态立绘，点击路径也不多一次合成。
+		// 立绘卡只导出静态帧：2.5D 用 runtime.renderFrame()→drawImage（当前参数下的定帧），
+		// DOM 用 resolveLayers 静态分层；脸部特效层不参与导出（任意时刻结果确定）。
 		const scaleBg = Math.max(W / bgImg.width, H / bgImg.height);
 		const bw = bgImg.width * scaleBg;
 		const bh = bgImg.height * scaleBg;
@@ -849,20 +1327,14 @@ import { createDiy } from './diy-ui.js?v=11';
 		ctx.fillStyle = 'rgba(255,255,255,0.08)';
 		ctx.fillRect(0, 0, W, H);
 
-		// 人物：所有图层共用同一张画布坐标，按 resolveLayers 的 drawOrder 在同一个矩形里依次 drawImage
-		const baseLayer = layers.find((layer) => layer.slot === 'body');
-		const baseImg = baseLayer ? layerImgs.get(baseLayer.file) : null;
-		const ratio = baseImg && baseImg.width && baseImg.height ? baseImg.width / baseImg.height : 9 / 16;
-		const areaTop = H * 0.035;
-		const areaBottom = H * 0.86;
-		const usable = Math.max(0.2, bounds.bottom - bounds.top);
-		const figH = (areaBottom - areaTop) / usable;
-		const figW = figH * ratio;
-		const fx0 = (W - figW) / 2;
-		const fy0 = areaTop - bounds.top * figH;
-		for (const layer of layers) {
-			const img = layerImgs.get(layer.file);
-			if (img) ctx.drawImage(img, fx0, fy0, figW, figH);
+		const area = cardFigureArea(W, H, bounds);
+		if (use2d5) {
+			render2d5.renderToCanvas(ctx, area.fx0, area.fy0, area.figW, area.figH);
+		} else {
+			for (const layer of layers) {
+				const img = layerImgs.get(layer.file);
+				if (img) ctx.drawImage(img, area.fx0, area.fy0, area.figW, area.figH);
+			}
 		}
 
 		const grad = ctx.createLinearGradient(0, H * 0.62, 0, H);
@@ -1048,13 +1520,7 @@ import { createDiy } from './diy-ui.js?v=11';
 		els.sheet.addEventListener('click', (event) => {
 			if (event.target === els.sheet) els.sheet.hidden = true;
 		});
-		els.figure.addEventListener('click', () => {
-			els.figure.classList.remove('hop');
-			void els.figure.offsetWidth;
-			els.figure.classList.add('hop');
-			setTimeout(() => els.figure.classList.remove('hop'), 700);
-			speakRandom();
-		});
+		els.figure.addEventListener('click', onFigureTap);
 		els.figure.addEventListener('keydown', (event) => {
 			if (event.key === 'Enter' || event.key === ' ') {
 				event.preventDefault();
@@ -1074,6 +1540,32 @@ import { createDiy } from './diy-ui.js?v=11';
 			}
 			if (event.key.toLowerCase() === 'r') randomLook();
 			if (event.key === 'Escape') els.sheet.hidden = true;
+		});
+		const renderButton = $('#renderBtn');
+		if (renderButton) {
+			renderButton.addEventListener('click', () => {
+				applyRenderMode(renderMode === '2d5' ? 'dom' : '2d5', { persist: true });
+			});
+		}
+		// M5 互动 HUD 按钮（宿主模式生效；local-only 时拍头可播动作、喂食禁用）
+		if (els.patBtn) els.patBtn.addEventListener('click', () => void interactPat());
+		if (els.feedSmallBtn) els.feedSmallBtn.addEventListener('click', () => void interactFeed('small'));
+		if (els.feedBigBtn) els.feedBigBtn.addEventListener('click', () => void interactFeed('big'));
+		// 2.5D head follow：指针在角色框内移动 → 头部轻微跟随（参数总线；M5 互动复用）
+		els.stage.addEventListener('pointermove', (event) => {
+			if (renderMode !== '2d5' || !render2d5) return;
+			const rect = els.figureWrap.getBoundingClientRect();
+			if (!rect.width || !rect.height) return;
+			render2d5.setHeadFollow(
+				((event.clientX - rect.left) / rect.width) * 2 - 1,
+				((event.clientY - rect.top) / rect.height) * 2 - 1,
+			);
+		});
+		els.stage.addEventListener('pointerleave', () => {
+			if (render2d5) render2d5.setHeadFollow(null);
+		});
+		document.addEventListener('visibilitychange', () => {
+			if (render2d5) render2d5.setPaused(document.hidden);
 		});
 		window.addEventListener('resize', () => {
 			resizeFx();
@@ -1109,6 +1601,304 @@ import { createDiy } from './diy-ui.js?v=11';
 		requestAnimationFrame(tick);
 	}
 
+	/* ---------------- M5 互动控制器（摸摸头 / 喂食 / 每日问候 / 待机 / 动作曲线） ---------------- */
+
+	/** 受审台词以外不产生任何台词（21 条已审，见 manifest.bubbleSets）。 */
+	function sayLine(text) {
+		if (!text) return;
+		interaction.recentLines.push(text);
+		if (interaction.recentLines.length > 2) interaction.recentLines.shift();
+		say(text);
+	}
+
+	function pickInteractionLine(group) {
+		const fallback = (manifest.bubbles && manifest.bubbles[0]) || '嗯？';
+		return pickLine(manifest.bubbleSets, group, { recent: interaction.recentLines, fallback });
+	}
+
+	/** 指针 → 角色框归一化坐标 → 头部/身体/框外（2.5D/DOM 共用几何近似）。 */
+	function hitZoneFromEvent(event) {
+		if (!event) return 'body';
+		const rect = els.figureWrap.getBoundingClientRect();
+		if (!rect.width || !rect.height) return 'body';
+		return hitZone((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+	}
+
+	function flashFigure() {
+		if (interaction.reducedMotion) return;
+		els.figure.classList.remove('hop');
+		void els.figure.offsetWidth;
+		els.figure.classList.add('hop');
+		setTimeout(() => els.figure.classList.remove('hop'), 700);
+	}
+
+	let faceFlashTimer = 0;
+	/** DOM 模式下的「笑眼一帧」（B1-lite 补丁，仅 CSS class 切换）。 */
+	function faceFlashSmile(ms = 800) {
+		if (!face.ready || !face.enabled || facePose || interaction.reducedMotion) return;
+		face.smiling = true;
+		faceApply();
+		clearTimeout(faceFlashTimer);
+		faceFlashTimer = setTimeout(() => {
+			face.smiling = false;
+			faceApply();
+		}, ms);
+	}
+
+	/** 换装过渡（DOM/2.5D 共用 .figure-wrap 容器；reduced-motion 时跳过）。 */
+	let lastLookKey = '';
+	function flashSwap() {
+		if (interaction.reducedMotion) return;
+		els.figureWrap.classList.remove('swapping');
+		void els.figureWrap.offsetWidth;
+		els.figureWrap.classList.add('swapping');
+		setTimeout(() => els.figureWrap.classList.remove('swapping'), 220);
+	}
+
+	/** 动作曲线驱动器：同一时刻只跑一条曲线；端点回位（interaction-model.actionParams）。 */
+	function playAction(kind) {
+		const spec = ACTION_SPECS[kind];
+		if (!spec || interaction.reducedMotion || kind === 'idle') return;
+		// 打断上一条动作：先把上一动作的基准参数写回，避免把中间态当成新基准（端点不归零）
+		if (interaction.action) {
+			if (interaction.action.raf) cancelAnimationFrame(interaction.action.raf);
+			if (renderMode === '2d5' && render2d5 && interaction.action.base) {
+				render2d5.setParams(interaction.action.base);
+			}
+			interaction.action = null;
+		}
+		if (renderMode === '2d5' && render2d5) {
+			const base = render2d5.getState().params;
+			const startedAt = performance.now();
+			if (kind === 'pat') render2d5.tap();
+			if (spec.face && spec.face.smileMs) render2d5.triggerSmile(spec.face.smileMs / 1000);
+			if (kind === 'feed') render2d5.triggerTalk(1.3);
+			const tick = () => {
+				const { done, params } = actionParams(kind, performance.now() - startedAt, base);
+				render2d5.setParams(params);
+				if (!done) interaction.action.raf = requestAnimationFrame(tick);
+				else {
+					render2d5.setParams(base);
+					interaction.action = null;
+				}
+			};
+			interaction.action = { kind, raf: requestAnimationFrame(tick) };
+			return;
+		}
+		if (kind === 'pat' || kind === 'feed' || kind === 'greet') flashFigure();
+		if (spec.face && spec.face.smileMs) faceFlashSmile(spec.face.smileMs);
+	}
+
+	const INTERACTION_REASON_TEXT = {
+		cooldown: '再等一小会儿',
+		'no-coins': '鱼粮还不够',
+		'daily-cap': '今天已经够啦',
+		full: '已经吃得很饱啦',
+		'rate-limited': '慢一点呀',
+		disabled: '现在不方便',
+		'rejected': '现在不方便',
+	};
+
+	function showInteractionNote(text) {
+		if (!els.interactionNote) return;
+		els.interactionNote.hidden = !text;
+		els.interactionNote.textContent = text || '';
+		if (text) {
+			clearTimeout(showInteractionNote.timer);
+			showInteractionNote.timer = setTimeout(() => {
+				els.interactionNote.hidden = true;
+			}, 2400);
+		}
+	}
+
+	/** 页面 HUD（心情/亲密度/鱼粮/按钮可用性）。summary=null → 本地模式。 */
+	function renderInteractionHud(summary) {
+		if (!els.interactionHud) return;
+		els.interactionHud.hidden = false;
+		if (els.interactionLocal) els.interactionLocal.hidden = !!summary;
+		if (!summary) {
+			els.moodHud.textContent = '—';
+			els.affinityHud.textContent = '—';
+			els.coinsHud.textContent = '—';
+			els.moodFace.textContent = '🐳';
+			els.patBtn.disabled = false;
+			els.feedSmallBtn.disabled = true;
+			els.feedBigBtn.disabled = true;
+			els.patBtn.textContent = '🫳 摸摸头';
+			els.feedSmallBtn.textContent = '🍚 鱼粮×3';
+			els.feedBigBtn.textContent = '🍱 鱼粮×8';
+			return;
+		}
+		els.moodHud.textContent = summary.mood.label;
+		els.moodFace.textContent = summary.mood.emoji;
+		els.affinityHud.textContent = `${summary.intimacy.emoji} ${summary.intimacy.title}`;
+		els.coinsHud.textContent = String(summary.coins);
+		els.patBtn.disabled = !summary.allowed.pat;
+		els.feedSmallBtn.disabled = !summary.allowed.feedSmall;
+		els.feedBigBtn.disabled = !summary.allowed.feedBig;
+		const retry = Math.ceil((summary.retryIn.pat || 0) / 1000);
+		els.patBtn.textContent = summary.allowed.pat ? '🫳 摸摸头' : `🫳 ${retry}s`;
+		els.feedSmallBtn.textContent = `🍚 鱼粮×${summary.costs.small}`;
+		els.feedBigBtn.textContent = `🍱 鱼粮×${summary.costs.big}`;
+	}
+
+	async function fetchInteractionState() {
+		if (!interaction.host) return null;
+		try {
+			const res = await fetch(interaction.host.stateUrl, { cache: 'no-store' });
+			if (!res.ok) return null;
+			const data = await res.json();
+			return data && data.ok ? data : null;
+		} catch {
+			return null;
+		}
+	}
+
+	/** 宿主动作（唯一经济写入）；失败/超限返回 null 且不播放动作。 */
+	async function postInteraction(kind, tier) {
+		if (interaction.mode !== 'host' || !interaction.host || interaction.inFlight) return null;
+		interaction.inFlight = true;
+		try {
+			const controller = typeof AbortController === 'function' ? new AbortController() : null;
+			const timer = controller ? setTimeout(() => controller.abort(), INTERACTION_TIMEOUT_MS) : 0;
+			const res = await fetch(interaction.host.actionUrl, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', 'x-feiyu-interaction': '1' },
+				body: JSON.stringify(tier ? { kind, tier } : { kind }),
+				cache: 'no-store',
+				...(controller ? { signal: controller.signal } : {}),
+			});
+			clearTimeout(timer);
+			const data = await res.json().catch(() => null);
+			if (!res.ok || !data || !data.ok) {
+				showInteractionNote(INTERACTION_REASON_TEXT[(data && data.code) || 'rejected'] || '现在不方便');
+				return null;
+			}
+			interaction.summary = data.state;
+			renderInteractionHud(data.state);
+			return data.state;
+		} catch {
+			showInteractionNote(INTERACTION_REASON_TEXT.rejected);
+			return null;
+		} finally {
+			interaction.inFlight = false;
+		}
+	}
+
+	async function interactPat() {
+		if (interaction.inFlight) return;
+		const state2 = await postInteraction('pat');
+		if (!state2) {
+			if (interaction.mode === 'local') {
+				playAction('pat');
+				sayLine(pickInteractionLine('pat'));
+			}
+			return;
+		}
+		playAction('pat');
+		sayLine(pickInteractionLine('pat'));
+	}
+
+	async function interactFeed(tier) {
+		if (interaction.inFlight) return;
+		if (interaction.mode !== 'host') {
+			showInteractionNote('本地模式 · 不消耗鱼粮');
+			return;
+		}
+		const next = await postInteraction('feed', tier);
+		if (!next) return;
+		playAction('feed');
+		const [first, second] = feedLines(manifest.bubbleSets, { recent: interaction.recentLines });
+		sayLine(first);
+		setTimeout(() => sayLine(second), 900);
+	}
+
+	/** 每日问候：宿主 state 允许时每日一次（页面打开/刷新时判定）。 */
+	async function maybeDailyGreet() {
+		const summary = interaction.summary;
+		if (!summary || !summary.allowed || !summary.allowed.greet) return;
+		const next = await postInteraction('greet');
+		if (!next) return;
+		playAction('greet');
+		sayLine(pickInteractionLine('greet'));
+	}
+
+	function scheduleIdleLine() {
+		clearTimeout(interaction.idleTimer);
+		const delay = 25000 + Math.random() * 15000;
+		interaction.idleTimer = setTimeout(() => {
+			if (document.hidden) {
+				scheduleIdleLine();
+				return;
+			}
+			const plan = moodFacePlan(interaction.summary ? interaction.summary.mood.key : 'fine');
+			sayLine(pickInteractionLine(plan.idleGroup));
+			scheduleIdleLine();
+		}, delay);
+	}
+
+	/** 心情档 → 笑眼节奏（idle 时按计划触发；reduced-motion 时不触发）。 */
+	function startMoodFaceLoop() {
+		clearTimeout(interaction.moodTimer);
+		const tick = () => {
+			const plan = moodFacePlan(interaction.summary ? interaction.summary.mood.key : 'fine');
+			const range = plan.smileEvery;
+			const wait = range ? range[0] + Math.random() * (range[1] - range[0]) : 15000;
+			interaction.moodTimer = setTimeout(() => {
+				if (!document.hidden && !interaction.reducedMotion) {
+					if (renderMode === '2d5' && render2d5) render2d5.triggerSmile(1.2);
+					else faceFlashSmile(900);
+				}
+				tick();
+			}, wait);
+		};
+		tick();
+	}
+
+	async function refreshInteraction() {
+		if (interaction.mode !== 'host') return;
+		const summary = await fetchInteractionState();
+		if (summary) {
+			interaction.summary = summary;
+			renderInteractionHud(summary);
+		}
+	}
+
+	/**
+	 * 初始化互动：读宿主端点；失败/静态托管 → local-only（台词/表情可用、鱼粮不扣）。
+	 * @param {{ enabled: boolean, stateUrl?: string, actionUrl?: string }} host
+	 */
+	async function initInteraction(host) {
+		interaction.reducedMotion = !!(
+			window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+		);
+		if (!host || host.enabled !== true) {
+			interaction.mode = 'local';
+			interaction.enabled = false;
+			renderInteractionHud(null);
+			return;
+		}
+		interaction.host = host;
+		const summary = await fetchInteractionState();
+		if (!summary) {
+			interaction.mode = 'local';
+			interaction.enabled = false;
+			renderInteractionHud(null);
+			return;
+		}
+		interaction.mode = 'host';
+		interaction.enabled = true;
+		interaction.summary = summary;
+		renderInteractionHud(summary);
+		scheduleIdleLine();
+		startMoodFaceLoop();
+		await maybeDailyGreet();
+		document.addEventListener('visibilitychange', () => {
+			if (!document.hidden) void refreshInteraction();
+		});
+		window.addEventListener('focus', () => void refreshInteraction());
+	}
+
 	/* ---------------- 启动 ---------------- */
 
 	function readUrlOverrides() {
@@ -1142,9 +1932,47 @@ import { createDiy } from './diy-ui.js?v=11';
 		renderTabs();
 		setTab('outfits');
 		resizeFx();
-		applyState();
-		startFace();
+
+		// 渲染方式决策（M3）：URL ?render= > 本地用户选择 > 宿主 config.dressUp.render > 默认 dom。
+		// 默认 dom 时以下 2.5D 代码路径都不会执行（不 import runtime、不发任何 2.5D 请求）。
+		const hostConfig = await readHostConfig();
+		const hostRender = hostConfig.render;
+		const requestedMode = parseRenderMode(params.get('render'))
+			|| parseRenderMode(readStoredRenderMode())
+			|| parseRenderMode(hostRender)
+			|| 'dom';
+		// 只有 auto 需要能力探测；显式 dom/2d5 不创建探测 context（零额外资源）
+		const decision = resolveRenderMode({
+			config: hostRender,
+			url: params.get('render'),
+			stored: readStoredRenderMode(),
+			capable: requestedMode === 'auto' ? probeRenderCapabilities() : {},
+		});
+		renderRequested = decision.requested;
+		renderSource = decision.source;
+
+		// 与渲染方式无关的页面骨架先出（背景/特效/衣柜/布局），2.5D 加载期间不白屏
+		renderShapeToggle();
+		renderScene();
+		renderMeta();
+		setEffect(state.effect);
+		renderShelf();
+		layoutFigure(true);
+
+		if (decision.mode === '2d5') {
+			const mode = await applyRenderMode('2d5');
+			if (mode !== '2d5') {
+				renderFigure();
+				syncFaceShape();
+				startFace();
+			}
+		} else {
+			applyState();
+			startFace();
+		}
+		updateRenderButton();
 		bind();
+		await initInteraction(hostConfig.interaction);
 		diy.attach({
 			getState: () => state,
 			select: (catId, itemId) => select(catId, itemId),
@@ -1160,6 +1988,50 @@ import { createDiy } from './diy-ui.js?v=11';
 		});
 		/** QA / Playwright 自动化入口（不参与正常渲染）。 */
 		window.__feiyuDiy = diy;
+		/** M5 互动 E2E / 调试入口。 */
+		window.__feiyuInteraction = {
+			mode: () => interaction.mode,
+			summary: () => interaction.summary,
+			inFlight: () => interaction.inFlight,
+			act: (kind, tier) => postInteraction(kind, tier),
+			pat: () => interactPat(),
+			feed: (tier) => interactFeed(tier),
+			play: (kind) => playAction(kind),
+			recentLines: () => interaction.recentLines.slice(),
+			hitZone: (nx, ny) => hitZone(nx, ny),
+			reducedMotion: () => interaction.reducedMotion,
+			lastAction: () => (interaction.action ? interaction.action.kind : ''),
+		};
+		/** 2.5D E2E / 调试入口：渲染方式、runtime 状态、资源请求、确定性步进。 */
+		window.__feiyu2d5 = {
+			mode: () => renderMode,
+			requested: () => renderRequested,
+			source: () => renderSource,
+			fallbackReason: () => render2d5Fallback,
+			runtime: () => render2d5,
+			switchTo: (mode, options) => applyRenderMode(mode, options),
+			ensure: () => ensureRuntime2d5(),
+			sync: () => sync2d5(),
+			getState: () => (render2d5 ? render2d5.getState() : null),
+			getMemory: () => (render2d5 ? render2d5.getMemory() : null),
+			getAssetInfo: () => (render2d5 ? render2d5.getAssetInfo() : null),
+			freeze: (value) => {
+				if (render2d5) render2d5.freeze(value);
+			},
+			setAuto: (value) => {
+				if (render2d5) render2d5.setAuto(value);
+			},
+			advance: (n, dt) => (render2d5 ? render2d5.advance(n, dt) : 0),
+			step: (dt) => (render2d5 ? render2d5.step(dt) : 0),
+			resources: () => performance.getEntriesByType('resource')
+				.filter((entry) => entry.name.includes('/art/2d5/') || entry.name.includes('runtime-2d5'))
+				.map((entry) => ({
+					name: entry.name,
+					transferSize: entry.transferSize,
+					encodedBodySize: entry.encodedBodySize,
+					decodedBodySize: entry.decodedBodySize,
+				})),
+		};
 		startParallax();
 		if (params.has('embed')) els.tip.classList.add('gone');
 	}

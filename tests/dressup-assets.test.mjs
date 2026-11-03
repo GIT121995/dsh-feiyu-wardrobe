@@ -16,6 +16,21 @@ const SHAPE_LAYER_SLOTS = ['body', 'arms', 'hair'];
 const ITEM_LAYER_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve'];
 const CLOTHING_CATEGORIES = ['outfits', 'tops', 'bottoms'];
 
+/** 2.5D runtime 资产：每身形 rig.json 引用的图集 + 构建报告（由 tools/build_2d5.py 产出）。 */
+function collect2d5RuntimeFiles() {
+	/** @type {Set<string>} */
+	const referenced = new Set();
+	for (const shape of ['chibi', 'girl']) {
+		const rigRel = `art/2d5/${shape}/rig.json`;
+		referenced.add(rigRel);
+		referenced.add(`art/2d5/${shape}/build-report.json`);
+		const rig = JSON.parse(readFileSync(join(ROOT, rigRel), 'utf8'));
+		const atlas = (rig.atlas && rig.atlas.file) || 'atlas.webp';
+		referenced.add(`art/2d5/${shape}/${atlas}`);
+	}
+	return referenced;
+}
+
 /** 断言相对路径存在、是 WebP 且体积像真图。 */
 function assertWebp(rel, label) {
 	const file = join(ROOT, rel);
@@ -273,6 +288,8 @@ test('旧 v5 字段不再被引用，旧素材文件已清理', () => {
 			.filter((value) => /^art\//.test(value)),
 	);
 	referenced.add('art/pet-default.webp'); // 悬浮鲸鱼兜底图由 lib/client.js 引用，不在 manifest 里
+	// 2.5D runtime 资产（rig.json/图集/构建报告）由 runtime-2d5.js 按需加载，不进 manifest
+	for (const rel of collect2d5RuntimeFiles()) referenced.add(rel);
 	// 脸部动画补丁由 wardrobe-core.FACE_PATCHES 运行时引用（不进 manifest），不算孤儿
 	const orphans = files.filter((rel) => !referenced.has(rel) && !isFacePatch(rel));
 	assert.deepEqual(orphans, [], `art/ 里不应有未被引用的文件：${orphans.join(', ')}`);
@@ -315,11 +332,11 @@ test('宿主半区 readOutfit 接受 data URL / art 路径，并 fallback 到 pe
 
 /* ---------------- 页面 / 渲染器 v6 ---------------- */
 
-test('index.html v7：不写死图层 img，cache-bust 升到 v11', () => {
+test('index.html v7：不写死图层 img，cache-bust 升到 v13（M5 互动）', () => {
 	const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-	assert.match(html, /style\.css\?v=11/, 'style.css 应 cache-bust 到 v11');
-	assert.match(html, /app\.js\?v=11/, 'app.js 应 cache-bust 到 v11');
-	assert.ok(!/\?v=(?!11)\d+/.test(html), 'index.html 里不应残留旧版本号');
+	assert.match(html, /style\.css\?v=13/, 'style.css 应 cache-bust 到 v13');
+	assert.match(html, /app\.js\?v=13/, 'app.js 应 cache-bust 到 v13');
+	assert.ok(!/\?v=(?!13)\d+/.test(html), 'index.html 里不应残留旧版本号');
 	assert.ok(html.includes('type="module"'));
 	assert.ok(html.includes('id="figure"'), 'index.html 应保留 .figure 容器');
 	assert.ok(!/data-layer=/.test(html), 'v6 不再在 index.html 写死图层槽位 <img>');
@@ -342,7 +359,7 @@ test('app.js v7：按 manifest.drawOrder 动态建槽位，三处叠图都走 re
 		'renderFigure / 立绘卡 / 悬浮小图三处都应按 resolveLayers 顺序合成',
 	);
 	assert.ok(!app.includes('resolveImage'), 'app.js 不应再用 v4 的 resolveImage');
-	assert.ok(!app.includes('.kind'), 'app.js 不应再用 v5 的 layer.kind 字段');
+	assert.ok(!app.includes('layer.kind'), 'app.js 不应再用 v5 的 layer.kind 字段（M5 的 action.kind 不算）');
 	assert.ok(app.includes('feiyu:outfit'), 'app.js 必须把当前穿搭写进 localStorage 给悬浮鲸鱼用');
 	// v0.8 性能优化保留
 	assert.ok(app.includes('renderSeq'), '应保留 renderSeq 防竞态');

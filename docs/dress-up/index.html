@@ -6,7 +6,7 @@
 <title>大肥鱼衣橱 · 换装间</title>
 <meta name="description" content="陪大肥鱼换衣服、一起过日子：分层自由搭配、切换 Q版/少女版、换背景和特效——开源免费。">
 <meta name="theme-color" content="#f6ecff">
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 <main class="app">
@@ -23,6 +23,18 @@
     <div class="bubble" id="bubble" role="status" aria-live="polite" hidden></div>
     <div class="stage-tip" id="stageTip">点一下 · 陪她说说话</div>
     <div class="stage-credit">立绘 / 服装：Seedream 生成 · 角色参考：大肥鱼社区二创 · 非官方 · 禁止商用</div>
+    <div class="interaction-hud" id="interactionHud" hidden>
+      <div class="ihud-row"><span class="ihud-key">心情</span><span id="moodHud" class="ihud-val">—</span><span id="moodFace" class="ihud-emoji">🐳</span></div>
+      <div class="ihud-row"><span class="ihud-key">亲密度</span><span id="affinityHud" class="ihud-val">—</span></div>
+      <div class="ihud-row"><span class="ihud-key">鱼粮</span><span id="coinsHud" class="ihud-val">—</span></div>
+      <div class="ihud-actions">
+        <button id="patBtn" class="btn small" type="button" aria-label="摸摸头">🫳 摸摸头</button>
+        <button id="feedSmallBtn" class="btn small" type="button" aria-label="喂小鱼干（3 鱼粮）">🍚 鱼粮×3</button>
+        <button id="feedBigBtn" class="btn small" type="button" aria-label="喂大餐（8 鱼粮）">🍱 鱼粮×8</button>
+      </div>
+      <div class="ihud-note" id="interactionNote" role="status" hidden></div>
+      <div class="ihud-local" id="interactionLocal" hidden>本地模式 · 不消耗鱼粮</div>
+    </div>
 
     <header class="brand-bar">
       <div class="brand">🐋 <b>大肥鱼衣橱</b> <span class="tag">换装间</span></div>
@@ -34,6 +46,7 @@
     <div class="wardrobe-head">
       <div class="shape-toggle" id="shapeToggle" role="group" aria-label="身形切换"></div>
       <div class="head-tools">
+        <button id="renderBtn" class="render-btn" type="button" aria-pressed="false" title="切到 2.5D 动态渲染（实验）" aria-label="切换渲染方式">🧊 2.5D</button>
         <button id="diyBtn" class="icon-btn light" type="button" title="DIY 上传（默认关闭）" aria-label="DIY 上传">✨</button>
         <button id="collectBtn" class="icon-btn light" type="button" title="图鉴" aria-label="图鉴">📖</button>
       </div>
@@ -68,6 +81,6 @@
   </div>
 </main>
 <canvas id="exportCanvas" width="900" height="1350" hidden></canvas>
-<script type="module" src="app.js?v=11"></script>
+<script type="module" src="app.js?v=13"></script>
 </body>
 </html>
