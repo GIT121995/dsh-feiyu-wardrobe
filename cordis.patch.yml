@@ -19,3 +19,18 @@
         dailyRetentionDays: 120
         # Statutory holidays (Asia/Shanghai dates, YYYY-MM-DD): off-peak pricing.
         holidays: []
+        # ── DIY 上传（可选 · 默认关闭）────────────────────────────────────────
+        # 开启后换装间会出现「✨ DIY 上传」：把用户上传的衣服图 + 素体发给云端图像 API
+        # （火山方舟 Seedream）生成 look/flat-color-out，再在浏览器本地自动成层进本地衣柜。
+        # 隐私/费用：key 只从宿主环境读（ARK_API_KEY，或 ~/.config/seedream/env）；每日有图片/金额上限；
+        # 详细契约见 docs/dress-up/DIY-UPLOAD.md。默认 false = 完全离线、零网络调用。
+        diy:
+          enabled: false
+          # model: doubao-seedream-5-0-flash-260915   # 默认值；pro 未开通
+          # size: 1152x2048
+          # dailyImageLimit: 40        # 每日图片张数上限（一张 ¥0.21–0.30）
+          # dailyBudgetYuan: 10        # 每日金额上限（¥）
+          # pricePerImageYuan: 0.3     # 预估单价（保守）
+          # retries: 2                 # 单张失败重试上限（≤2）
+          # apiKeyFile: ""             # 自定义 ARK_API_KEY 环境文件（空=~/.config/seedream/env）
+          # statePath / costLogPath / cacheDir / baseRefPath: 高级覆盖（默认 <DSH home>/feiyu-wardrobe/diy/）

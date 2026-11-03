@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "title": "大肥鱼衣橱 · 换装间",
   "character": "大肥鱼 · 经典鲸鱼娘",
   "credits": "立绘 / 服装：本项目用 Seedream 5.0（火山方舟）基于自建素体生成 · 角色参考：大肥鱼社区二创（仅作风格参考，未直接使用原画）· 非官方，禁止商用",
@@ -275,5 +275,48 @@
     "拍立绘卡的时候，记得把我拍得可爱一点。",
     "今天的天气，适合出去走走。",
     "要是每天都能和你一起玩就好了。"
-  ]
+  ],
+  "diy": {
+    "version": 1,
+    "enabled": false,
+    "shape": "chibi",
+    "storage": "indexeddb",
+    "idPrefix": "diy-",
+    "maxItems": 24,
+    "maxBytes": 25165824,
+    "baseRef": "art/diy/base-chibi.png",
+    "categories": {
+      "top": {
+        "slot": "topBody",
+        "sleeve": true
+      },
+      "bottom": {
+        "slot": "bottom",
+        "sleeve": false
+      },
+      "dress": {
+        "slot": "topBody",
+        "sleeve": true
+      },
+      "coat": {
+        "slot": "topBody",
+        "sleeve": true
+      },
+      "outfit": {
+        "slot": "topBody",
+        "sleeve": true
+      }
+    },
+    "contentPolicy": {
+      "tag": "conservative-v1",
+      "downgradedTag": "conservative-downgraded-v1",
+      "guardVersion": "diy-guard-1",
+      "note": "文本词表硬拦截（客户端+宿主）；图像分类器为后续项，不宣称完全防护。"
+    },
+    "shareFormat": {
+      "ext": ".dshskin",
+      "version": 1
+    },
+    "note": "DIY 层不写进本文件：运行时由 IndexedDB 记录经 diyRecordToItem() 注入 items；v7 只是扩展声明，v6 数据语义不变（仅 version+1）。"
+  }
 }
