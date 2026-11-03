@@ -6,7 +6,7 @@
 <title>大肥鱼衣橱 · 换装间</title>
 <meta name="description" content="陪大肥鱼换衣服、一起过日子：分层自由搭配、切换 Q版/少女版、换背景和特效——开源免费。">
 <meta name="theme-color" content="#f6ecff">
-<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 <main class="app">
@@ -34,6 +34,7 @@
     <div class="wardrobe-head">
       <div class="shape-toggle" id="shapeToggle" role="group" aria-label="身形切换"></div>
       <div class="head-tools">
+        <button id="renderBtn" class="render-btn" type="button" aria-pressed="false" title="切到 2.5D 动态渲染（实验）" aria-label="切换渲染方式">🧊 2.5D</button>
         <button id="diyBtn" class="icon-btn light" type="button" title="DIY 上传（默认关闭）" aria-label="DIY 上传">✨</button>
         <button id="collectBtn" class="icon-btn light" type="button" title="图鉴" aria-label="图鉴">📖</button>
       </div>
@@ -68,6 +69,6 @@
   </div>
 </main>
 <canvas id="exportCanvas" width="900" height="1350" hidden></canvas>
-<script type="module" src="app.js?v=11"></script>
+<script type="module" src="app.js?v=12"></script>
 </body>
 </html>

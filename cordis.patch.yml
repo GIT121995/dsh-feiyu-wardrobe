@@ -19,6 +19,14 @@
         dailyRetentionDays: 120
         # Statutory holidays (Asia/Shanghai dates, YYYY-MM-DD): off-peak pricing.
         holidays: []
+        # ── 换装间渲染方式（M3 · 2.5D opt-in）──────────────────────────────────
+        # 'dom'  = 分层纸娃娃（默认，零 2.5D 请求）
+        # '2d5'  = WebGL2 2.5D 动态渲染（实验；需浏览器支持 WebGL2）
+        # 'auto' = 按浏览器能力自动选择（WebGL2 可用且非 reduced-motion 时用 2.5D）
+        # 页面可用 ?render=dom|2d5|auto 覆盖（回滚开关），也可用换装间右上按钮切换。
+        # 详细契约见 docs/dress-up/2.5D-RUNTIME.md。
+        dressUp:
+          render: dom
         # ── DIY 上传（可选 · 默认关闭）────────────────────────────────────────
         # 开启后换装间会出现「✨ DIY 上传」：把用户上传的衣服图 + 素体发给云端图像 API
         # （火山方舟 Seedream）生成 look/flat-color-out，再在浏览器本地自动成层进本地衣柜。

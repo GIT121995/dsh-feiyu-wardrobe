@@ -21,6 +21,11 @@ import { createDiy } from './diy-ui.js?v=11';
 
 	const $ = (sel) => document.querySelector(sel);
 	const STORAGE_KEY = 'feiyu:outfit';
+	/** 渲染方式用户选择（M3：'dom' 分层纸娃娃 | '2d5' WebGL2 动态；默认不写）。 */
+	const RENDER_STORAGE_KEY = 'feiyu:render';
+	/** 2.5D runtime 模块与资产根（未开启 2.5D 时不会 import / 不会发请求）。 */
+	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=12';
+	const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/';
 	const params = new URLSearchParams(location.search);
 
 	/** 图层槽位（v6 起由 manifest.drawOrder 决定，boot 时动态建 <img>，不再写死）。 */
@@ -76,6 +81,31 @@ import { createDiy } from './diy-ui.js?v=11';
 	let shelfBuiltCat = '';
 	/** @type {HTMLCanvasElement | null} */
 	let petCanvasEl = null;
+
+	/* ---------------- 渲染方式状态（M3：DOM 分层纸娃娃 / 2.5D canvas） ---------------- */
+
+	/** 当前渲染方式：'dom' | '2d5'。 */
+	let renderMode = 'dom';
+	/** 页面请求的模式（config / URL / 本地选择解析结果）与来源。 */
+	let renderRequested = 'dom';
+	let renderSource = 'default';
+	/** 2.5D runtime 实例 / canvas / 启动 promise（未开启时全部为 null）。 */
+	/** @type {any} */
+	let render2d5 = null;
+	/** @type {HTMLCanvasElement | null} */
+	let render2d5Canvas = null;
+	/** @type {Promise<any> | null} */
+	let render2d5Starting = null;
+	let render2d5Loading = false;
+	/** 2.5D 启动/运行失败原因（回退到 DOM 后展示）。 */
+	let render2d5Fallback = '';
+	/** 切身形/换装并发序号：只让最新一次同步落地。 */
+	let render2d5Seq = 0;
+	/** DOM 脸部动画是否已启动（2.5D 模式下按需延后）。 */
+	let faceStarted = false;
+	/** @type {MediaQueryList | null} */
+	let faceReduceMotion = null;
+	let talk2d5Timer = 0;
 
 	/* ---------------- 脸部叠加动画状态（B1-lite） ---------------- */
 
@@ -223,6 +253,16 @@ import { createDiy } from './diy-ui.js?v=11';
 	 * @returns {Promise<string>}
 	 */
 	async function composePetImage(layers) {
+		// 2.5D 模式：直接取当前 canvas 帧（透明底）缩成小图；失败再退回 DOM 合成
+		if (renderMode === '2d5' && render2d5) {
+			const image2d5 = render2d5.toDataURL({
+				width: PET_IMAGE_W,
+				height: PET_IMAGE_H,
+				type: 'image/webp',
+				quality: 0.85,
+			});
+			if (image2d5) return image2d5;
+		}
 		const files = layers.map((layer) => layer.file).filter(Boolean);
 		if (!files.length) return '';
 		try {
@@ -255,9 +295,9 @@ import { createDiy } from './diy-ui.js?v=11';
 		}
 	}
 
-	/** 穿搭签名：决定是否需要重新写 localStorage / 重新合成小图。 */
+	/** 穿搭签名：决定是否需要重新写 localStorage / 重新合成小图（渲染方式也计入，2.5D 小图不同）。 */
 	function outfitKey(snapshot) {
-		return `${snapshot.shape}|${snapshot.outfit}|${snapshot.top}|${snapshot.bottom}|${snapshot.bg}|${snapshot.effect}`;
+		return `${snapshot.shape}|${snapshot.outfit}|${snapshot.top}|${snapshot.bottom}|${snapshot.bg}|${snapshot.effect}|${renderMode}`;
 	}
 
 	/**
@@ -285,6 +325,289 @@ import { createDiy } from './diy-ui.js?v=11';
 				setTimeout(run, 16);
 			}
 		}, 250);
+	}
+
+	/* ---------------- 渲染方式控制（M3：2.5D opt-in） ---------------- */
+
+	// 渲染模式决策的内联精简版：app.js 不静态 import runtime-2d5-core.js，
+	// 保证默认 DOM 模式下「零新增请求」（策略逻辑另有一份在 runtime-2d5-core.js，node 单测覆盖）。
+	/** 渲染模式合法值。 */
+	const RENDER_MODE_VALUES = ['dom', '2d5', 'auto'];
+
+	/** @param {unknown} value @returns {'dom'|'2d5'|'auto'|null} */
+	function parseRenderMode(value) {
+		if (typeof value !== 'string') return null;
+		const normalized = value.trim().toLowerCase();
+		return RENDER_MODE_VALUES.includes(normalized) ? /** @type {any} */ (normalized) : null;
+	}
+
+	/**
+	 * 渲染模式决策：URL > 本地用户选择 > 宿主配置 > 默认 dom；auto 按能力解析。
+	 * @param {{ config?: unknown, url?: unknown, stored?: unknown, capable?: any }} options
+	 * @returns {{ mode: 'dom'|'2d5', requested: 'dom'|'2d5'|'auto', source: string, reason: string }}
+	 */
+	function resolveRenderMode(options = {}) {
+		const capable = options.capable || {};
+		const resolveAuto = () => {
+			if (!capable.webgl2) return { mode: 'dom', reason: 'webgl2-unavailable' };
+			if (capable.reducedMotion) return { mode: 'dom', reason: 'prefers-reduced-motion' };
+			if (Number.isFinite(capable.deviceMemory) && capable.deviceMemory > 0 && capable.deviceMemory < 2) {
+				return { mode: 'dom', reason: 'low-device-memory' };
+			}
+			return { mode: '2d5', reason: 'capable' };
+		};
+		for (const [source, requested] of [
+			['url', parseRenderMode(options.url)],
+			['stored', parseRenderMode(options.stored)],
+			['config', parseRenderMode(options.config)],
+		]) {
+			if (!requested) continue;
+			if (requested === 'auto') {
+				const auto = resolveAuto();
+				return { mode: auto.mode, requested, source, reason: auto.reason };
+			}
+			return { mode: requested, requested, source, reason: 'explicit' };
+		}
+		return { mode: 'dom', requested: 'dom', source: 'default', reason: 'default-dom' };
+	}
+
+	/** 探测 2.5D 能力（WebGL2 / 减少动态 / 设备内存）；auto 模式用。 */
+	function probeRenderCapabilities() {
+		let webgl2 = false;
+		try {
+			const probe = document.createElement('canvas');
+			webgl2 = !!probe.getContext('webgl2');
+		} catch {
+			webgl2 = false;
+		}
+		const reduce = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+		return {
+			webgl2,
+			reducedMotion: !!(reduce && reduce.matches),
+			deviceMemory: Number(navigator.deviceMemory) || null,
+			hardwareConcurrency: Number(navigator.hardwareConcurrency) || null,
+		};
+	}
+
+	function readStoredRenderMode() {
+		try {
+			return localStorage.getItem(RENDER_STORAGE_KEY);
+		} catch {
+			return null;
+		}
+	}
+
+	function writeStoredRenderMode(mode) {
+		try {
+			localStorage.setItem(RENDER_STORAGE_KEY, mode);
+		} catch {
+			/* 隐身模式 / 配额不足时忽略 */
+		}
+	}
+
+	/**
+	 * 读宿主配置 `render-config.json`（由 lib/webserver.js 提供）。
+	 * 静态托管（GitHub Pages / 本地 http.server）没有该文件时 404 → 回退 'dom'，不报错。
+	 * @returns {Promise<'dom'|'2d5'|'auto'>}
+	 */
+	async function readHostRenderConfig() {
+		try {
+			const response = await fetch('render-config.json', { cache: 'no-store' });
+			if (!response.ok) return 'dom';
+			const data = await response.json();
+			return parseRenderMode(data && data.render) || 'dom';
+		} catch {
+			return 'dom';
+		}
+	}
+
+	/** 刷新渲染方式按钮（文案/提示/加载态/回退原因）。 */
+	function updateRenderButton() {
+		const button = $('#renderBtn');
+		if (!button) return;
+		button.classList.toggle('loading', render2d5Loading);
+		if (render2d5Loading) {
+			button.textContent = '⏳ 2.5D';
+			button.title = '2.5D 资产加载中…';
+			return;
+		}
+		if (renderMode === '2d5') {
+			button.textContent = '🎨 DOM';
+			button.title = '切回分层纸娃娃（DOM 渲染）';
+			button.classList.add('active');
+			button.setAttribute('aria-pressed', 'true');
+		} else {
+			button.textContent = '🧊 2.5D';
+			button.title = render2d5Fallback
+				? `2.5D 不可用（${render2d5Fallback}），点击重试`
+				: '切到 2.5D 动态渲染（实验：WebGL2，按需加载）';
+			button.classList.remove('active');
+			button.setAttribute('aria-pressed', 'false');
+		}
+	}
+
+	/**
+	 * 懒加载 2.5D runtime：只有真正要进 2.5D 时才 import 模块、建 canvas、拉资产
+	 * （默认 DOM 模式下这里不会执行，因此零新增请求）。
+	 * @returns {Promise<any>}
+	 */
+	function ensureRuntime2d5() {
+		if (render2d5) return Promise.resolve(render2d5);
+		if (render2d5Starting) return render2d5Starting;
+		render2d5Loading = true;
+		updateRenderButton();
+		render2d5Starting = (async () => {
+			const module = await import(RUNTIME_2D5_MODULE);
+			if (!render2d5Canvas) {
+				render2d5Canvas = document.createElement('canvas');
+				render2d5Canvas.className = 'figure-2d5';
+				render2d5Canvas.setAttribute('aria-hidden', 'true');
+				render2d5Canvas.addEventListener('click', onFigureTap);
+				els.figureWrap.appendChild(render2d5Canvas);
+			}
+			const capabilities = probeRenderCapabilities();
+			const runtime = await module.createRuntime2D5({
+				canvas: render2d5Canvas,
+				assetRoot: RUNTIME_2D5_ASSET_ROOT,
+				quality: 'auto',
+				device: capabilities,
+				onContextLost: () => {
+					// 启动失败时主动 destroy() 也会触发 context lost：只处理已就绪 runtime 的异常
+					if (render2d5 !== runtime) return;
+					render2d5Fallback = 'webglcontextlost';
+					if (renderMode === '2d5') applyRenderMode('dom');
+				},
+			});
+			try {
+				await runtime.setShape(state.shape);
+				runtime.setLook({ outfit: state.outfit, top: state.top, bottom: state.bottom });
+				runtime.renderFrame();
+			} catch (err) {
+				runtime.destroy();
+				throw err;
+			}
+			render2d5 = runtime;
+			document.addEventListener('visibilitychange', sync2d5Visibility);
+			return runtime;
+		})().catch((err) => {
+			// 启动失败：销毁 canvas（其 WebGL context 已 lose），允许下次点击重试
+			if (render2d5Canvas && render2d5Canvas.parentNode) render2d5Canvas.parentNode.removeChild(render2d5Canvas);
+			render2d5Canvas = null;
+			throw err;
+		}).finally(() => {
+			render2d5Starting = null;
+			render2d5Loading = false;
+			updateRenderButton();
+		});
+		return render2d5Starting;
+	}
+
+	/** 把页面状态同步到 2.5D runtime（身形按需加载、造型动态组合、状态保留）。 */
+	function sync2d5() {
+		if (!render2d5 || renderMode !== '2d5') return;
+		const seq = (render2d5Seq += 1);
+		const shape = state.shape;
+		render2d5.setShape(shape).then((result) => {
+			if (seq !== render2d5Seq || renderMode !== '2d5') return;
+			if (result && result.stale) return;
+			render2d5.setLook({ outfit: state.outfit, top: state.top, bottom: state.bottom });
+			render2d5.renderFrame();
+		}).catch((err) => {
+			console.warn('[衣橱] 2.5D 切换失败', err);
+			render2d5Fallback = err instanceof Error ? err.message : String(err);
+			applyRenderMode('dom');
+		});
+	}
+
+	/** 页面隐藏时暂停 2.5D 渲染循环（省电；恢复时从当前状态继续）。 */
+	function sync2d5Visibility() {
+		if (render2d5) render2d5.setPaused(document.hidden);
+	}
+
+	/**
+	 * 切换渲染方式（'dom' | '2d5'）。
+	 * - 2.5D 资产加载完成后才交叉淡入（背景/特效不动 → 无闪白）；失败保持 DOM 并记录原因；
+	 * - DOM ↔ 2.5D 共用同一份穿搭状态（state），切换不重置身形/穿搭/背景/特效。
+	 * @param {'dom'|'2d5'} mode
+	 * @param {{ persist?: boolean, force?: boolean }} [options]
+	 * @returns {Promise<'dom'|'2d5'>}
+	 */
+	async function applyRenderMode(mode, options = {}) {
+		const requested = mode === '2d5' ? '2d5' : 'dom';
+		if (options.persist) writeStoredRenderMode(requested);
+		if (requested === '2d5') {
+			if (renderMode === '2d5' && render2d5) {
+				updateRenderButton();
+				return '2d5';
+			}
+			els.tip.textContent = '2.5D 加载中…';
+			els.tip.classList.remove('gone');
+			try {
+				await ensureRuntime2d5();
+			} catch (err) {
+				render2d5Fallback = err instanceof Error ? err.message : String(err);
+				console.warn('[衣橱] 2.5D 启动失败，保持分层纸娃娃', err);
+				renderMode = 'dom';
+				renderFigure();
+				syncFaceShape();
+				startFace();
+				applyFaceMotionPreference();
+				lastPersistKey = '';
+				applyState();
+				updateRenderButton();
+				els.tip.textContent = '2.5D 暂不可用，已保持分层纸娃娃';
+				els.tip.classList.remove('gone');
+				return 'dom';
+			}
+			renderMode = '2d5';
+			render2d5Fallback = '';
+			render2d5.freeze(false); // 若之前为 QA 冻结，切回 2.5D 时恢复播放
+			render2d5.renderFrame();
+			render2d5.start();
+			if (render2d5Canvas) render2d5Canvas.classList.add('on');
+			els.figure.classList.add('figure-dim');
+			els.figure.setAttribute('aria-hidden', 'true');
+			setFaceEnabled(false);
+			els.tip.classList.add('gone');
+			lastPersistKey = '';
+			applyState();
+			updateRenderButton();
+			return '2d5';
+		}
+		// 切回 DOM
+		const previous = renderMode;
+		renderMode = 'dom';
+		if (previous === '2d5' && render2d5) {
+			if (render2d5Canvas) render2d5Canvas.classList.remove('on');
+			els.figure.classList.remove('figure-dim');
+			els.figure.removeAttribute('aria-hidden');
+			renderFigure();
+			syncFaceShape();
+			const runtime = render2d5;
+			setTimeout(() => {
+				if (renderMode === 'dom') runtime.stop();
+			}, 320);
+		}
+		startFace();
+		applyFaceMotionPreference();
+		lastPersistKey = '';
+		applyState();
+		updateRenderButton();
+		return 'dom';
+	}
+
+	/** 点击角色：DOM 模式跳一下；2.5D 模式走 runtime 的 tap 预留接口（M5 互动会扩展）。 */
+	function onFigureTap() {
+		if (renderMode === '2d5' && render2d5) {
+			render2d5.tap();
+			speakRandom();
+			return;
+		}
+		els.figure.classList.remove('hop');
+		void els.figure.offsetWidth;
+		els.figure.classList.add('hop');
+		setTimeout(() => els.figure.classList.remove('hop'), 700);
+		speakRandom();
 	}
 
 	/* ---------------- 人物图层栈 ---------------- */
@@ -510,9 +833,22 @@ import { createDiy } from './diy-ui.js?v=11';
 		if (face.ready) faceApply();
 	}
 
+	/**
+	 * 系统「减少动态效果」/ `?facefx=` 解析：控制 B1-lite 脸部动画开关（DOM 模式）。
+	 * 2.5D 模式下脸部动画由 runtime 自己驱动（同参数总线），本函数只影响 DOM 层。
+	 */
+	function applyFaceMotionPreference() {
+		if (!face.ready) return;
+		const forced = params.get('facefx');
+		if (forced === '1') setFaceEnabled(true);
+		else if (forced === '0') setFaceEnabled(false);
+		else setFaceEnabled(!(faceReduceMotion && faceReduceMotion.matches));
+	}
+
 	/** 启动脸部动画：预加载补丁、监听气泡显隐（口型）、跟随系统「减少动态效果」偏好。 */
 	function startFace() {
-		if (!face.ready) return;
+		if (!face.ready || faceStarted) return;
+		faceStarted = true;
 		// 预加载两身形补丁（各 4 张，小图），换身形时切 src 不闪
 		for (const shape of manifest.shapes) {
 			const patches = facePatchesOf(shape.id);
@@ -529,16 +865,12 @@ import { createDiy } from './diy-ui.js?v=11';
 		new MutationObserver(syncMouth).observe(els.bubble, { attributes: true, attributeFilter: ['hidden'] });
 		syncMouth();
 		// 开关：?facefx=1/0 强制，否则默认跟随系统 reduced-motion
-		const forced = params.get('facefx');
-		const reduce = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-		const applyMotion = () => {
-			if (forced === '1') setFaceEnabled(true);
-			else if (forced === '0') setFaceEnabled(false);
-			else setFaceEnabled(!(reduce && reduce.matches));
-		};
-		applyMotion();
-		if (reduce && typeof reduce.addEventListener === 'function' && !forced) {
-			reduce.addEventListener('change', applyMotion);
+		faceReduceMotion = typeof window.matchMedia === 'function'
+			? window.matchMedia('(prefers-reduced-motion: reduce)')
+			: null;
+		applyFaceMotionPreference();
+		if (faceReduceMotion && typeof faceReduceMotion.addEventListener === 'function' && !params.get('facefx')) {
+			faceReduceMotion.addEventListener('change', applyFaceMotionPreference);
 		}
 		/** QA / 自动化接口：冻结姿态、手动触发，正常播放不受影响。 */
 		window.__feiyuFace = {
@@ -656,6 +988,18 @@ import { createDiy } from './diy-ui.js?v=11';
 	}
 
 	function applyState() {
+		if (renderMode === '2d5') {
+			// 2.5D 模式：DOM 人物层不维护，只同步 canvas 与周边 UI（背景/特效/衣柜不变）
+			sync2d5();
+			renderScene();
+			renderMeta();
+			setEffect(state.effect);
+			renderShapeToggle();
+			renderShelf();
+			layoutFigure();
+			persist();
+			return;
+		}
 		renderFigure();
 		syncFaceShape();
 		renderScene();
@@ -777,6 +1121,17 @@ import { createDiy } from './diy-ui.js?v=11';
 	}
 
 	function popFigure() {
+		if (renderMode === '2d5') {
+			// 2.5D：canvas 轻微弹一下（换装过渡无闪白；运行时只重绘当前帧）
+			if (!render2d5Canvas) return;
+			render2d5Canvas.classList.remove('pop-2d5');
+			void render2d5Canvas.offsetWidth;
+			render2d5Canvas.classList.add('pop-2d5');
+			setTimeout(() => {
+				if (render2d5Canvas) render2d5Canvas.classList.remove('pop-2d5');
+			}, 360);
+			return;
+		}
 		// 下一帧再加类名来重启动画，避免同步读 offsetWidth 触发强制 reflow
 		els.figure.classList.remove('pop');
 		requestAnimationFrame(() => {
@@ -790,6 +1145,10 @@ import { createDiy } from './diy-ui.js?v=11';
 		applyState();
 		popFigure();
 		const item = findItem(catId, itemId);
+		if (renderMode === '2d5' && typeof itemId === 'string' && itemId.startsWith('diy-')) {
+			say('2.5D 模式暂时只显示内置服装，切回分层模式就能看到 DIY 单品～');
+			return;
+		}
 		say(`换上「${item ? item.name : itemId}」啦，好看吗？`);
 	}
 
@@ -804,6 +1163,14 @@ import { createDiy } from './diy-ui.js?v=11';
 		bubbleTimer = setTimeout(() => {
 			els.bubble.hidden = true;
 		}, 2800);
+		// 2.5D：说话期间口型走 runtime 参数总线（DOM 模式由 B1-lite 的 MutationObserver 接管）
+		if (renderMode === '2d5' && render2d5) {
+			render2d5.setTalking(true);
+			clearTimeout(talk2d5Timer);
+			talk2d5Timer = setTimeout(() => {
+				if (render2d5) render2d5.setTalking(false);
+			}, 2800);
+		}
 	}
 
 	function speakRandom() {
@@ -818,6 +1185,23 @@ import { createDiy } from './diy-ui.js?v=11';
 		say(lines[Math.floor(Math.random() * lines.length)]);
 	}
 
+	/**
+	 * 立绘卡里人物的绘制区域（DOM 与 2.5D 共用同一套排版，保证两种模式卡片一致）。
+	 * @param {number} W
+	 * @param {number} H
+	 * @param {{ top: number, bottom: number }} bounds
+	 * @returns {{ fx0: number, fy0: number, figW: number, figH: number }}
+	 */
+	function cardFigureArea(W, H, bounds) {
+		const ratio = 9 / 16;
+		const areaTop = H * 0.035;
+		const areaBottom = H * 0.86;
+		const usable = Math.max(0.2, bounds.bottom - bounds.top);
+		const figH = (areaBottom - areaTop) / usable;
+		const figW = figH * ratio;
+		return { fx0: (W - figW) / 2, fy0: areaTop - bounds.top * figH, figW, figH };
+	}
+
 	async function saveCard() {
 		const canvas = els.canvas;
 		const ctx = canvas.getContext('2d');
@@ -825,22 +1209,27 @@ import { createDiy } from './diy-ui.js?v=11';
 		const W = canvas.width;
 		const H = canvas.height;
 		const bg = currentBackground();
-		const layers = resolveLayers(manifest, state);
 		const bounds = currentBounds(manifest, state);
+		const use2d5 = renderMode === '2d5' && render2d5;
 		let bgImg;
 		/** @type {Map<string, HTMLImageElement>} */
 		const layerImgs = new Map();
+		/** @type {Array<{ slot: string, file: string, z: number }>} */
+		let layers = [];
 		try {
 			bgImg = /** @type {HTMLImageElement} */ (await preload(bg.file));
-			const files = layers.map((layer) => layer.file).filter(Boolean);
-			const imgs = await Promise.all(files.map((file) => preload(file)));
-			files.forEach((file, index) => layerImgs.set(file, /** @type {HTMLImageElement} */ (imgs[index])));
+			if (!use2d5) {
+				layers = resolveLayers(manifest, state);
+				const files = layers.map((layer) => layer.file).filter(Boolean);
+				const imgs = await Promise.all(files.map((file) => preload(file)));
+				files.forEach((file, index) => layerImgs.set(file, /** @type {HTMLImageElement} */ (imgs[index])));
+			}
 		} catch {
 			alert('图片还没准备好，稍等一下再试～');
 			return;
 		}
-		// 导出策略 B：立绘卡只画 resolveLayers 的静态分层，脸部特效层（眨眼/笑眼/口型）不参与导出，
-		// 保证「点一下立绘卡」在任意播放时刻都得到确定的睁眼/闭嘴静态立绘，点击路径也不多一次合成。
+		// 立绘卡只导出静态帧：2.5D 用 runtime.renderFrame()→drawImage（当前参数下的定帧），
+		// DOM 用 resolveLayers 静态分层；脸部特效层不参与导出（任意时刻结果确定）。
 		const scaleBg = Math.max(W / bgImg.width, H / bgImg.height);
 		const bw = bgImg.width * scaleBg;
 		const bh = bgImg.height * scaleBg;
@@ -849,20 +1238,14 @@ import { createDiy } from './diy-ui.js?v=11';
 		ctx.fillStyle = 'rgba(255,255,255,0.08)';
 		ctx.fillRect(0, 0, W, H);
 
-		// 人物：所有图层共用同一张画布坐标，按 resolveLayers 的 drawOrder 在同一个矩形里依次 drawImage
-		const baseLayer = layers.find((layer) => layer.slot === 'body');
-		const baseImg = baseLayer ? layerImgs.get(baseLayer.file) : null;
-		const ratio = baseImg && baseImg.width && baseImg.height ? baseImg.width / baseImg.height : 9 / 16;
-		const areaTop = H * 0.035;
-		const areaBottom = H * 0.86;
-		const usable = Math.max(0.2, bounds.bottom - bounds.top);
-		const figH = (areaBottom - areaTop) / usable;
-		const figW = figH * ratio;
-		const fx0 = (W - figW) / 2;
-		const fy0 = areaTop - bounds.top * figH;
-		for (const layer of layers) {
-			const img = layerImgs.get(layer.file);
-			if (img) ctx.drawImage(img, fx0, fy0, figW, figH);
+		const area = cardFigureArea(W, H, bounds);
+		if (use2d5) {
+			render2d5.renderToCanvas(ctx, area.fx0, area.fy0, area.figW, area.figH);
+		} else {
+			for (const layer of layers) {
+				const img = layerImgs.get(layer.file);
+				if (img) ctx.drawImage(img, area.fx0, area.fy0, area.figW, area.figH);
+			}
 		}
 
 		const grad = ctx.createLinearGradient(0, H * 0.62, 0, H);
@@ -1048,13 +1431,7 @@ import { createDiy } from './diy-ui.js?v=11';
 		els.sheet.addEventListener('click', (event) => {
 			if (event.target === els.sheet) els.sheet.hidden = true;
 		});
-		els.figure.addEventListener('click', () => {
-			els.figure.classList.remove('hop');
-			void els.figure.offsetWidth;
-			els.figure.classList.add('hop');
-			setTimeout(() => els.figure.classList.remove('hop'), 700);
-			speakRandom();
-		});
+		els.figure.addEventListener('click', onFigureTap);
 		els.figure.addEventListener('keydown', (event) => {
 			if (event.key === 'Enter' || event.key === ' ') {
 				event.preventDefault();
@@ -1074,6 +1451,28 @@ import { createDiy } from './diy-ui.js?v=11';
 			}
 			if (event.key.toLowerCase() === 'r') randomLook();
 			if (event.key === 'Escape') els.sheet.hidden = true;
+		});
+		const renderButton = $('#renderBtn');
+		if (renderButton) {
+			renderButton.addEventListener('click', () => {
+				applyRenderMode(renderMode === '2d5' ? 'dom' : '2d5', { persist: true });
+			});
+		}
+		// 2.5D head follow：指针在角色框内移动 → 头部轻微跟随（参数总线；M5 互动复用）
+		els.stage.addEventListener('pointermove', (event) => {
+			if (renderMode !== '2d5' || !render2d5) return;
+			const rect = els.figureWrap.getBoundingClientRect();
+			if (!rect.width || !rect.height) return;
+			render2d5.setHeadFollow(
+				((event.clientX - rect.left) / rect.width) * 2 - 1,
+				((event.clientY - rect.top) / rect.height) * 2 - 1,
+			);
+		});
+		els.stage.addEventListener('pointerleave', () => {
+			if (render2d5) render2d5.setHeadFollow(null);
+		});
+		document.addEventListener('visibilitychange', () => {
+			if (render2d5) render2d5.setPaused(document.hidden);
 		});
 		window.addEventListener('resize', () => {
 			resizeFx();
@@ -1142,8 +1541,40 @@ import { createDiy } from './diy-ui.js?v=11';
 		renderTabs();
 		setTab('outfits');
 		resizeFx();
-		applyState();
-		startFace();
+
+		// 渲染方式决策（M3）：URL ?render= > 本地用户选择 > 宿主 config.dressUp.render > 默认 dom。
+		// 默认 dom 时以下 2.5D 代码路径都不会执行（不 import runtime、不发任何 2.5D 请求）。
+		const capabilities = probeRenderCapabilities();
+		const hostRender = await readHostRenderConfig();
+		const decision = resolveRenderMode({
+			config: hostRender,
+			url: params.get('render'),
+			stored: readStoredRenderMode(),
+			capable: capabilities,
+		});
+		renderRequested = decision.requested;
+		renderSource = decision.source;
+
+		// 与渲染方式无关的页面骨架先出（背景/特效/衣柜/布局），2.5D 加载期间不白屏
+		renderShapeToggle();
+		renderScene();
+		renderMeta();
+		setEffect(state.effect);
+		renderShelf();
+		layoutFigure(true);
+
+		if (decision.mode === '2d5') {
+			const mode = await applyRenderMode('2d5');
+			if (mode !== '2d5') {
+				renderFigure();
+				syncFaceShape();
+				startFace();
+			}
+		} else {
+			applyState();
+			startFace();
+		}
+		updateRenderButton();
 		bind();
 		diy.attach({
 			getState: () => state,
@@ -1160,6 +1591,36 @@ import { createDiy } from './diy-ui.js?v=11';
 		});
 		/** QA / Playwright 自动化入口（不参与正常渲染）。 */
 		window.__feiyuDiy = diy;
+		/** 2.5D E2E / 调试入口：渲染方式、runtime 状态、资源请求、确定性步进。 */
+		window.__feiyu2d5 = {
+			mode: () => renderMode,
+			requested: () => renderRequested,
+			source: () => renderSource,
+			fallbackReason: () => render2d5Fallback,
+			runtime: () => render2d5,
+			switchTo: (mode, options) => applyRenderMode(mode, options),
+			ensure: () => ensureRuntime2d5(),
+			sync: () => sync2d5(),
+			getState: () => (render2d5 ? render2d5.getState() : null),
+			getMemory: () => (render2d5 ? render2d5.getMemory() : null),
+			getAssetInfo: () => (render2d5 ? render2d5.getAssetInfo() : null),
+			freeze: (value) => {
+				if (render2d5) render2d5.freeze(value);
+			},
+			setAuto: (value) => {
+				if (render2d5) render2d5.setAuto(value);
+			},
+			advance: (n, dt) => (render2d5 ? render2d5.advance(n, dt) : 0),
+			step: (dt) => (render2d5 ? render2d5.step(dt) : 0),
+			resources: () => performance.getEntriesByType('resource')
+				.filter((entry) => entry.name.includes('/art/2d5/') || entry.name.includes('runtime-2d5'))
+				.map((entry) => ({
+					name: entry.name,
+					transferSize: entry.transferSize,
+					encodedBodySize: entry.encodedBodySize,
+					decodedBodySize: entry.decodedBodySize,
+				})),
+		};
 		startParallax();
 		if (params.has('embed')) els.tip.classList.add('gone');
 	}
