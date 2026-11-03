@@ -86,6 +86,9 @@
 4. 每件衣服（沿用 v0.8 的 whiteout 配准 / diff matte 得到整件 alpha）：
    - **主体层**（`<cat>-<id>-body.webp`）：整件衣服 alpha **不挖洞**（头发洞由 `hair` 最上层盖回；手臂由 `sleeve` 盖回）。
      manifest 里再按单品映射到 `topBody` 或 `topUnder` 槽位（水手服 → `topUnder`）。
+   - **下装层（v0.10.1 起）**：`mode='look'` —— 从「及膝在体 look」（`<shape>-only-bottom-<id>-knee.png`）
+     检测腰带/裙腰/下摆/左右缘，裁出裙子 alpha，**RGB 原样取自 look、零缩放**；不再使用 whiteout +
+     `extra_scale`（旧 chibi ×1.72 / girl ×1.40 已删除）。换下装需重跑构建，锚点失败会显式报错。
    - **袖子层**（`<cat>-<id>-sleeve.webp`）：`alpha = garment_alpha × dilate(arms_mask_target, 6px)`，羽化 1px；
      再用 look 真值的袖口/手部区域减掉手部，防止配准误差让袖口盖住手。
      这样长袖会盖住手臂、短袖只盖住上臂、无袖没有袖子层；两层 RGB 完全相同，重叠处无接缝。

@@ -13,6 +13,8 @@ drawOrder: body → topUnder → bottom → topBody → arms → sleeve → hair
 - 身形部件掩膜由 `tools/build_masks.py` 生成（`tools/masks/<shape>/{arms,hair}.png`，需要人工 QA）；
 - 袖子层 = 衣身 alpha × dilate(手臂掩膜, 6px)，再减掉 look 真值里的手部 → 长袖正确盖手腕、手在袖口外；
 - 衣服**不再挖头发洞**：头发是独立最上层，完整前发由 `hair` 层盖回。
+- 下装（v0.10.1 起）**直接在体 look 成层**：腰带顶 / 下摆 / 腰宽都从及膝 look 检测，
+  RGB 与格纹原样取自 look，不再用 whiteout 整件缩放（旧 chibi ×1.72 / girl ×1.40 已删除）。
 - 契约与验收见 [`LAYER-MODEL.md`](./LAYER-MODEL.md)，技术选型见 [`LAYER-ARCHITECTURE.md`](./LAYER-ARCHITECTURE.md)。
 
 **为什么不需要手工锚点/配准**：所有单件 look 都穿在**同一张素体**上生成，
@@ -76,16 +78,27 @@ tools/
 
 - 上衣：`sweater` 白色高领毛衣 / `hoodie` 白色连帽卫衣（橙蝴蝶结）/ `sailor` 白色水手服（深蓝领 + 蓝鲸刺绣）
 - 下装：`plaid` 蓝白格纹百褶裙 / `pleated` 深蓝百褶裙（白细条纹 + 腰间蝴蝶结）
-  - **裙长要点**：单独画下装时 AI 会画成超短裙 → 组合模式里会被上衣下摆完全盖住。
-    提示词必须写「**高腰，裙摆长度到大腿中部偏下（膝盖以上约 15cm）**」；
-    构建时还会按「衣服顶部中点」锚定放大（chibi ×1.72 / girl ×1.40）再保险。
+  - **裙长要点（v0.10.1 修）**：单独画下装时 AI 会画成超短裙，whiteout 单件图又会被
+    AI 重画成宽腰短裙；旧实现再用 `extra_scale` 整件放大 → 裙腰偏低、裙长/格纹/裙摆全部失真。
+    现在的做法是**以旧 look 为参考图做一次「只把裙子改长到及膝」的局部编辑**，保持角色/姿势/
+    画布不变，得到 `<shape>-only-bottom-<id>-knee.png`，构建时直接从这张 look 取裙成层：
+  - 提示词（girl/chibi × plaid/pleated 各 1 张，seed 7701/7702）：
+    ```
+    参考图1是一个穿着{蓝白格纹百褶裙（深蓝色腰带）/深蓝色百褶裙（白色细条纹、腰间深蓝蝴蝶结）}
+    的角色。保持参考图1里的一切完全不变：同一个角色、脸、表情、蓝色渐变长发、呆毛圆环、
+    鲸鱼耳鳍、鲸鱼尾巴、白色无肩带连体泳衣、站立姿势、位置、比例、纯白背景、画布尺寸。
+    只改裙子长度：把这条裙子改成及膝长度（裙摆落在膝盖处，完整覆盖大腿，不露大腿中部），
+    保持高腰设计、裙腰在自然腰线上、深蓝色腰带、原有的格纹/细条纹图案、百褶样式和裙摆宽度；
+    这是保守的及膝裙，不要超短裙，不要长到小腿，不要重新设计裙子。无文字、无水印。
+    ```
+  - **保守基调**：上衣全部带袖/有领，下装裙长做到**及膝**（裙摆到膝盖附近），不出现暴露款式。
 - 连衣裙：**只保留 1 套 `maid` 经典女仆装**（内容保守约束：抹胸礼服/蕾丝大裙摆等已移除）
-  - **保守基调**：上衣全部带袖/有领，下装裙长做到**及膝**（构建时按顶部锚定放大约 1.7×/1.4×），不出现暴露款式
 
-## 3. 白底单件图 whiteout（22 张）
+## 3. 白底单件图 whiteout（历史输入；仅上衣/连衣裙使用）
 
-为了让图层 alpha 干净（白衣服×白素体、头发遮挡处会糊），每张 look 再生成一张
-「只留这件衣服、其余全涂纯白」的图：
+为了让上衣图层 alpha 干净（白衣服×白素体、头发遮挡处会糊），每张**上衣/连衣裙**的 look
+再生成一张「只留这件衣服、其余全涂纯白」的图。下装自 v0.10.1 起直接取及膝 look，
+不再需要 whiteout（旧下装 whiteout 仅作历史输入保留）：
 
 ```
 参考图1是一个穿着{描述}的角色。请只保留这件衣服：把画面里其他所有东西
@@ -113,8 +126,10 @@ python3 tools/build_wardrobe.py --src .scratch/feiyu-gen/raw12 --out docs/dress-
 
 1. **部件层**：`body.webp`（素体，白底→透明，premultiplied 缩放到 675×1200）、
    `arms.webp`（body RGB + arms 掩膜 alpha）、`hair.webp`（body RGB + hair 掩膜 alpha）；
-2. **衣服 body 层**：沿用 v0.8 的三种 matte 策略（whiteout 配准 / diff 主块 / flood 备用），
-   得到整件 alpha 后**不挖头发洞**，premultiplied 缩放；
+2. **衣服 body 层**：上装沿用 v0.8 的 matte 策略（whiteout 配准 / diff 主块 / flood 备用），
+   得到整件 alpha 后**不挖头发洞**，premultiplied 缩放；下装走 `mode='look'`：
+   从 `*-only-bottom-*-knee.png` 检测腰带顶/下摆/腰宽，左右缘由裙面左缘稳健拟合 + 镜像，
+   RGB 直接取自 look（不缩放、不配准）；
 3. **衣服 sleeve 层**：`garment_alpha × dilate(arms掩膜, 6px)`，再用 look 的手部区域减掉手，
    羽化 1px；RGB 与 body 层相同 → 重叠处无接缝；
 4. **manifest v6**：`drawOrder` + `shapes[].layers` + `items[].layers[shape][slot]`；
@@ -126,10 +141,12 @@ python3 tools/build_wardrobe.py --src .scratch/feiyu-gen/raw12 --out docs/dress-
 
 ## 5. 新增一件衣服
 
-1. 用素体生成「只穿这一件」的 look（保持姿势一致），再生成对应的 whiteout 单件图；
-2. 文件按 `<shape>-only-<cat>-<id>.png` / `<shape>-whiteout-<cat>-<id>.png` 放进源目录；
+1. 用素体生成「只穿这一件」的 look（保持姿势一致）；上装再生成对应的 whiteout 单件图，
+   下装则从旧 look 编辑出「及膝」版本（见 §2，不需要 whiteout）；
+2. 上装文件按 `<shape>-only-<cat>-<id>.png` / `<shape>-whiteout-<cat>-<id>.png` 放进源目录；
+   下装按 `<shape>-only-bottom-<id>-knee.png` 放进源目录；
 3. 在 `tools/build_wardrobe.py` 的 `DRESSES` / `TOPS` / `BOTTOMS` 加一行，
-   在 `LAYER_PLAN` 里选 matte 策略（白色 → whiteout / 彩色 → diff），
+   在 `LAYER_PLAN` 里选策略（上装白色 → whiteout / 彩色 → diff；下装 → `mode='look'`），
    并在 `MAIN_SLOT` 里决定主体放 `topBody` 还是 `topUnder`（塞进裙子）；
 4. 重建素材和 manifest（sleeve 层会自动从部件掩膜切出来，不用手工做袖子图）；
 5. `npm run verify`（校验 manifest v6 契约、每个引用文件存在且是合法 WebP、槽位合法、bounds 合理）。

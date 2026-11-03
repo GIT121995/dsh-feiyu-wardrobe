@@ -7,7 +7,8 @@
 输入目录（默认 .scratch/feiyu-gen/raw12）里按命名约定存放：
   base-bandeau-<shape>.png           素体（白色无肩带连体衣，1152×2048，纯白背景）
   <shape>-only-<cat>-<id>.png        单件穿着 look（同一素体上生成，构图一致）
-  <shape>-whiteout-<cat>-<id>.png    白底单件图（取衣服调色板 / 形状配准用）
+  <shape>-only-bottom-<id>-knee.png  及膝下装 look（v0.10.1：下装直接在这里取裙成层）
+  <shape>-whiteout-<cat>-<id>.png    白底单件图（上衣取衣服调色板 / 形状配准用）
 
 新增输入掩膜（源分辨率 1152×2048，0-255 alpha PNG，由 tools/build_masks.py 生成）：
   tools/masks/<shape>/arms.png       手臂+手（含手臂轮廓描边，略保守）
@@ -19,7 +20,7 @@
   art/<shape>/hair.webp              body RGB + alpha = hair_mask × foreground_alpha
   art/<shape>/layers/<cat>-<id>-body.webp    每件上衣/连衣裙主体（不挖头发洞）
   art/<shape>/layers/<cat>-<id>-sleeve.webp  袖子 = garment_alpha × dilate(arms_mask,6px)，羽化 1px
-  art/<shape>/layers/bottom-<id>.webp        下装单层
+  art/<shape>/layers/bottom-<id>.webp        下装单层（RGB/alpha 原样取自及膝 look，不缩放）
   art/pet-default.webp               按 drawOrder 合成的默认穿搭（Q 版女仆装，184×327，透明）
   manifest.json                      v6（drawOrder / shapes[].layers / items[].layers）
 
@@ -93,10 +94,13 @@ LAYER_PLAN = {
     # 深蓝领子外翼在 look 里被头发挡住（形状不一致）故不参与；水手服不需要额外缩放。
     ('top', 'sailor'): {'mode': 'whiteout', 'target_frac': {'chibi': 0.57, 'girl': 0.46},
                         'align_probe': 'bow'},
-    # 下装：同样走 whiteout 配准；单独生成时裙子偏短，按「衣服顶部中点」锚定放大，
-    # 保证上衣下摆之下还能露出明显裙摆（组合模式好看）。v6 下装只有一层（bottom 槽位）。
-    ('bottom', 'plaid'): {'mode': 'whiteout', 'extra_scale': {'chibi': 1.72, 'girl': 1.40}},
-    ('bottom', 'pleated'): {'mode': 'whiteout', 'extra_scale': {'chibi': 1.72, 'girl': 1.40}},
+    # 下装（v0.10.1 修）：whiteout 单件图被 AI 重画成「宽腰短裙」，与在体 look 的裙形/比例
+    # 不一致；旧实现再用 extra_scale 整件放大（chibi ×1.72 / girl ×1.40），导致裙腰偏低、
+    # 裙长/格纹/裙摆全部失真（用户反馈「裙子像被放大后罩上去」）。
+    # 改为直接取「及膝 look」成层：腰带顶 / 下摆 / 腰宽从 look 检测，左右缘由裙面左缘
+    # 稳健拟合 + 镜像重建，RGB 直接取自 look，不做任何缩放/配准。输入为 <id>-knee.png。
+    ('bottom', 'plaid'): {'mode': 'look', 'look_suffix': '-knee'},
+    ('bottom', 'pleated'): {'mode': 'look', 'look_suffix': '-knee'},
     # 连衣裙：直接对 look 做 diff 主块 matte（v1/v2 两轮 QA 已确认位置/大小正确）
     ('dress', 'maid'): {'mode': 'diff', 'thr': 30},
 }
@@ -582,6 +586,226 @@ def whiteout_target(look: np.ndarray, base: np.ndarray, wo: np.ndarray, wa: np.n
     return cv2.morphologyEx(keep, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8)) * 255
 
 
+# ---------------------------------------------------------------- 下装：在体 look 直接成层（v0.10.1）
+
+# 用户反馈「裙子像被放大后罩上去」：whiteout 单件图被 AI 重画成宽腰短裙，再按顶部
+# 锚点整件放大（旧 extra_scale chibi ×1.72 / girl ×1.40）→ 裙腰/裙长/格纹/裙摆全部失真。
+# 下装改为直接取「及膝 look」：腰带顶/下摆/腰宽从 look 检测，左右缘由裙面左缘做稳健
+# 直线拟合再镜像（裙子在角色身上左右基本对称；右缘常被尾巴/手挡住不可靠），RGB 取自 look。
+LOOK_BELT_CENTER_BAND = (0.30, 0.70)  # 腰带横条中心必须落在画面中间带（避开两侧头发/手臂）
+LOOK_BELT_MIN_FRAC = 0.12             # 腰带横条长度至少占画面宽 12%
+LOOK_TOP_SEARCH = (0.34, 0.73)        # 腰带纵向搜索范围（占画面高）
+
+
+def _runs_of(row: np.ndarray) -> list[tuple[int, int, int]]:
+    """一行二值 mask 的连续段（start, end, length）。"""
+    xs = np.nonzero(row)[0]
+    if len(xs) == 0:
+        return []
+    return [(int(g[0]), int(g[-1]), len(g))
+            for g in np.split(xs, np.where(np.diff(xs) > 1)[0] + 1)]
+
+
+def _look_dark_navy(rgb: np.ndarray) -> np.ndarray:
+    """look 里的深蓝色（腰带）：蓝主导、偏暗。白 bandeau/肤色/头发高光不在此范围。"""
+    r, g, b = (rgb[:, :, 0].astype(np.int32), rgb[:, :, 1].astype(np.int32),
+               rgb[:, :, 2].astype(np.int32))
+    return (b - r > 15) & (b > 50) & (rgb.mean(axis=2) < 140)
+
+
+def look_belt_anchor(look: np.ndarray) -> dict:
+    """裙腰深蓝色腰带：中央横向长条里最宽的一段，返回上下沿/左右沿/中心。
+
+    look 里两侧头发是深蓝，也会形成长横条；用「中心带」过滤掉（腰带在角色中线附近），
+    再用同一段连续行的最长横条确定腰带高度。白 bandeau 是白的、肤色偏红，都不参与。
+    """
+    h, w = look.shape[:2]
+    dn = _look_dark_navy(look)
+    rows: list[tuple[int, int, int, int]] = []
+    for y in range(int(LOOK_TOP_SEARCH[0] * h), int(LOOK_TOP_SEARCH[1] * h)):
+        best = None
+        for x0, x1, length in _runs_of(dn[y]):
+            cx = (x0 + x1) / 2.0
+            if not (LOOK_BELT_CENTER_BAND[0] * w <= cx <= LOOK_BELT_CENTER_BAND[1] * w):
+                continue
+            if length < LOOK_BELT_MIN_FRAC * w:
+                continue
+            if best is None or length > best[2]:
+                best = (x0, x1, length)
+        if best is not None:
+            rows.append((y, best[0], best[1], best[2]))
+    if not rows:
+        raise SystemExit('下装 look 腰带检测失败：找不到中央深蓝色横向长条')
+    lmax = max(r[3] for r in rows)
+    band = [r for r in rows if r[3] >= 0.80 * lmax]
+    groups: list[list[tuple[int, int, int, int]]] = []
+    cur = [band[0]]
+    for r in band[1:]:
+        if r[0] == cur[-1][0] + 1:
+            cur.append(r)
+        else:
+            groups.append(cur)
+            cur = [r]
+    groups.append(cur)
+    group = max(groups, key=len)
+    top, bot = group[0][0], group[-1][0]
+
+    def longest(y: int) -> int:
+        return max((r[2] for r in _runs_of(dn[y])
+                    if LOOK_BELT_CENTER_BAND[0] * w <= (r[0] + r[1]) / 2
+                    <= LOOK_BELT_CENTER_BAND[1] * w), default=0)
+
+    while top - 1 >= 0 and longest(top - 1) >= 0.60 * lmax:
+        top -= 1
+    while bot + 1 < h and longest(bot + 1) >= 0.60 * lmax:
+        bot += 1
+    _, x0, x1, length = max(group, key=lambda r: r[3])
+    return {'top': int(top), 'bot': int(bot), 'x0': int(x0), 'x1': int(x1),
+            'cx': float((x0 + x1) / 2.0), 'width': int(length), 'peak': int(lmax)}
+
+
+def look_garment_top(look: np.ndarray, belt: dict) -> int:
+    """裙子上沿（含腰带高光/描边）：腰带横向范围内「高饱和蓝色」占比首次稳定的行。
+
+    旧实现用 look↔base 的 diff 顶边，但白 bandeau 底边也会被 AI 重画 → diff 顶边比真实
+    裙腰高 40-80px（chibi 尤甚）。这里只信裙子本体的颜色：白 bandeau/肤色饱和度低，
+    腰带（含高光）高饱和蓝色，逐行扫到第一段稳定蓝色即为裙腰上沿。
+    """
+    h, w = look.shape[:2]
+    hsv = cv2.cvtColor(np.clip(look, 0, 255).astype(np.uint8), cv2.COLOR_RGB2HSV)
+    blue = (hsv[:, :, 1] > 50) & (look[:, :, 2] > 55)
+    x0, x1 = max(0, belt['x0']), min(w, belt['x1'] + 1)
+    frac = blue[:, x0:x1].mean(axis=1)
+    for y in range(max(0, belt['top'] - 40), min(h - 12, belt['top'] + 30)):
+        if frac[y] > 0.5 and frac[y:y + 10].mean() > 0.6:
+            return int(y)
+    return int(belt['top'])
+
+
+def _look_outside(rgb: np.ndarray) -> np.ndarray:
+    """白底 / 肤色（用于找下摆：衣物→皮肤/白底的过渡）。"""
+    r, g, b = (rgb[:, :, 0].astype(np.int32), rgb[:, :, 1].astype(np.int32),
+               rgb[:, :, 2].astype(np.int32))
+    lum = rgb.mean(axis=2)
+    white = (rgb.min(axis=2) > 228) & (np.abs(r - g) < 10) & (np.abs(g - b) < 14)
+    skin = (r - g > 4) & (g - b > -12) & (r > 195) & (lum > 155)
+    return white | skin
+
+
+def _robust_line(ys: list[int], xs: list[int]) -> tuple[float, float]:
+    """稳健直线拟合（迭代剔除外点），返回 (slope, intercept)。"""
+    ys_a = np.asarray(ys, np.float64)
+    xs_a = np.asarray(xs, np.float64)
+    keep = np.ones(len(xs_a), bool)
+    slope, intercept = np.polyfit(ys_a, xs_a, 1)
+    for _ in range(10):
+        slope, intercept = np.polyfit(ys_a[keep], xs_a[keep], 1)
+        residual = np.abs(slope * ys_a + intercept - xs_a)
+        sigma = np.median(residual[keep]) + 1e-6
+        nk = residual < max(4.0, 2.5 * sigma)
+        if nk.sum() < max(4, int(0.3 * len(xs_a))) or np.array_equal(nk, keep):
+            break
+        keep = nk
+    return float(slope), float(intercept)
+
+
+def skirt_mask_from_look(look: np.ndarray, base: np.ndarray,
+                         hair_src: np.ndarray, arms_src: np.ndarray) -> tuple[np.ndarray, dict]:
+    """在体 look → 裙子掩膜（0/1，源分辨率），不缩放。
+
+    1. 与素体 diff 主块 + close_fill 得到裙面（白格纹/白底小洞先填上）；
+    2. 踢掉 hair/arms 掩膜（它们画在裙子前，会污染左右缘；最终 mask 由直线+镜像重建）；
+    3. 腰带顶 / 下摆 / 腰宽从 look 检测，左缘稳健拟合 → 右缘镜像；
+    4. 与 look 前景相交，剪掉梯形外扩到白背景的边角。
+    """
+    h, w = look.shape[:2]
+    comps = diff_comps(look, base, thr=30, min_area=1200)
+    if not comps:
+        raise SystemExit('下装 look diff 主块失败')
+    body = (np.abs(base - 255).max(axis=2) > 25)
+    bys, bxs = np.nonzero(body)
+    by0, by1 = float(bys.min()), float(bys.max())
+    bw = float(bxs.max() - bxs.min())
+    pick = None
+    for c in comps:
+        x, y, cw_, ch = c['bbox']
+        cy = y + ch / 2.0
+        if not (by0 + 0.30 * (by1 - by0) < cy < by0 + 0.80 * (by1 - by0)):
+            continue
+        if cw_ < 0.22 * bw or cw_ / max(ch, 1) < 0.55:
+            continue
+        if pick is None or c['area'] > pick['area']:
+            pick = c
+    if pick is None:
+        pick = comps[0]
+    solid = close_fill(pick['mask'], kernel_size=31, max_grow=14)
+    occ = cv2.dilate((hair_src > 127).astype(np.uint8), np.ones((3, 3), np.uint8))
+    occ |= cv2.dilate((arms_src > 127).astype(np.uint8), np.ones((3, 3), np.uint8))
+    edge = solid & (occ == 0)
+
+    belt = look_belt_anchor(look)
+    top = look_garment_top(look, belt)
+    cx = belt['cx']
+
+    outside = _look_outside(look)
+    trans: list[int] = []
+    for x in range(belt['x0'] + 8, int(cx) - 12, 2):
+        y = max(top + 30, belt['bot'] + 5)
+        while y < h - 150:
+            if outside[y, x] and outside[y:y + 150, x].mean() > 0.92:
+                while y > top + 30 and outside[y - 1, x]:
+                    y -= 1
+                trans.append(y)
+                break
+            y += 1
+    if len(trans) < 8:
+        raise SystemExit(f'下装下摆检测失败（有效过渡列 {len(trans)}）')
+    hem = int(np.percentile(trans, 60))
+
+    ys: list[int] = []
+    xs: list[int] = []
+    for y in range(belt['bot'] + 12, hem - 2):
+        row = np.nonzero(edge[y])[0]
+        if len(row) == 0:
+            continue
+        left = int(row.min())
+        if left > cx - 20 or left < cx - 320:
+            continue
+        ys.append(y)
+        xs.append(left)
+    if len(xs) < 20:
+        raise SystemExit(f'下装左缘拟合点不足（{len(xs)}）')
+    slope, intercept = _robust_line(ys, xs)
+    if abs(slope * top + intercept - belt['x0']) > 10:
+        intercept = belt['x0'] - slope * top
+    left_top = slope * top + intercept
+    left_hem = slope * hem + intercept
+    waist_w = 2.0 * (cx - left_top)
+    hem_w = 2.0 * (cx - left_hem)
+    if not (0.08 * h <= hem - top <= 0.60 * h):
+        raise SystemExit(f'下装裙长异常: top={top} hem={hem}')
+    if not (-0.60 <= slope <= 0.05) or hem_w < 1.05 * waist_w or hem_w > 3.5 * waist_w:
+        raise SystemExit(f'下装裙形异常: slope={slope:.3f} waist={waist_w:.0f} hem={hem_w:.0f}')
+
+    mask = np.zeros((h, w), np.uint8)
+    for y in range(top, hem + 1):
+        left = int(round(slope * y + intercept))
+        right = int(round(2.0 * cx - left))
+        mask[y, max(0, left):min(w - 1, right) + 1] = 1
+    # 剪掉梯形外扩到纯白背景的边角；裙内白色格纹是封闭区，不受影响
+    mask &= (remove_white_alpha(look) > 40).astype(np.uint8)
+    mask = fill_holes(mask)
+    inter = int(np.logical_and(mask > 0, pick['mask'] > 0).sum())
+    union = int(np.logical_or(mask > 0, pick['mask'] > 0).sum())
+    info = {'mode': 'look', 'top': top, 'hem': hem,
+            'waist_y': top, 'waist_w': int(round(waist_w)),
+            'hem_w': int(round(hem_w)), 'cx': round(float(cx), 1),
+            'slope': round(slope, 4), 'area': int(mask.sum()),
+            'iou': round(inter / max(union, 1), 4)}
+    return mask, info
+
+
+
 def register_shape(alpha: np.ndarray, target: np.ndarray,
                    scales: np.ndarray | None = None) -> tuple[float, float, float, float]:
     """形状 IoU 配准（FFT 互相关做全图平移搜索 + 缩放扫描）。
@@ -684,7 +908,6 @@ def register_sailor_bow(wo: np.ndarray, wa: np.ndarray,
 
 
 def layer_from_whiteout(wo: np.ndarray, wa: np.ndarray, target: np.ndarray,
-                        extra_scale: float = 1.0,
                         align_probe: str | None = None,
                         look: np.ndarray | None = None,
                         ) -> tuple[np.ndarray, np.ndarray, float, dict]:
@@ -696,8 +919,7 @@ def layer_from_whiteout(wo: np.ndarray, wa: np.ndarray, target: np.ndarray,
       - `light`：只拿浅色像素（衬衫主体）做形状配准，深色领子/蝴蝶结不参与。
       - None：整件 alpha 默认形状配准。
 
-    extra_scale > 1 时以「衣服顶部中点」为锚点整体放大（下摆向下同时变宽），
-    用来补偿 AI 单独画裙子时偏短的问题，保证叠在上衣下面还能露出裙摆。
+    下装不再走这里（v0.10.1 起 `mode='look'` 直接取在体 look），故不再需要整件放大。
     """
     info = {'mode': 'shape', 'fallback': False}
     s = dx = dy = iou = 0.0
@@ -717,14 +939,6 @@ def layer_from_whiteout(wo: np.ndarray, wa: np.ndarray, target: np.ndarray,
             probe = ((wa > 127) & light).astype(np.uint8) * 255
             info['mode'] = 'light'
         s, dx, dy, iou = register_shape(probe, target)
-    if extra_scale != 1.0:
-        ys, xs = np.nonzero(wa > 127)
-        top_y, cx = float(ys.min()), float((xs.min() + xs.max()) / 2)
-        waist_y, center_x = s * top_y + dy, s * cx + dx
-        s2 = s * extra_scale
-        dx = center_x - s2 * cx
-        dy = waist_y - s2 * top_y
-        s = s2
     info.update({'scale': round(float(s), 4), 'dx': round(float(dx), 2),
                  'dy': round(float(dy), 2), 'iou': round(float(iou), 4)})
     h, w = wo.shape[:2]
@@ -812,22 +1026,36 @@ def hand_region_from_look(look: np.ndarray, arms_src: np.ndarray) -> tuple[np.nd
 # ---------------------------------------------------------------- 单身形构建
 
 def build_garment(shape: str, cat: str, ident: str, src: Path, base: np.ndarray,
-                  arms_target: np.ndarray, arms_src: np.ndarray) -> dict:
+                  arms_target: np.ndarray, arms_src: np.ndarray,
+                  hair_src: np.ndarray) -> dict:
     """构建一件上衣/连衣裙/下装的 body（+sleeve）层（源分辨率 matte → 目标尺寸 webp 像素）。
 
-    返回 {'layers': {slot: (rgb, alpha)}, 'iou': float, 'bow_px': int}
+    返回 {'layers': {slot: (rgb, alpha)}, 'iou': float, 'bow_px': int, 'skirt': dict}
     """
     cfg = LAYER_PLAN[(cat, ident)]
-    look_path = src / f'{shape}-only-{cat}-{ident}.png'
-    look_v2 = src / f'{shape}-only-{cat}-{ident}-v2.png'
-    if cfg['mode'] == 'whiteout' and look_v2.exists():
-        look_path = look_v2
+    if cfg['mode'] == 'look':
+        # 下装：使用「及膝」在体 look（AI 编辑旧 look 得到，保持角色/姿势/画布不变）
+        look_path = src / f'{shape}-only-{cat}-{ident}{cfg.get("look_suffix", "")}.png'
+        if not look_path.exists():
+            raise SystemExit(f'缺少及膝 look: {look_path}（见 PROMPTS.md §2）')
+    else:
+        look_path = src / f'{shape}-only-{cat}-{ident}.png'
+        look_v2 = src / f'{shape}-only-{cat}-{ident}-v2.png'
+        if cfg['mode'] == 'whiteout' and look_v2.exists():
+            look_path = look_v2
     look = load_rgb(look_path)
     look_fg = remove_white_alpha(look) > 40  # 该 look 自身的前景（白底图的轮廓内部都算）
     iou = 0.0
     bow_px = 0
     align: dict = {}
-    if cfg['mode'] == 'whiteout':
+    skirt: dict = {}
+    if cfg['mode'] == 'look':
+        mask, skirt = skirt_mask_from_look(look, base, hair_src, arms_src)
+        iou = float(skirt['iou'])
+        # 在体 look 直接成层：alpha = 裙掩膜羽化，RGB = look（格纹/腰带/褶皱原样）
+        a1152 = np.clip(cv2.GaussianBlur(mask.astype(np.float32) * 255.0, (0, 0), 0.9) * 1.05 - 6, 0, 255)
+        rgb1152 = np.clip(look, 0, 255).astype(np.uint8)
+    elif cfg['mode'] == 'whiteout':
         wo_path = src / f'{shape}-whiteout-{cat}-{ident}-v2.png'
         if not wo_path.exists():
             wo_path = src / f'{shape}-whiteout-{cat}-{ident}.png'
@@ -839,12 +1067,8 @@ def build_garment(shape: str, cat: str, ident: str, src: Path, base: np.ndarray,
             target = whiteout_target(look, base, wo, wa)
         if target is None:
             raise SystemExit(f'配准目标失败: {shape} {cat}-{ident}')
-        extra = cfg.get('extra_scale', 1.0)
-        if isinstance(extra, dict):
-            extra = extra[shape]
         rgb1152, a1152, iou, align = layer_from_whiteout(
-            wo, wa, target, extra_scale=extra,
-            align_probe=cfg.get('align_probe'), look=look)
+            wo, wa, target, align_probe=cfg.get('align_probe'), look=look)
         # v6：不再挖头发洞（最上层 hair 负责盖回）；只做羽化，保持衣服完整
         a1152 = np.clip(cv2.GaussianBlur(a1152.astype(np.float32), (0, 0), 0.9) * 1.05 - 6, 0, 255)
         if (cat, ident) == ('top', 'hoodie'):
@@ -876,7 +1100,7 @@ def build_garment(shape: str, cat: str, ident: str, src: Path, base: np.ndarray,
         if float((sleeve > 20).mean()) >= SLEEVE_MIN_FRAC:
             layers['sleeve'] = (l_rgb.copy(), sleeve)
     return {'layers': layers, 'iou': float(iou), 'bow_px': bow_px, 'look': look,
-            'align': align, 'cuffs': cuffs if cat != 'bottom' else []}
+            'align': align, 'skirt': skirt, 'cuffs': cuffs if cat != 'bottom' else []}
 
 
 def build_qa_sheet(shape: str, name: str, qa_dir: Path, shape_px: dict,
@@ -1185,7 +1409,7 @@ def build_shape(shape: str, src: Path, out: Path, qa_dir: Path, audit_dir: Path,
 
     for cat, ids in (('dress', DRESSES), ('top', TOPS), ('bottom', BOTTOMS)):
         for ident, _, _ in ids:
-            g = build_garment(shape, cat, ident, src, base, arms_target, arms_src)
+            g = build_garment(shape, cat, ident, src, base, arms_target, arms_src, hair_src)
             look_src[(cat, ident)] = g['look']
             main_slot = MAIN_SLOT.get((cat, ident), 'bottom')
             rels: dict[str, str] = {}
@@ -1201,6 +1425,15 @@ def build_shape(shape: str, src: Path, out: Path, qa_dir: Path, audit_dir: Path,
             item_layers[(cat, ident)] = rels
             item_px[(cat, ident)] = g['layers']
             stats['iou'][f'{cat}-{ident}'] = round(g['iou'], 3)
+            if g.get('skirt'):
+                sk = dict(g['skirt'])
+                a = g['layers'][main_slot][1]
+                sy_, sx_ = np.nonzero(a > 127)
+                sk['layer_bbox'] = [int(sx_.min()), int(sy_.min()),
+                                    int(sx_.max() - sx_.min() + 1), int(sy_.max() - sy_.min() + 1)]
+                sk['layer_waist_y'] = round(float(sy_.min()) / TARGET[1], 4)
+                sk['layer_hem_y'] = round(float(sy_.max() + 1) / TARGET[1], 4)
+                stats.setdefault('skirt', {})[f'{cat}-{ident}'] = sk
             stats['bow'][f'{cat}-{ident}'] = g['bow_px']
             if g.get('align'):
                 stats.setdefault('align', {})[f'{cat}-{ident}'] = g['align']
@@ -1222,6 +1455,11 @@ def build_shape(shape: str, src: Path, out: Path, qa_dir: Path, audit_dir: Path,
                      if 'sleeve' in g['layers'] else ' 无袖')
                   + (f' 蝴蝶结补丁 {g["bow_px"]}px' if g['bow_px'] else '')
                   + align_note)
+            if g.get('skirt'):
+                sk = g['skirt']
+                print(f'    在体 look 成层: 腰线y={sk["top"]} 下摆y={sk["hem"]} '
+                      f'腰宽={sk["waist_w"]} 摆宽={sk["hem_w"]} '
+                      f'look-diff IoU={sk["iou"]:.3f}（源 1152×2048，不缩放）')
 
     build_qa_sheet(shape, shape, qa_dir, shape_px, item_px)
     build_audit(shape, audit_dir, shape_px, item_px, look_src, stats)
@@ -1466,6 +1704,11 @@ def collect_referenced(manifest: dict) -> set[str]:
 
     walk(manifest)
     refs.add('art/pet-default.webp')
+    # B1-lite 脸部动画补丁是运行时特效层（wardrobe-core.FACE_PATCHES 引用），不进 manifest；
+    # 这里显式声明，避免清理孤儿文件时被误删（v0.10.0 重建时踩到）。
+    for shape in ('chibi', 'girl'):
+        for name in ('eye_blink', 'eye_smile', 'mouth_mid', 'mouth_open'):
+            refs.add(f'art/{shape}/face/{name}.webp')
     return refs
 
 
@@ -1528,7 +1771,7 @@ def load_prev_shape_info(out: Path, missing_shapes: list[str]) -> dict:
 
 def write_report(audit_dir: Path, shape_info: dict, removed: list[str],
                  mask_md5: dict, cmd: str, orphans: list[str], tmp_files: list[str],
-                 refs: set[str]) -> None:
+                 refs: set[str], qa_dir: Path | None = None) -> None:
     audit_dir.mkdir(parents=True, exist_ok=True)
     checks: list[tuple[str, str, bool, str]] = []
     # 洋红空洞：身体不透明区（body alpha>200）出现洋红才算缺陷；阈值 <50px 且无 >=3px 连通块：
@@ -1564,6 +1807,18 @@ def write_report(audit_dir: Path, shape_info: dict, removed: list[str],
               and al.get('iou', 0) >= 0.5 and 0.85 <= al.get('scale', 0) <= 1.15)
         checks.append((f'{sid} 水手服领结配准', 'bow 配准 IoU>=0.5 且 scale∈[0.85,1.15]',
                        ok, str(al)))
+    # 下装（v0.10.1）：直接在体 look 成层，不做任何缩放；记录腰线/下摆/腰宽/摆宽
+    for sid, info in shape_info.items():
+        sk = (info.get('stats') or {}).get('skirt') or {}
+        if not sk:
+            continue
+        vals = '; '.join(
+            f'{k.split("-")[1]}: y={v["top"]}→{v["hem"]} 腰宽={v["waist_w"]} 摆宽={v["hem_w"]} '
+            f'层bbox={v["layer_bbox"]} look-IoU={v["iou"]}'
+            for k, v in sk.items())
+        checks.append((f'{sid} 下装按在体 look 1:1 成层（无 extra_scale）',
+                       '腰线/下摆/腰宽来自 look；look-diff IoU>=0.65（diff 含 bandeau 底边/尾巴，仅作护栏）',
+                       all(v['iou'] >= 0.65 for v in sk.values()), vals))
     checks.append(('manifest v6 / 675×1200 / 引用文件存在', 'validate_build 无问题', not orphans,
                    '见构建日志'))
     checks.append(('art/ 无孤儿文件 / 无 .tmp', '0', not orphans and not tmp_files,
@@ -1579,7 +1834,8 @@ def write_report(audit_dir: Path, shape_info: dict, removed: list[str],
              '```bash',
              cmd,
              '```', '',
-             '- 输入：`/home/ubuntu/dsh/.scratch/feiyu-gen/raw12`（素体 / 单件 look / whiteout）+ '
+             '- 输入：`/home/ubuntu/dsh/.scratch/feiyu-gen/raw12`（素体 / 单件 look / whiteout / '
+             '`*-only-bottom-*-knee.png` 及膝下装 look）+ '
              '`tools/masks/<shape>/{arms,hair}.png`（mask-forge 冻结版，源分辨率 1152×2048）',
              '- 输出：`docs/dress-up/art`（675×1200 WebP）+ `docs/dress-up/manifest.json`（v6）',
              f'- drawOrder：`{" → ".join(DRAW_ORDER)}`',
@@ -1596,7 +1852,7 @@ def write_report(audit_dir: Path, shape_info: dict, removed: list[str],
              'art/icons/*.webp  art/bg-*.webp  art/thumbs/bg-*.webp   图标/背景（沿用）',
              'manifest.json                         v6（shapes[].layers / items[].layers）',
              '```', '',
-             f'- 被 manifest 引用的素材文件数：{len(refs)}',
+             f'- 被 manifest / 运行时特效引用的素材文件数：{len(refs)}',
              '']
     if mask_md5:
         lines += ['## 输入掩膜（冻结）', '']
@@ -1611,10 +1867,11 @@ def write_report(audit_dir: Path, shape_info: dict, removed: list[str],
     lines.append('> 说明：洋红底检查里，「发丝/手臂围出的背景缝隙」在洋红底上本来就该透出背景'
                  '（不是人物内部空洞），单独计入 bg_gap 字段；只有 body 不透明区出现洋红才算缺陷。')
     lines.append('')
+    qa_root = str(qa_dir) if qa_dir is not None else '/home/ubuntu/dsh/.scratch/feiyu-art'
     lines += ['## 人工 QA 图（read_image 逐张确认）', '',
-              '- `/home/ubuntu/dsh/.scratch/feiyu-art/v9-layers-<shape>.jpg`：每身形全部组合'
+              f'- `{qa_root}/v9-layers-<shape>.jpg`：每身形全部组合'
               '（3 上衣×2 下装 + 女仆装 + 素体单层 + 单件），带标签',
-              '- `/home/ubuntu/dsh/.scratch/feiyu-layer-audit/pipeline/`：',
+              f'- `{audit_dir}/`：',
               '  - `magenta-holes-<shape>.jpg` 洋红底全组合空洞检查（绿色=发丝缝隙，红色=缺陷）',
               '  - `hand-in-front-skirt-<shape>.jpg` 手在裙前 2x 局部（左右手）',
               '  - `hair-over-clothes-<shape>.jpg` 长发在衣服前：with/without hair 对比',
@@ -1635,6 +1892,8 @@ def write_report(audit_dir: Path, shape_info: dict, removed: list[str],
             lines.append(f'- 白底单品配准方式: {stats.get("align")}')
         lines.append(f'- sleeve 面积占比: {stats.get("sleeve", {})}')
         lines.append(f'- 蝴蝶结补丁像素: {stats.get("bow", {})}')
+        if stats.get('skirt'):
+            lines.append(f'- 下装 look 直接成层（源坐标 / 目标层 bbox）: {stats.get("skirt")}')
         mag = stats.get('magenta_holes', {}).get(sid, {})
         bad = {k: v['bad'] for k, v in mag.items() if v.get('bad')}
         gaps = {k: v['bg_gap'] for k, v in mag.items() if v.get('bg_gap')}
@@ -1648,8 +1907,9 @@ def write_report(audit_dir: Path, shape_info: dict, removed: list[str],
               '1. **base 侧发压在毛衣/卫衣肩袖上会出现 1-2px 深色细丝**：v6「hair 层最上层」设计近似——'
               'base 画里这几缕发丝本来在手臂/衣服前，look 真值里 AI 重画后位置略有差异；'
               '合成图上表现为袖肩处细深色丝，不是洞、不影响验收 1-3。',
-              '2. **下装相对单件 look 更大**：whiteout 配准后按顶部锚点放大（chibi ×1.72 / girl ×1.40，'
-              'v0.8 保守内容「及膝长裙」决定），与单件 look 真值不完全等大，属预期（见 look_diff）。',
+              '2. **下装按在体 look 1:1 成层**：v0.10.1 起不再用 whiteout 整件放大'
+              '（旧 chibi ×1.72 / girl ×1.40）；裙腰顶 / 下摆 / 腰宽由及膝 look 检测，'
+              '左右缘由裙面左缘稳健拟合 + 镜像重建，RGB 直接取自 look（格纹比例/腰带/褶皱与 look 一致）。',
               '3. **手部验收以 4x QA 图为准**：自动指标只统计「手部核心区（指尖/手心）未被衣服覆盖」'
               '（arms 或 hair 层在最上层都算露出，发丝压手属正常），完整视觉结论见 hand-in-front-skirt-<shape>.jpg。',
               '4. 掩膜边界有 1-2px CV 误差；sleeve 用 look 袖口线兜底裁手（见代码 hand_region_from_look）。',
@@ -1717,7 +1977,7 @@ def build(src: Path, out: Path, qa_dir: Path, audit_dir: Path, masks_dir: Path,
             mask_md5[f'{shape}/{part}'] = hashlib.md5(fp.read_bytes()).hexdigest()
     cmd = ('python3 tools/build_wardrobe.py --src /home/ubuntu/dsh/.scratch/feiyu-gen/raw12 '
            '--out docs/dress-up')
-    write_report(audit_dir, shape_info, removed, mask_md5, cmd, orphans, tmp_files, refs)
+    write_report(audit_dir, shape_info, removed, mask_md5, cmd, orphans, tmp_files, refs, qa_dir)
     if orphans:
         problems.append(f'art/ 存在未被 manifest 引用的孤儿文件: {orphans[:5]}')
     if tmp_files:
