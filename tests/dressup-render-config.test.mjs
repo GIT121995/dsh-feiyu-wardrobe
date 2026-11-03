@@ -81,7 +81,15 @@ test('render-config 端点返回宿主配置与 no-store', async () => {
 	assert.match(res.headers['content-type'], /application\/json/);
 	assert.equal(res.headers['cache-control'], 'no-store');
 	const body = JSON.parse(String(res.body));
-	assert.deepEqual(body, { version: DRESS_UP_CONFIG_VERSION, render: '2d5' });
+	assert.deepEqual(body, {
+		version: DRESS_UP_CONFIG_VERSION,
+		render: '2d5',
+		interaction: {
+			enabled: false, // M5：未注入 interaction 回调时 disabled（静态/旧宿主兼容）
+			stateUrl: '/feiyu/dress-up/interaction-state.json',
+			actionUrl: '/feiyu/dress-up/interaction',
+		},
+	});
 });
 
 test('render-config 未传/非法配置时默认 dom', async () => {
