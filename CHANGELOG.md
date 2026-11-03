@@ -1,10 +1,8 @@
 # Changelog
 
-## 0.11.0 — 待发布（DIY 上传 M1 · 默认关闭 · 发版草稿）
+## 0.11.0 — 2026-11-03
 
-> 本条目是 DIY M1 的发版草稿：代码在 feature 分支 `feat/diy-upload`，**版本号/tag/npm publish/GitHub Release
-> 由 Lead 按发版纪律执行**（本分支未改 `package.json` 版本、未 tag、未发布）。行为为新增可选能力（opt-in），
-> 按纪律应升 minor 到 0.11.0。
+「DIY 上传 M1：把你拍的衣服穿到女儿身上（可选 · 默认关闭 · 纯离线路径不变）」
 
 ### 新特性（全部 opt-in，默认关闭；纯离线换装路径不变）
 
