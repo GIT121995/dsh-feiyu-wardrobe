@@ -11,7 +11,8 @@
     },
     "./catalog": "./lib/catalog.js",
     "./render": "./lib/render.js",
-    "./client": "./lib/client.js"
+    "./client": "./lib/client.js",
+    "./diy": "./lib/diy.js"
   },
   "bin": {
     "dsh-feiyu-report": "./bin/feiyu-report.mjs"
