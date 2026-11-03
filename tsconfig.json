@@ -16,6 +16,7 @@
     "lib/**/*.js",
     "bin/**/*.mjs",
     "docs/dress-up/wardrobe-core.js",
+    "docs/dress-up/runtime-2d5-core.js",
     "docs/dress-up/diy-guard.js",
     "docs/dress-up/diy-layers.js",
     "docs/dress-up/diy-store.js",
