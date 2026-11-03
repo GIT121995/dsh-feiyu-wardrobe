@@ -372,18 +372,42 @@ import { createDiy } from './diy-ui.js?v=11';
 	}
 
 	/** 探测 2.5D 能力（WebGL2 / 减少动态 / 设备内存）；auto 模式用。 */
+	let cachedRenderCapabilities = null;
+
+	/**
+	 * 探测 2.5D 能力（WebGL2 / 减少动态 / 设备内存）；auto 模式用，结果缓存。
+	 * 探测用的临时 canvas/WebGL2 context 会在探测后立即 loseContext 并丢弃，
+	 * 不把「能力探测 context」留在页面里（避免每次进入 2.5D 多占一个 context）。
+	 */
 	function probeRenderCapabilities() {
+		if (cachedRenderCapabilities) return cachedRenderCapabilities;
 		let webgl2 = false;
 		try {
 			const probe = document.createElement('canvas');
-			webgl2 = !!probe.getContext('webgl2');
+			const context = probe.getContext('webgl2');
+			if (context) {
+				webgl2 = true;
+				const lose = context.getExtension('WEBGL_lose_context');
+				if (lose && typeof lose.loseContext === 'function') lose.loseContext();
+			}
+			probe.width = 0;
+			probe.height = 0;
 		} catch {
 			webgl2 = false;
 		}
 		const reduce = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-		return {
+		cachedRenderCapabilities = {
 			webgl2,
 			reducedMotion: !!(reduce && reduce.matches),
+			deviceMemory: Number(navigator.deviceMemory) || null,
+			hardwareConcurrency: Number(navigator.hardwareConcurrency) || null,
+		};
+		return cachedRenderCapabilities;
+	}
+
+	/** 2.5D runtime 需要的设备信息（不创建探测 context）。 */
+	function renderDeviceInfo() {
+		return {
 			deviceMemory: Number(navigator.deviceMemory) || null,
 			hardwareConcurrency: Number(navigator.hardwareConcurrency) || null,
 		};
@@ -465,12 +489,11 @@ import { createDiy } from './diy-ui.js?v=11';
 				render2d5Canvas.addEventListener('click', onFigureTap);
 				els.figureWrap.appendChild(render2d5Canvas);
 			}
-			const capabilities = probeRenderCapabilities();
 			const runtime = await module.createRuntime2D5({
 				canvas: render2d5Canvas,
 				assetRoot: RUNTIME_2D5_ASSET_ROOT,
 				quality: 'auto',
-				device: capabilities,
+				device: renderDeviceInfo(),
 				onContextLost: () => {
 					// 启动失败时主动 destroy() 也会触发 context lost：只处理已就绪 runtime 的异常
 					if (render2d5 !== runtime) return;
@@ -1544,13 +1567,17 @@ import { createDiy } from './diy-ui.js?v=11';
 
 		// 渲染方式决策（M3）：URL ?render= > 本地用户选择 > 宿主 config.dressUp.render > 默认 dom。
 		// 默认 dom 时以下 2.5D 代码路径都不会执行（不 import runtime、不发任何 2.5D 请求）。
-		const capabilities = probeRenderCapabilities();
 		const hostRender = await readHostRenderConfig();
+		const requestedMode = parseRenderMode(params.get('render'))
+			|| parseRenderMode(readStoredRenderMode())
+			|| parseRenderMode(hostRender)
+			|| 'dom';
+		// 只有 auto 需要能力探测；显式 dom/2d5 不创建探测 context（零额外资源）
 		const decision = resolveRenderMode({
 			config: hostRender,
 			url: params.get('render'),
 			stored: readStoredRenderMode(),
-			capable: capabilities,
+			capable: requestedMode === 'auto' ? probeRenderCapabilities() : {},
 		});
 		renderRequested = decision.requested;
 		renderSource = decision.source;
