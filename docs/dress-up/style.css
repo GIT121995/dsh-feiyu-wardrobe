@@ -269,3 +269,47 @@ body.embed .wardrobe { flex-basis: clamp(280px, 34vw, 380px); }
 @media (max-width: 720px) {
   .diy-preview { grid-template-columns: 1fr; }
 }
+
+/* ---------------- M5 互动 HUD / 动作过渡 ---------------- */
+
+.interaction-hud {
+  position: absolute;
+  left: 14px;
+  bottom: 42px;
+  z-index: 4;
+  display: grid;
+  gap: 4px;
+  min-width: 176px;
+  padding: 9px 11px;
+  background: rgba(255, 255, 255, .88);
+  border: 1px solid rgba(120, 96, 160, .18);
+  border-radius: 14px;
+  box-shadow: 0 10px 24px rgba(40, 24, 80, .16);
+  font-size: 12px;
+  color: #4a3f78;
+  backdrop-filter: blur(6px);
+}
+
+.ihud-row { display: flex; align-items: center; gap: 6px; }
+.ihud-key { color: #8a7bb0; min-width: 42px; }
+.ihud-val { font-weight: 700; }
+.ihud-emoji { margin-left: auto; }
+.ihud-actions { display: flex; gap: 6px; margin-top: 4px; }
+.ihud-actions .btn { flex: 1 1 0; padding: 5px 6px; font-size: 11.5px; border-radius: 9px; }
+.ihud-actions .btn[disabled] { opacity: .45; cursor: not-allowed; }
+.ihud-note { font-size: 11px; color: #b05a7a; min-height: 14px; }
+.ihud-local { font-size: 10.5px; color: #8a7bb0; }
+
+/* 换装过渡（DOM/2.5D 共用 figure-wrap 容器） */
+.figure-wrap.swapping { animation: feiyu-swap .18s ease-out; }
+@keyframes feiyu-swap {
+  0% { opacity: .55; transform: scale(.985); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .figure-wrap.swapping { animation: none; }
+  .interaction-hud { backdrop-filter: none; }
+}
+
+body.embed .interaction-hud { display: none; }

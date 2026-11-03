@@ -12,10 +12,10 @@ const CSS = readFileSync(join(ROOT, 'style.css'), 'utf8');
 const RUNTIME = readFileSync(join(ROOT, 'runtime-2d5.js'), 'utf8');
 const CORE = readFileSync(join(ROOT, 'runtime-2d5-core.js'), 'utf8');
 
-test('换装页带 2.5D 渲染按钮与版本化入口（app.js/style.css ?v=12）', () => {
+test('换装页带 2.5D 渲染按钮与版本化入口（app.js/style.css ?v=13）', () => {
 	assert.match(INDEX, /id="renderBtn"/, 'index.html 应有渲染方式切换按钮');
-	assert.match(INDEX, /app\.js\?v=12/, 'app.js 入口应带版本号（防旧缓存）');
-	assert.match(INDEX, /style\.css\?v=12/, 'style.css 入口应带版本号');
+	assert.match(INDEX, /app\.js\?v=13/, 'app.js 入口应带版本号（防旧缓存）');
+	assert.match(INDEX, /style\.css\?v=13/, 'style.css 入口应带版本号');
 	assert.match(CSS, /\.figure-2d5\s*\{/, 'style.css 应有 2.5D canvas 样式');
 	assert.match(CSS, /\.figure-2d5\.on/, 'style.css 应有 2.5D canvas 淡入态');
 	assert.match(CSS, /\.figure\.figure-dim/, 'style.css 应有 DOM 人物淡出态（切换过渡）');
@@ -95,5 +95,5 @@ test('换装页 index.html 仍保留全部既有入口（零回归）', () => {
 	for (const id of ['stage', 'figure', 'fx', 'bubble', 'shapeToggle', 'tabs', 'shelf', 'randomBtn', 'saveBtn', 'collectBtn', 'diyBtn', 'exportCanvas']) {
 		assert.ok(INDEX.includes(`id="${id}"`), `index.html 缺少既有元素 #${id}`);
 	}
-	assert.ok(INDEX.includes('app.js?v=12'), '入口脚本存在');
+	assert.ok(INDEX.includes('app.js?v=13'), '入口脚本存在');
 });

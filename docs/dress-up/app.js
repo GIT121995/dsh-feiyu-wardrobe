@@ -15,6 +15,14 @@ import {
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；这里加版本号是为了让浏览器绕过 wardrobe-core 的旧缓存
 } from './wardrobe-core.js?v=11';
 import { createDiy } from './diy-ui.js?v=11';
+import {
+	ACTION_SPECS,
+	actionParams,
+	feedLines,
+	hitZone,
+	moodFacePlan,
+	pickLine,
+} from './interaction-model.js?v=12';
 
 (() => {
 	'use strict';
@@ -28,6 +36,21 @@ import { createDiy } from './diy-ui.js?v=11';
 	const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/';
 	const params = new URLSearchParams(location.search);
 
+	/** M5 互动控制器状态（宿主状态为唯一真相；local = 静态托管降级）。 */
+	const interaction = {
+		enabled: false,
+		host: null,
+		summary: null,
+		mode: 'local',
+		inFlight: false,
+		recentLines: [],
+		action: null,
+		idleTimer: 0,
+		moodTimer: 0,
+		reducedMotion: false,
+		lastGreetDay: null,
+	};
+	const INTERACTION_TIMEOUT_MS = 2500;
 	/** 图层槽位（v6 起由 manifest.drawOrder 决定，boot 时动态建 <img>，不再写死）。 */
 	/** @type {string[]} */
 	let layerSlots = [];
@@ -55,6 +78,16 @@ import { createDiy } from './diy-ui.js?v=11';
 		sheetBody: $('#sheetBody'),
 		sheetStat: $('#sheetStat'),
 		canvas: $('#exportCanvas'),
+		interactionHud: $('#interactionHud'),
+		moodHud: $('#moodHud'),
+		affinityHud: $('#affinityHud'),
+		coinsHud: $('#coinsHud'),
+		moodFace: $('#moodFace'),
+		patBtn: $('#patBtn'),
+		feedSmallBtn: $('#feedSmallBtn'),
+		feedBigBtn: $('#feedBigBtn'),
+		interactionNote: $('#interactionNote'),
+		interactionLocal: $('#interactionLocal'),
 	};
 
 	let manifest = null;
@@ -435,13 +468,35 @@ import { createDiy } from './diy-ui.js?v=11';
 	 * @returns {Promise<'dom'|'2d5'|'auto'>}
 	 */
 	async function readHostRenderConfig() {
+		return (await readHostConfig()).render;
+	}
+
+	/**
+	 * 读宿主配置（render-config.json v2）：渲染默认值 + M5 互动端点。
+	 * 旧宿主（v1/无 interaction 段）→ interaction.enabled=false，页面 local-only。
+	 */
+	async function readHostConfig() {
+		const fallback = { render: 'dom', interaction: { enabled: false } };
 		try {
 			const response = await fetch('render-config.json', { cache: 'no-store' });
-			if (!response.ok) return 'dom';
+			if (!response.ok) return fallback;
 			const data = await response.json();
-			return parseRenderMode(data && data.render) || 'dom';
+			const render = parseRenderMode(data && data.render) || 'dom';
+			const raw = data && typeof data.interaction === 'object' ? data.interaction : null;
+			const enabled = !!(
+				raw &&
+				raw.enabled !== false &&
+				typeof raw.stateUrl === 'string' &&
+				typeof raw.actionUrl === 'string'
+			);
+			return {
+				render,
+				interaction: enabled
+					? { enabled: true, stateUrl: raw.stateUrl, actionUrl: raw.actionUrl }
+					: { enabled: false },
+			};
 		} catch {
-			return 'dom';
+			return fallback;
 		}
 	}
 
@@ -619,8 +674,13 @@ import { createDiy } from './diy-ui.js?v=11';
 		return 'dom';
 	}
 
-	/** 点击角色：DOM 模式跳一下；2.5D 模式走 runtime 的 tap 预留接口（M5 互动会扩展）。 */
-	function onFigureTap() {
+	/** 点击角色：头部=摸摸头（M5 互动），身体=说话；2.5D 用参数总线动作，DOM 用 hop+表情帧。 */
+	function onFigureTap(event) {
+		const zone = hitZoneFromEvent(event && typeof event.clientX === 'number' ? event : null);
+		if (zone === 'head' && (interaction.enabled || interaction.mode === 'local')) {
+			void interactPat();
+			return;
+		}
 		if (renderMode === '2d5' && render2d5) {
 			render2d5.tap();
 			speakRandom();
@@ -1011,6 +1071,9 @@ import { createDiy } from './diy-ui.js?v=11';
 	}
 
 	function applyState() {
+		const lookKey = `${state.shape}|${state.outfit}|${state.top}|${state.bottom}`;
+		if (lastLookKey && lastLookKey !== lookKey) flashSwap();
+		lastLookKey = lookKey;
 		if (renderMode === '2d5') {
 			// 2.5D 模式：DOM 人物层不维护，只同步 canvas 与周边 UI（背景/特效/衣柜不变）
 			sync2d5();
@@ -1481,6 +1544,10 @@ import { createDiy } from './diy-ui.js?v=11';
 				applyRenderMode(renderMode === '2d5' ? 'dom' : '2d5', { persist: true });
 			});
 		}
+		// M5 互动 HUD 按钮（宿主模式生效；local-only 时拍头可播动作、喂食禁用）
+		if (els.patBtn) els.patBtn.addEventListener('click', () => void interactPat());
+		if (els.feedSmallBtn) els.feedSmallBtn.addEventListener('click', () => void interactFeed('small'));
+		if (els.feedBigBtn) els.feedBigBtn.addEventListener('click', () => void interactFeed('big'));
 		// 2.5D head follow：指针在角色框内移动 → 头部轻微跟随（参数总线；M5 互动复用）
 		els.stage.addEventListener('pointermove', (event) => {
 			if (renderMode !== '2d5' || !render2d5) return;
@@ -1531,6 +1598,304 @@ import { createDiy } from './diy-ui.js?v=11';
 		requestAnimationFrame(tick);
 	}
 
+	/* ---------------- M5 互动控制器（摸摸头 / 喂食 / 每日问候 / 待机 / 动作曲线） ---------------- */
+
+	/** 受审台词以外不产生任何台词（21 条已审，见 manifest.bubbleSets）。 */
+	function sayLine(text) {
+		if (!text) return;
+		interaction.recentLines.push(text);
+		if (interaction.recentLines.length > 2) interaction.recentLines.shift();
+		say(text);
+	}
+
+	function pickInteractionLine(group) {
+		const fallback = (manifest.bubbles && manifest.bubbles[0]) || '嗯？';
+		return pickLine(manifest.bubbleSets, group, { recent: interaction.recentLines, fallback });
+	}
+
+	/** 指针 → 角色框归一化坐标 → 头部/身体/框外（2.5D/DOM 共用几何近似）。 */
+	function hitZoneFromEvent(event) {
+		if (!event) return 'body';
+		const rect = els.figureWrap.getBoundingClientRect();
+		if (!rect.width || !rect.height) return 'body';
+		return hitZone((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
+	}
+
+	function flashFigure() {
+		if (interaction.reducedMotion) return;
+		els.figure.classList.remove('hop');
+		void els.figure.offsetWidth;
+		els.figure.classList.add('hop');
+		setTimeout(() => els.figure.classList.remove('hop'), 700);
+	}
+
+	let faceFlashTimer = 0;
+	/** DOM 模式下的「笑眼一帧」（B1-lite 补丁，仅 CSS class 切换）。 */
+	function faceFlashSmile(ms = 800) {
+		if (!face.ready || !face.enabled || facePose || interaction.reducedMotion) return;
+		face.smiling = true;
+		faceApply();
+		clearTimeout(faceFlashTimer);
+		faceFlashTimer = setTimeout(() => {
+			face.smiling = false;
+			faceApply();
+		}, ms);
+	}
+
+	/** 换装过渡（DOM/2.5D 共用 .figure-wrap 容器；reduced-motion 时跳过）。 */
+	let lastLookKey = '';
+	function flashSwap() {
+		if (interaction.reducedMotion) return;
+		els.figureWrap.classList.remove('swapping');
+		void els.figureWrap.offsetWidth;
+		els.figureWrap.classList.add('swapping');
+		setTimeout(() => els.figureWrap.classList.remove('swapping'), 220);
+	}
+
+	/** 动作曲线驱动器：同一时刻只跑一条曲线；端点回位（interaction-model.actionParams）。 */
+	function playAction(kind) {
+		const spec = ACTION_SPECS[kind];
+		if (!spec || interaction.reducedMotion || kind === 'idle') return;
+		// 打断上一条动作：先把上一动作的基准参数写回，避免把中间态当成新基准（端点不归零）
+		if (interaction.action) {
+			if (interaction.action.raf) cancelAnimationFrame(interaction.action.raf);
+			if (renderMode === '2d5' && render2d5 && interaction.action.base) {
+				render2d5.setParams(interaction.action.base);
+			}
+			interaction.action = null;
+		}
+		if (renderMode === '2d5' && render2d5) {
+			const base = render2d5.getState().params;
+			const startedAt = performance.now();
+			if (kind === 'pat') render2d5.tap();
+			if (spec.face && spec.face.smileMs) render2d5.triggerSmile(spec.face.smileMs / 1000);
+			if (kind === 'feed') render2d5.triggerTalk(1.3);
+			const tick = () => {
+				const { done, params } = actionParams(kind, performance.now() - startedAt, base);
+				render2d5.setParams(params);
+				if (!done) interaction.action.raf = requestAnimationFrame(tick);
+				else {
+					render2d5.setParams(base);
+					interaction.action = null;
+				}
+			};
+			interaction.action = { kind, raf: requestAnimationFrame(tick) };
+			return;
+		}
+		if (kind === 'pat' || kind === 'feed' || kind === 'greet') flashFigure();
+		if (spec.face && spec.face.smileMs) faceFlashSmile(spec.face.smileMs);
+	}
+
+	const INTERACTION_REASON_TEXT = {
+		cooldown: '再等一小会儿',
+		'no-coins': '鱼粮还不够',
+		'daily-cap': '今天已经够啦',
+		full: '已经吃得很饱啦',
+		'rate-limited': '慢一点呀',
+		disabled: '现在不方便',
+		'rejected': '现在不方便',
+	};
+
+	function showInteractionNote(text) {
+		if (!els.interactionNote) return;
+		els.interactionNote.hidden = !text;
+		els.interactionNote.textContent = text || '';
+		if (text) {
+			clearTimeout(showInteractionNote.timer);
+			showInteractionNote.timer = setTimeout(() => {
+				els.interactionNote.hidden = true;
+			}, 2400);
+		}
+	}
+
+	/** 页面 HUD（心情/亲密度/鱼粮/按钮可用性）。summary=null → 本地模式。 */
+	function renderInteractionHud(summary) {
+		if (!els.interactionHud) return;
+		els.interactionHud.hidden = false;
+		if (els.interactionLocal) els.interactionLocal.hidden = !!summary;
+		if (!summary) {
+			els.moodHud.textContent = '—';
+			els.affinityHud.textContent = '—';
+			els.coinsHud.textContent = '—';
+			els.moodFace.textContent = '🐳';
+			els.patBtn.disabled = false;
+			els.feedSmallBtn.disabled = true;
+			els.feedBigBtn.disabled = true;
+			els.patBtn.textContent = '🫳 摸摸头';
+			els.feedSmallBtn.textContent = '🍚 鱼粮×3';
+			els.feedBigBtn.textContent = '🍱 鱼粮×8';
+			return;
+		}
+		els.moodHud.textContent = summary.mood.label;
+		els.moodFace.textContent = summary.mood.emoji;
+		els.affinityHud.textContent = `${summary.intimacy.emoji} ${summary.intimacy.title}`;
+		els.coinsHud.textContent = String(summary.coins);
+		els.patBtn.disabled = !summary.allowed.pat;
+		els.feedSmallBtn.disabled = !summary.allowed.feedSmall;
+		els.feedBigBtn.disabled = !summary.allowed.feedBig;
+		const retry = Math.ceil((summary.retryIn.pat || 0) / 1000);
+		els.patBtn.textContent = summary.allowed.pat ? '🫳 摸摸头' : `🫳 ${retry}s`;
+		els.feedSmallBtn.textContent = `🍚 鱼粮×${summary.costs.small}`;
+		els.feedBigBtn.textContent = `🍱 鱼粮×${summary.costs.big}`;
+	}
+
+	async function fetchInteractionState() {
+		if (!interaction.host) return null;
+		try {
+			const res = await fetch(interaction.host.stateUrl, { cache: 'no-store' });
+			if (!res.ok) return null;
+			const data = await res.json();
+			return data && data.ok ? data : null;
+		} catch {
+			return null;
+		}
+	}
+
+	/** 宿主动作（唯一经济写入）；失败/超限返回 null 且不播放动作。 */
+	async function postInteraction(kind, tier) {
+		if (interaction.mode !== 'host' || !interaction.host || interaction.inFlight) return null;
+		interaction.inFlight = true;
+		try {
+			const controller = typeof AbortController === 'function' ? new AbortController() : null;
+			const timer = controller ? setTimeout(() => controller.abort(), INTERACTION_TIMEOUT_MS) : 0;
+			const res = await fetch(interaction.host.actionUrl, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json', 'x-feiyu-interaction': '1' },
+				body: JSON.stringify(tier ? { kind, tier } : { kind }),
+				cache: 'no-store',
+				...(controller ? { signal: controller.signal } : {}),
+			});
+			clearTimeout(timer);
+			const data = await res.json().catch(() => null);
+			if (!res.ok || !data || !data.ok) {
+				showInteractionNote(INTERACTION_REASON_TEXT[(data && data.code) || 'rejected'] || '现在不方便');
+				return null;
+			}
+			interaction.summary = data.state;
+			renderInteractionHud(data.state);
+			return data.state;
+		} catch {
+			showInteractionNote(INTERACTION_REASON_TEXT.rejected);
+			return null;
+		} finally {
+			interaction.inFlight = false;
+		}
+	}
+
+	async function interactPat() {
+		if (interaction.inFlight) return;
+		const state2 = await postInteraction('pat');
+		if (!state2) {
+			if (interaction.mode === 'local') {
+				playAction('pat');
+				sayLine(pickInteractionLine('pat'));
+			}
+			return;
+		}
+		playAction('pat');
+		sayLine(pickInteractionLine('pat'));
+	}
+
+	async function interactFeed(tier) {
+		if (interaction.inFlight) return;
+		if (interaction.mode !== 'host') {
+			showInteractionNote('本地模式 · 不消耗鱼粮');
+			return;
+		}
+		const next = await postInteraction('feed', tier);
+		if (!next) return;
+		playAction('feed');
+		const [first, second] = feedLines(manifest.bubbleSets, { recent: interaction.recentLines });
+		sayLine(first);
+		setTimeout(() => sayLine(second), 900);
+	}
+
+	/** 每日问候：宿主 state 允许时每日一次（页面打开/刷新时判定）。 */
+	async function maybeDailyGreet() {
+		const summary = interaction.summary;
+		if (!summary || !summary.allowed || !summary.allowed.greet) return;
+		const next = await postInteraction('greet');
+		if (!next) return;
+		playAction('greet');
+		sayLine(pickInteractionLine('greet'));
+	}
+
+	function scheduleIdleLine() {
+		clearTimeout(interaction.idleTimer);
+		const delay = 25000 + Math.random() * 15000;
+		interaction.idleTimer = setTimeout(() => {
+			if (document.hidden) {
+				scheduleIdleLine();
+				return;
+			}
+			const plan = moodFacePlan(interaction.summary ? interaction.summary.mood.key : 'fine');
+			sayLine(pickInteractionLine(plan.idleGroup));
+			scheduleIdleLine();
+		}, delay);
+	}
+
+	/** 心情档 → 笑眼节奏（idle 时按计划触发；reduced-motion 时不触发）。 */
+	function startMoodFaceLoop() {
+		clearTimeout(interaction.moodTimer);
+		const tick = () => {
+			const plan = moodFacePlan(interaction.summary ? interaction.summary.mood.key : 'fine');
+			const range = plan.smileEvery;
+			const wait = range ? range[0] + Math.random() * (range[1] - range[0]) : 15000;
+			interaction.moodTimer = setTimeout(() => {
+				if (!document.hidden && !interaction.reducedMotion) {
+					if (renderMode === '2d5' && render2d5) render2d5.triggerSmile(1.2);
+					else faceFlashSmile(900);
+				}
+				tick();
+			}, wait);
+		};
+		tick();
+	}
+
+	async function refreshInteraction() {
+		if (interaction.mode !== 'host') return;
+		const summary = await fetchInteractionState();
+		if (summary) {
+			interaction.summary = summary;
+			renderInteractionHud(summary);
+		}
+	}
+
+	/**
+	 * 初始化互动：读宿主端点；失败/静态托管 → local-only（台词/表情可用、鱼粮不扣）。
+	 * @param {{ enabled: boolean, stateUrl?: string, actionUrl?: string }} host
+	 */
+	async function initInteraction(host) {
+		interaction.reducedMotion = !!(
+			window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+		);
+		if (!host || host.enabled !== true) {
+			interaction.mode = 'local';
+			interaction.enabled = false;
+			renderInteractionHud(null);
+			return;
+		}
+		interaction.host = host;
+		const summary = await fetchInteractionState();
+		if (!summary) {
+			interaction.mode = 'local';
+			interaction.enabled = false;
+			renderInteractionHud(null);
+			return;
+		}
+		interaction.mode = 'host';
+		interaction.enabled = true;
+		interaction.summary = summary;
+		renderInteractionHud(summary);
+		scheduleIdleLine();
+		startMoodFaceLoop();
+		await maybeDailyGreet();
+		document.addEventListener('visibilitychange', () => {
+			if (!document.hidden) void refreshInteraction();
+		});
+		window.addEventListener('focus', () => void refreshInteraction());
+	}
+
 	/* ---------------- 启动 ---------------- */
 
 	function readUrlOverrides() {
@@ -1567,7 +1932,8 @@ import { createDiy } from './diy-ui.js?v=11';
 
 		// 渲染方式决策（M3）：URL ?render= > 本地用户选择 > 宿主 config.dressUp.render > 默认 dom。
 		// 默认 dom 时以下 2.5D 代码路径都不会执行（不 import runtime、不发任何 2.5D 请求）。
-		const hostRender = await readHostRenderConfig();
+		const hostConfig = await readHostConfig();
+		const hostRender = hostConfig.render;
 		const requestedMode = parseRenderMode(params.get('render'))
 			|| parseRenderMode(readStoredRenderMode())
 			|| parseRenderMode(hostRender)
@@ -1603,6 +1969,7 @@ import { createDiy } from './diy-ui.js?v=11';
 		}
 		updateRenderButton();
 		bind();
+		await initInteraction(hostConfig.interaction);
 		diy.attach({
 			getState: () => state,
 			select: (catId, itemId) => select(catId, itemId),
@@ -1618,6 +1985,20 @@ import { createDiy } from './diy-ui.js?v=11';
 		});
 		/** QA / Playwright 自动化入口（不参与正常渲染）。 */
 		window.__feiyuDiy = diy;
+		/** M5 互动 E2E / 调试入口。 */
+		window.__feiyuInteraction = {
+			mode: () => interaction.mode,
+			summary: () => interaction.summary,
+			inFlight: () => interaction.inFlight,
+			act: (kind, tier) => postInteraction(kind, tier),
+			pat: () => interactPat(),
+			feed: (tier) => interactFeed(tier),
+			play: (kind) => playAction(kind),
+			recentLines: () => interaction.recentLines.slice(),
+			hitZone: (nx, ny) => hitZone(nx, ny),
+			reducedMotion: () => interaction.reducedMotion,
+			lastAction: () => (interaction.action ? interaction.action.kind : ''),
+		};
 		/** 2.5D E2E / 调试入口：渲染方式、runtime 状态、资源请求、确定性步进。 */
 		window.__feiyu2d5 = {
 			mode: () => renderMode,
