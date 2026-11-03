@@ -141,3 +141,38 @@
 - 头发与手臂的真实前后关系（个别发丝在手臂后）用「hair 最上层」近似；如出现发丝压手，可再拆 `hairBack` 槽位。
   实测副作用：长袖毛衣/卫衣的肩侧发缕会以 1–2px 深色发丝盖在衣服上（真值 look 里个别本应在衣服后），非洞、可接受。
 - 掩膜由 CV+人工 QA 生成，边界 1–2px 误差；build 里 `arms` 略保守、`sleeve` 膨胀 6px 兜底。
+
+## 7. manifest v7：DIY 上传层扩展（默认关闭，v6 数据语义不变）
+
+> v0.11.0（DIY M1）起 `manifest.version = 7`，只**新增** `diy` 扩展声明；`drawOrder`/`shapes`/`items`/
+> `categories`/`defaults` 与 v6 完全一致，旧穿搭/旧素材/旧渲染路径不受影响。契约实现见
+> `wardrobe-core.js`（`DIY_LAYER_SLOTS` / `diyRecordToItem` / `validateDiyRecord` / `selectDiyEvictions`）。
+
+```json
+{
+  "version": 7,
+  "diy": {
+    "version": 1, "enabled": false, "shape": "chibi",
+    "storage": "indexeddb", "idPrefix": "diy-", "maxItems": 24, "maxBytes": 25165824,
+    "baseRef": "art/diy/base-chibi.png",
+    "categories": {
+      "top":    { "slot": "topBody", "sleeve": true },
+      "bottom": { "slot": "bottom",  "sleeve": false },
+      "dress":  { "slot": "topBody", "sleeve": true },
+      "coat":   { "slot": "topBody", "sleeve": true },
+      "outfit": { "slot": "topBody", "sleeve": true }
+    },
+    "contentPolicy": { "tag": "conservative-v1", "downgradedTag": "conservative-downgraded-v1", "guardVersion": "diy-guard-1" },
+    "shareFormat": { "ext": ".dshskin", "version": 1 }
+  }
+}
+```
+
+- **DIY 层不写进 manifest.json**：运行时由 IndexedDB 记录经 `diyRecordToItem(record, {body,sleeve})`
+  生成 `{ id: 'diy-…', layers: { chibi: { topBody: blobURL, sleeve: blobURL } } }` 注入 `items[category]`，
+  `resolveLayers` 照常消费（blob URL 与原静态文件同构）；girl 身形没有该 item 的层 → 自动跳过，不抛错。
+- `baseRef` = 宿主生成 look 的参考图1（Q版素体，1152×2048，随包发布，仅作 API 参考图）。
+- `idPrefix` 用于区分 DIY 单品与静态单品；`maxItems`/`maxBytes` 是本地衣柜（IndexedDB）配额，
+  超限按 LRU（lastUsedAt/createdAt）淘汰，`keepId`（本次新存）受保护。
+- `contentPolicy`：记录/分享包都带内容策略标签，导入时校验；`guardVersion` 与 `diy-guard.js` 对齐。
+- `.dshskin` 是**本地分享文件**（不经服务器），schema/校验见 `diy-skin.js` 与 `DIY-UPLOAD.md` §6。

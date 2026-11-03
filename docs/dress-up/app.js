@@ -13,7 +13,8 @@ import {
 	randomBetween,
 	resolveLayers,
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；这里加版本号是为了让浏览器绕过 wardrobe-core 的旧缓存
-} from './wardrobe-core.js?v=10';
+} from './wardrobe-core.js?v=11';
+import { createDiy } from './diy-ui.js?v=11';
 
 (() => {
 	'use strict';
@@ -52,6 +53,7 @@ import {
 	};
 
 	let manifest = null;
+	let diy = null;
 	let state = null;
 	let tab = 'outfits';
 	/** 图片加载缓存：src → Promise<HTMLImageElement> */
@@ -1124,6 +1126,14 @@ import {
 		if (params.has('embed')) document.body.classList.add('embed');
 		const res = await fetch('manifest.json', { cache: 'no-cache' });
 		manifest = await res.json();
+		// DIY 本地衣柜（默认关闭）：开启过才从 IndexedDB 读记录并注入 manifest.items；
+		// 注入必须发生在 normalizeState 之前，旧穿搭里选中的 DIY 单品才能被还原。
+		diy = createDiy({ manifest });
+		try {
+			await diy.prepare();
+		} catch (err) {
+			console.warn('[衣橱] DIY 本地衣柜加载失败（不影响换装）', err);
+		}
 		state = normalizeState(manifest, { ...readSaved(), ...readUrlOverrides() });
 		buildFigureLayers();
 		buildFaceLayers();
@@ -1135,6 +1145,21 @@ import {
 		applyState();
 		startFace();
 		bind();
+		diy.attach({
+			getState: () => state,
+			select: (catId, itemId) => select(catId, itemId),
+			refreshShelf: () => {
+				shelfBuiltCat = '';
+				renderShelf();
+			},
+			resetState: () => {
+				state = normalizeState(manifest, state);
+				applyState();
+			},
+			say,
+		});
+		/** QA / Playwright 自动化入口（不参与正常渲染）。 */
+		window.__feiyuDiy = diy;
 		startParallax();
 		if (params.has('embed')) els.tip.classList.add('gone');
 	}

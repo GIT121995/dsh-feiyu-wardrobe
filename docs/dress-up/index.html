@@ -6,7 +6,7 @@
 <title>大肥鱼衣橱 · 换装间</title>
 <meta name="description" content="陪大肥鱼换衣服、一起过日子：分层自由搭配、切换 Q版/少女版、换背景和特效——开源免费。">
 <meta name="theme-color" content="#f6ecff">
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=11">
 </head>
 <body>
 <main class="app">
@@ -33,7 +33,10 @@
   <aside class="wardrobe" aria-label="衣柜">
     <div class="wardrobe-head">
       <div class="shape-toggle" id="shapeToggle" role="group" aria-label="身形切换"></div>
-      <button id="collectBtn" class="icon-btn light" type="button" title="图鉴" aria-label="图鉴">📖</button>
+      <div class="head-tools">
+        <button id="diyBtn" class="icon-btn light" type="button" title="DIY 上传（默认关闭）" aria-label="DIY 上传">✨</button>
+        <button id="collectBtn" class="icon-btn light" type="button" title="图鉴" aria-label="图鉴">📖</button>
+      </div>
     </div>
     <div class="tabs" id="tabs" role="tablist" aria-label="衣柜分类"></div>
     <div class="grid" id="shelf" role="tabpanel"></div>
@@ -46,6 +49,16 @@
     </div>
   </aside>
 
+  <div class="sheet diy-sheet" id="diySheet" hidden>
+    <div class="sheet-card diy-card">
+      <div class="sheet-head">
+        <b>✨ DIY 上传 · 本地衣柜</b>
+        <button id="diyClose" class="icon-btn light" type="button" aria-label="关闭 DIY 面板">✕</button>
+      </div>
+      <div id="diyBody" class="diy-body"></div>
+    </div>
+  </div>
+
   <div class="sheet" id="sheet" hidden>
     <div class="sheet-card">
       <div class="sheet-head"><b>📖 图鉴</b><button id="sheetClose" class="icon-btn light" type="button" aria-label="关闭">✕</button></div>
@@ -55,6 +68,6 @@
   </div>
 </main>
 <canvas id="exportCanvas" width="900" height="1350" hidden></canvas>
-<script type="module" src="app.js?v=10"></script>
+<script type="module" src="app.js?v=11"></script>
 </body>
 </html>

@@ -80,8 +80,8 @@ function itemSlots(item, shapeId) {
 
 /* ---------------- manifest v6：整体契约 ---------------- */
 
-test('manifest v6：drawOrder / 两种身形 / 5 个分类', () => {
-	assert.equal(MANIFEST.version, 6, 'manifest 版本应为 6');
+test('manifest v7：drawOrder / 两种身形 / 5 个分类（v6 数据语义不变）', () => {
+	assert.equal(MANIFEST.version, 7, 'manifest 版本应为 7（新增 DIY 扩展声明，v6 字段不变）');
 	assert.deepEqual(MANIFEST.drawOrder, DRAW_ORDER, 'drawOrder 必须与 LAYER-MODEL.md §1 一致');
 	assert.deepEqual(MANIFEST.shapes.map((shape) => shape.id), ['chibi', 'girl']);
 	assert.deepEqual(
@@ -91,6 +91,9 @@ test('manifest v6：drawOrder / 两种身形 / 5 个分类', () => {
 	assert.ok(typeof MANIFEST.credits === 'string' && MANIFEST.credits.length > 10);
 	assert.ok(typeof MANIFEST.title === 'string' && MANIFEST.title.length > 0);
 	assert.equal(MANIFEST.bounds, undefined, 'v6 没有顶层 bounds（改到 shapes[].bounds）');
+	assert.equal(MANIFEST.diy && typeof MANIFEST.diy, 'object', 'v7 必须带 DIY 扩展声明');
+	assert.equal(MANIFEST.diy.enabled, false, 'DIY 默认关闭');
+	assert.equal(MANIFEST.diy.storage, 'indexeddb');
 });
 
 test('每个身形有 body/arms/hair 三层（WebP），且只引用 drawOrder 里的槽位', () => {
@@ -312,11 +315,11 @@ test('宿主半区 readOutfit 接受 data URL / art 路径，并 fallback 到 pe
 
 /* ---------------- 页面 / 渲染器 v6 ---------------- */
 
-test('index.html v6：不写死图层 img，cache-bust 升到 v10', () => {
+test('index.html v7：不写死图层 img，cache-bust 升到 v11', () => {
 	const html = readFileSync(join(ROOT, 'index.html'), 'utf8');
-	assert.match(html, /style\.css\?v=10/, 'style.css 应 cache-bust 到 v10');
-	assert.match(html, /app\.js\?v=10/, 'app.js 应 cache-bust 到 v10');
-	assert.ok(!/\?v=(?!10)\d+/.test(html), 'index.html 里不应残留旧版本号');
+	assert.match(html, /style\.css\?v=11/, 'style.css 应 cache-bust 到 v11');
+	assert.match(html, /app\.js\?v=11/, 'app.js 应 cache-bust 到 v11');
+	assert.ok(!/\?v=(?!11)\d+/.test(html), 'index.html 里不应残留旧版本号');
 	assert.ok(html.includes('type="module"'));
 	assert.ok(html.includes('id="figure"'), 'index.html 应保留 .figure 容器');
 	assert.ok(!/data-layer=/.test(html), 'v6 不再在 index.html 写死图层槽位 <img>');
@@ -325,9 +328,9 @@ test('index.html v6：不写死图层 img，cache-bust 升到 v10', () => {
 	assert.ok(!html.includes('裙底'), 'index.html 不应包含不保守文案');
 });
 
-test('app.js v6：按 manifest.drawOrder 动态建槽位，三处叠图都走 resolveLayers', () => {
+test('app.js v7：按 manifest.drawOrder 动态建槽位，三处叠图都走 resolveLayers', () => {
 	const app = readFileSync(join(ROOT, 'app.js'), 'utf8');
-	assert.match(app, /from '\.\/wardrobe-core\.js\?v=10'/, 'app.js 应按 v10 复用 wardrobe-core');
+	assert.match(app, /from '\.\/wardrobe-core\.js\?v=11'/, 'app.js 应按 v11 复用 wardrobe-core');
 	assert.ok(app.includes('manifest.drawOrder'), 'app.js 应读 manifest.drawOrder 决定槽位');
 	assert.ok(!/LAYER_SLOTS\s*=\s*\[/.test(app), 'app.js 不应再写死 5 个槽位常量');
 	assert.ok(app.includes('buildFigureLayers'), 'app.js 应动态创建 .figure-layer');
