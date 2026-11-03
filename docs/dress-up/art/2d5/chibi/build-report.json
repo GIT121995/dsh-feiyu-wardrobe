@@ -1,20 +1,20 @@
 {
  "shape": "chibi",
- "sourceRig": "chibi-v2-m3.feiyu.json",
- "sourceRigBytes": 1935849,
+ "sourceRig": "rig.json",
+ "sourceRigBytes": 2480851,
  "generator": "tools/build_2d5.py",
  "padding": 2,
  "atlas": {
-  "width": 2041,
-  "height": 2099,
-  "bytes": 1206856,
+  "width": 2028,
+  "height": 2216,
+  "bytes": 1305056,
   "pixelEqual": true,
-  "rects": 38
+  "rects": 40
  },
  "rig": {
-  "bytes": 1600329,
-  "gzipBytes": 275526,
-  "sha256": "029b7553cfc2ec8d493da4a5be93a20d9e2480bf725695d2eab7b441fa1162b9"
+  "bytes": 1760285,
+  "gzipBytes": 300509,
+  "sha256": "fb46bd917f349cd346f4c0284efb0e52361bb83b111396b38569514f7303f53b"
  },
  "drawables": [
   {
@@ -41,15 +41,15 @@
    "atlasRect": [
     1183,
     2,
-    518,
-    610
+    526,
+    614
    ],
    "texSize": [
-    518,
-    610
+    526,
+    614
    ],
-   "verts": 233,
-   "tris": 262
+   "verts": 285,
+   "tris": 358
   },
   {
    "id": "hair-front-bangs",
@@ -58,124 +58,124 @@
    "atlasRect": [
     495,
     1129,
-    444,
-    503
+    447,
+    507
    ],
    "texSize": [
-    444,
-    503
+    447,
+    507
    ],
-   "verts": 1212,
-   "tris": 2084
+   "verts": 1279,
+   "tris": 2210
   },
   {
    "id": "hair-strand-L1",
    "slot": "strands",
    "z": 8.0,
    "atlasRect": [
-    1855,
+    1882,
     1129,
-    136,
-    338
+    140,
+    346
    ],
    "texSize": [
-    136,
-    338
+    140,
+    346
    ],
-   "verts": 255,
-   "tris": 398
+   "verts": 287,
+   "tris": 462
   },
   {
    "id": "hair-strand-L2",
    "slot": "strands",
    "z": 8.0,
    "atlasRect": [
-    1188,
+    1199,
     1129,
-    68,
-    382
+    76,
+    386
    ],
    "texSize": [
-    68,
-    382
+    76,
+    386
    ],
-   "verts": 246,
-   "tris": 390
+   "verts": 269,
+   "tris": 434
   },
   {
    "id": "hair-strand-L3",
    "slot": "strands",
    "z": 8.0,
    "atlasRect": [
-    1260,
+    1279,
     1129,
-    115,
-    374
+    119,
+    378
    ],
    "texSize": [
-    115,
-    374
+    119,
+    378
    ],
-   "verts": 297,
-   "tris": 448
+   "verts": 322,
+   "tris": 508
   },
   {
    "id": "hair-strand-R1",
    "slot": "strands",
    "z": 8.0,
    "atlasRect": [
-    1712,
+    1735,
     1129,
-    139,
-    347
+    143,
+    351
    ],
    "texSize": [
-    139,
-    347
+    143,
+    351
    ],
-   "verts": 366,
-   "tris": 574
+   "verts": 400,
+   "tris": 660
   },
   {
    "id": "hair-strand-R2",
    "slot": "strands",
    "z": 8.0,
    "atlasRect": [
-    943,
+    946,
     1129,
-    86,
-    390
+    92,
+    394
    ],
    "texSize": [
-    86,
-    390
+    92,
+    394
    ],
-   "verts": 312,
-   "tris": 514
+   "verts": 340,
+   "tris": 568
   },
   {
    "id": "hair-strand-R3",
    "slot": "strands",
    "z": 8.0,
    "atlasRect": [
-    1033,
+    1042,
     1129,
-    151,
-    383
+    153,
+    391
    ],
    "texSize": [
-    151,
-    383
+    153,
+    391
    ],
-   "verts": 329,
-   "tris": 532
+   "verts": 348,
+   "tris": 572
   },
   {
    "id": "arms",
    "slot": "arms",
    "z": 50,
    "atlasRect": [
-    2,
+    340,
     1672,
     321,
     325
@@ -209,8 +209,8 @@
    "slot": "sleeve",
    "z": 60,
    "atlasRect": [
-    1705,
     2,
+    1672,
     334,
     339
    ],
@@ -226,7 +226,7 @@
    "slot": "topBody",
    "z": 40,
    "atlasRect": [
-    1379,
+    1402,
     1129,
     329,
     356
@@ -243,7 +243,7 @@
    "slot": "sleeve",
    "z": 60,
    "atlasRect": [
-    630,
+    1302,
     1672,
     320,
     307
@@ -256,11 +256,45 @@
    "tris": 918
   },
   {
+   "id": "hoodie-body",
+   "slot": "topBody",
+   "z": 40,
+   "atlasRect": [
+    665,
+    1672,
+    330,
+    312
+   ],
+   "texSize": [
+    330,
+    312
+   ],
+   "verts": 839,
+   "tris": 1542
+  },
+  {
+   "id": "hoodie-sleeve",
+   "slot": "sleeve",
+   "z": 60,
+   "atlasRect": [
+    1713,
+    2,
+    313,
+    276
+   ],
+   "texSize": [
+    313,
+    276
+   ],
+   "verts": 532,
+   "tris": 878
+  },
+  {
    "id": "bottom-plaid",
    "slot": "bottom",
    "z": 30,
    "atlasRect": [
-    954,
+    1626,
     1672,
     301,
     305
@@ -277,7 +311,7 @@
    "slot": "bottom",
    "z": 30,
    "atlasRect": [
-    327,
+    999,
     1672,
     299,
     312
@@ -294,8 +328,8 @@
    "slot": "topUnder",
    "z": 20,
    "atlasRect": [
-    1259,
-    1672,
+    2,
+    2015,
     274,
     199
    ],
@@ -311,8 +345,8 @@
    "slot": "sleeve",
    "z": 60,
    "atlasRect": [
-    1537,
-    1672,
+    280,
+    2015,
     246,
     165
    ],
@@ -328,8 +362,8 @@
    "slot": "face",
    "z": 15.0,
    "atlasRect": [
-    664,
-    2001,
+    1387,
+    2015,
     89,
     77
    ],
@@ -345,8 +379,8 @@
    "slot": "face",
    "z": 15.1,
    "atlasRect": [
-    817,
-    2001,
+    1540,
+    2015,
     51,
     60
    ],
@@ -362,8 +396,8 @@
    "slot": "face",
    "z": 15.2,
    "atlasRect": [
-    1887,
-    1672,
+    630,
+    2015,
     91,
     99
    ],
@@ -379,8 +413,8 @@
    "slot": "face",
    "z": 15.0,
    "atlasRect": [
-    572,
-    2001,
+    1295,
+    2015,
     88,
     80
    ],
@@ -396,8 +430,8 @@
    "slot": "face",
    "z": 15.1,
    "atlasRect": [
-    757,
-    2001,
+    1480,
+    2015,
     56,
     61
    ],
@@ -413,8 +447,8 @@
    "slot": "face",
    "z": 15.2,
    "atlasRect": [
-    1787,
-    1672,
+    530,
+    2015,
     96,
     101
    ],
@@ -430,8 +464,8 @@
    "slot": "face",
    "z": 15.3,
    "atlasRect": [
-    287,
-    2001,
+    1010,
+    2015,
     91,
     82
    ],
@@ -447,8 +481,8 @@
    "slot": "face",
    "z": 15.3,
    "atlasRect": [
-    2,
-    2001,
+    725,
+    2015,
     91,
     96
    ],
@@ -464,8 +498,8 @@
    "slot": "face",
    "z": 15.3,
    "atlasRect": [
-    382,
-    2001,
+    1105,
+    2015,
     91,
     82
    ],
@@ -481,8 +515,8 @@
    "slot": "face",
    "z": 15.3,
    "atlasRect": [
-    97,
-    2001,
+    820,
+    2015,
     91,
     96
    ],
@@ -498,8 +532,8 @@
    "slot": "face",
    "z": 15.3,
    "atlasRect": [
-    477,
-    2001,
+    1200,
+    2015,
     91,
     82
    ],
@@ -515,8 +549,8 @@
    "slot": "face",
    "z": 15.3,
    "atlasRect": [
-    192,
-    2001,
+    915,
+    2015,
     91,
     96
    ],
@@ -532,8 +566,8 @@
    "slot": "face",
    "z": 15.5,
    "atlasRect": [
-    924,
-    2001,
+    1647,
+    2015,
     42,
     42
    ],
@@ -549,8 +583,8 @@
    "slot": "face",
    "z": 15.5,
    "atlasRect": [
-    1056,
-    2001,
+    1779,
+    2015,
     31,
     10
    ],
@@ -566,8 +600,8 @@
    "slot": "face",
    "z": 15.6,
    "atlasRect": [
-    1113,
-    2001,
+    1836,
+    2015,
     16,
     9
    ],
@@ -583,8 +617,8 @@
    "slot": "face",
    "z": 15.6,
    "atlasRect": [
-    1091,
-    2001,
+    1814,
+    2015,
     18,
     9
    ],
@@ -600,8 +634,8 @@
    "slot": "face",
    "z": 15.6,
    "atlasRect": [
-    1020,
-    2001,
+    1743,
+    2015,
     32,
     35
    ],
@@ -617,8 +651,8 @@
    "slot": "face",
    "z": 15.6,
    "atlasRect": [
-    872,
-    2001,
+    1595,
+    2015,
     48,
     45
    ],
@@ -634,8 +668,8 @@
    "slot": "face",
    "z": 15.6,
    "atlasRect": [
-    970,
-    2001,
+    1693,
+    2015,
     46,
     37
    ],
@@ -665,9 +699,9 @@
   }
  ],
  "textureTotal": {
-  "atlasBytes": 1206856,
+  "atlasBytes": 1305056,
   "bytesPerPixel": 4,
-  "texMiB": 16.34,
-  "texMiBwithMipmap": 21.79
+  "texMiB": 17.14,
+  "texMiBwithMipmap": 22.86
  }
 }

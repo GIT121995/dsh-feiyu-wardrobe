@@ -32,8 +32,10 @@ import {
 	/** 渲染方式用户选择（M3：'dom' 分层纸娃娃 | '2d5' WebGL2 动态；默认不写）。 */
 	const RENDER_STORAGE_KEY = 'feiyu:render';
 	/** 2.5D runtime 模块与资产根（未开启 2.5D 时不会 import / 不会发请求）。 */
-	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=12';
+	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=13';
 	const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/';
+	/** 2.5D 资产版本（图集/rig 的 fetch 查询串；v1.0.0 升级后避免吃旧缓存）。 */
+	const RUNTIME_2D5_ASSET_VERSION = '13';
 	const params = new URLSearchParams(location.search);
 
 	/** M5 互动控制器状态（宿主状态为唯一真相；local = 静态托管降级）。 */
@@ -547,6 +549,7 @@ import {
 			const runtime = await module.createRuntime2D5({
 				canvas: render2d5Canvas,
 				assetRoot: RUNTIME_2D5_ASSET_ROOT,
+				assetVersion: RUNTIME_2D5_ASSET_VERSION,
 				quality: 'auto',
 				device: renderDeviceInfo(),
 				onContextLost: () => {

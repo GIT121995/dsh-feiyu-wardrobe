@@ -9,9 +9,59 @@
  * - 心情 → 表情/待机策略映射（DOM 与 2.5D 共用）。
  *
  * 设计契约：`.scratch/m5/DESIGN.md` §4/§5；本模块不读 localStorage、不发请求、不改 runtime。
+ *
+ * 注意（M6 回归修复）：本模块**不得** import `runtime-2d5-core.js`（或其他 2.5D 模块）——
+ * app.js 静态引用本模块，若引入 2.5D 依赖会让默认 DOM 模式也加载 2.5D 代码，破坏
+ * M3 的「默认 DOM 零 2.5D 请求」契约。参数钳制由 runtime-2d5.js 的 setParams 负责，
+ * 这里只做跨动作插值合并。
  */
 
-import { clampParams } from './runtime-2d5-core.js';
+/**
+ * 参数总线默认值与上限（本地副本，与 runtime-2d5-core.js 保持一致；
+ * 单测 `interaction-model.test.mjs` 会 import core 做等价断言，防止漂移）。
+ * 不直接 import core 是为了守住「默认 DOM 模式零 2.5D 请求」契约（M6 回归修复）。
+ */
+export const DEFAULT_ACTION_PARAMS = {
+	headX: 0,
+	headY: 0,
+	headZ: 0,
+	breath: 0.6,
+	eyeOpen: 1,
+	eyeSmile: 0,
+	mouthOpen: 0,
+	hairSway: 0.55,
+	skirtSway: 0.5,
+};
+
+/** 与 runtime-2d5-core.js > PARAM_LIMITS 同步（同上，单测断言）。 */
+export const ACTION_PARAM_LIMITS = {
+	headX: [-25, 25],
+	headY: [-25, 25],
+	headZ: [-25, 25],
+	breath: [0, 1],
+	eyeOpen: [0, 1],
+	eyeSmile: [0, 1],
+	mouthOpen: [0, 1],
+	hairSway: [0, 1],
+	skirtSway: [0, 1],
+};
+
+/**
+ * 参数合并 + 钳制（runtime-2d5-core > clampParams 的本地等价实现）。
+ * @param {Record<string, number>} [base]
+ * @param {Record<string, number>|null|undefined} [partial]
+ */
+function clampActionParams(base = DEFAULT_ACTION_PARAMS, partial = {}) {
+	/** @type {Record<string, number>} */
+	const out = {};
+	for (const key of Object.keys(DEFAULT_ACTION_PARAMS)) {
+		const limits = ACTION_PARAM_LIMITS[key];
+		const candidate = partial && Number.isFinite(partial[key]) ? Number(partial[key]) : base[key];
+		const value = Number.isFinite(candidate) ? Number(candidate) : DEFAULT_ACTION_PARAMS[key];
+		out[key] = Math.min(limits[1], Math.max(limits[0], value));
+	}
+	return out;
+}
 
 /** 头部点击区：图框内归一化坐标（0..1）——y<0.42 且 |x-0.5|<0.38。 */
 export const HEAD_ZONE = { yMax: 0.42, halfWidth: 0.38 };
@@ -78,7 +128,7 @@ export const ACTION_SPECS = {
 export function actionParams(kind, elapsedMs, previous) {
 	const spec = ACTION_SPECS[kind];
 	if (!spec || !(spec.durationMs > 0)) {
-		return { done: true, t: 1, params: clampParams(previous, {}) };
+		return { done: true, t: 1, params: clampActionParams(previous, {}) };
 	}
 	const duration = spec.durationMs;
 	const elapsed = Number.isFinite(elapsedMs) ? Math.max(0, elapsedMs) : 0;
@@ -90,7 +140,8 @@ export function actionParams(kind, elapsedMs, previous) {
 	for (const [key, value] of Object.entries(raw)) {
 		cleaned[key] = Number.isFinite(value) && Math.abs(value) >= EPS ? value : 0;
 	}
-	return { done: elapsed >= duration, t, params: clampParams(previous, cleaned) };
+	// 本地钳制（不 import runtime-2d5-core，守住默认 DOM 零 2.5D 请求契约）。
+	return { done: elapsed >= duration, t, params: clampActionParams(previous, cleaned) };
 }
 
 /** 台词分组回退顺序：优先精确分组，其次心情/兜底。 */

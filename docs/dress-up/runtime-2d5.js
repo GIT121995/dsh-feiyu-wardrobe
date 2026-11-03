@@ -172,6 +172,7 @@ function makeMaskFBO(gl, width, height) {
  * @param {{
  *   canvas: HTMLCanvasElement,
  *   assetRoot?: string,
+ *   assetVersion?: string,
  *   quality?: string,
  *   dpr?: number,
  *   physicsHz?: number,
@@ -210,6 +211,7 @@ export async function createRuntime2D5(options) {
 		prog: null,
 		u: {},
 		assetRoot: typeof options.assetRoot === 'string' && options.assetRoot ? options.assetRoot.replace(/\/?$/, '/') : 'art/2d5/',
+		assetVersion: typeof options.assetVersion === 'string' && options.assetVersion ? options.assetVersion : '',
 		device: options.device || {},
 		baseW: BASE_CANVAS.width,
 		baseH: BASE_CANVAS.height,
@@ -794,7 +796,8 @@ async function loadScene(rt, shape) {
 	if (rt.loading.has(shape)) return rt.loading.get(shape);
 	const task = (async () => {
 		const loadT0 = performance.now();
-		const rigUrl = `${rt.assetRoot}${shape}/rig.json`;
+		const assetQuery = rt.assetVersion ? `?v=${encodeURIComponent(rt.assetVersion)}` : '';
+		const rigUrl = `${rt.assetRoot}${shape}/rig.json${assetQuery}`;
 		const response = await fetch(rigUrl);
 		if (!response.ok) throw new Error(`rig 加载失败 HTTP ${response.status}：${rigUrl}`);
 		const text = await response.text();
@@ -802,7 +805,7 @@ async function loadScene(rt, shape) {
 		if (!rig || !Array.isArray(rig.drawables)) throw new Error(`rig 格式非法：${rigUrl}`);
 		for (const drawable of rig.drawables) uploadDrawable(rt, drawable);
 		const atlasFile = (rig.atlas && rig.atlas.file) || 'atlas.webp';
-		const atlasUrl = `${rt.assetRoot}${shape}/${atlasFile}`;
+		const atlasUrl = `${rt.assetRoot}${shape}/${atlasFile}${assetQuery}`;
 		const image = await loadImage(atlasUrl);
 		rig.image = image;
 		const texture = textureFromImage(rt, image);

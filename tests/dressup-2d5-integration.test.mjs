@@ -11,6 +11,7 @@ const INDEX = readFileSync(join(ROOT, 'index.html'), 'utf8');
 const CSS = readFileSync(join(ROOT, 'style.css'), 'utf8');
 const RUNTIME = readFileSync(join(ROOT, 'runtime-2d5.js'), 'utf8');
 const CORE = readFileSync(join(ROOT, 'runtime-2d5-core.js'), 'utf8');
+const INTERACTION = readFileSync(join(ROOT, 'interaction-model.js'), 'utf8');
 
 test('换装页带 2.5D 渲染按钮与版本化入口（app.js/style.css ?v=13）', () => {
 	assert.match(INDEX, /id="renderBtn"/, 'index.html 应有渲染方式切换按钮');
@@ -28,11 +29,18 @@ test('DOM 默认模式零新增请求：app.js 不得静态 import 2.5D runtime/
 		'app.js 不能静态 import runtime-2d5（否则默认 DOM 模式也会发请求）',
 	);
 	assert.ok(APP.includes('import(RUNTIME_2D5_MODULE)'), '2.5D runtime 应通过动态 import 懒加载');
-	assert.ok(APP.includes("const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=12'"), 'runtime 模块路径应带版本号');
+	assert.ok(APP.includes("const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=13'"), 'runtime 模块路径应带版本号');
 	assert.ok(APP.includes("const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/'"), '2.5D 资产根应为 art/2d5/');
+	assert.ok(APP.includes("const RUNTIME_2D5_ASSET_VERSION = '13'"), '资产应带版本号（v1.0.0 升级后防旧缓存）');
 	// 模式决策内联实现（避免为了策略再发一个模块请求）
 	assert.ok(APP.includes('function resolveRenderMode('), 'app.js 应内联渲染模式决策（零请求）');
 	assert.ok(APP.includes('function parseRenderMode('), 'app.js 应内联模式解析');
+});
+
+test('DOM 默认模式零 2.5D 请求：静态 import 图不得引入 2.5D 模块', () => {
+	// app.js 静态 import interaction-model.js；后者若引入 2.5D 模块会让默认 DOM 也发请求（M6 回归）
+	assert.ok(!/from\s+['"]\.\/runtime-2d5/.test(INTERACTION), 'interaction-model 不得静态 import 2.5D runtime/core');
+	assert.ok(!/art\/2d5/.test(INTERACTION), 'interaction-model 不得引用 2.5D 资产路径');
 });
 
 test('换装页接线：config/URL 覆盖、切换、参数总线、立绘卡/悬浮鲸鱼、回退', () => {
@@ -74,8 +82,9 @@ test('2.5D runtime 产品化：无 POC 全局/URL 依赖、工厂式 API、按�
 	// 资源按需加载：fetch 只出现在 rig + 图集
 	const fetchCount = (RUNTIME.match(/\bfetch\(/g) || []).length;
 	assert.equal(fetchCount, 1, `runtime 只应有一处 fetch（rig.json），实际 ${fetchCount}`);
-	assert.ok(RUNTIME.includes("const rigUrl = `${rt.assetRoot}${shape}/rig.json`"));
-	assert.ok(RUNTIME.includes("const atlasUrl = `${rt.assetRoot}${shape}/${atlasFile}`"));
+	assert.ok(RUNTIME.includes('assetVersion'), '应按需追加资产版本查询串（防旧缓存）');
+	assert.ok(RUNTIME.includes('const rigUrl = `${rt.assetRoot}${shape}/rig.json${assetQuery}`'));
+	assert.ok(RUNTIME.includes('const atlasUrl = `${rt.assetRoot}${shape}/${atlasFile}${assetQuery}`'));
 });
 
 test('2.5D core 是纯逻辑模块（node 可直接 import，无 DOM/WebGL 依赖）', () => {

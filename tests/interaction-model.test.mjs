@@ -4,7 +4,9 @@ import test from 'node:test';
 
 import {
 	ACTION_ALIASES,
+	ACTION_PARAM_LIMITS,
 	ACTION_SPECS,
+	DEFAULT_ACTION_PARAMS,
 	HEAD_ZONE,
 	MOOD_FACE_PLAN,
 	actionParams,
@@ -15,7 +17,12 @@ import {
 	pickLine,
 	resolveAction,
 } from '../docs/dress-up/interaction-model.js';
-import { PARAM_LIMITS } from '../docs/dress-up/runtime-2d5-core.js';
+import { DEFAULT_2D5_PARAMS, PARAM_LIMITS } from '../docs/dress-up/runtime-2d5-core.js';
+
+test('参数总线默认值/上限与 runtime-2d5-core 同步（本地副本防漂移）', () => {
+	assert.deepEqual(DEFAULT_ACTION_PARAMS, DEFAULT_2D5_PARAMS, '默认参数与 core 不一致');
+	assert.deepEqual(ACTION_PARAM_LIMITS, PARAM_LIMITS, '参数上限与 core 不一致');
+});
 
 const BUBBLES = {
 	pat: ['摸头呀。', '头发要乱啦。', '谢谢你陪我。'],

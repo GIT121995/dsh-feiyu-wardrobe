@@ -226,7 +226,7 @@ test('desiredMouthKey：说话循环 / mouthOpen 阈值 / 覆盖', () => {
 
 /* ---------------- 换装组合解析 ---------------- */
 
-test('resolveLook：套装命中（maid / sweater-plaid / girl hoodie-plaid）', () => {
+test('resolveLook：套装命中（maid / sweater-plaid / hoodie-plaid 双身形）', () => {
 	for (const rig of [CHIBI, GIRL]) {
 		const maid = resolveLook(rig, { outfit: 'maid' });
 		assert.equal(maid.outfit, 'maid');
@@ -235,18 +235,23 @@ test('resolveLook：套装命中（maid / sweater-plaid / girl hoodie-plaid）',
 		assert.deepEqual(maid.slots.bottom, []);
 		assert.equal(maid.fallback, null);
 	}
-	const girlHoodie = resolveLook(GIRL, { outfit: 'hoodie-plaid' });
-	assert.deepEqual(girlHoodie.slots.topBody, ['hoodie-body']);
-	assert.deepEqual(girlHoodie.slots.bottom, ['bottom-plaid']);
-	assert.equal(resolveLook(CHIBI, { outfit: 'hoodie-plaid' }).outfit, null, 'chibi 无 hoodie 套装 → 不应命中套装');
+	// production 资产（M4）：两身形都有 hoodie 套装
+	for (const rig of [CHIBI, GIRL]) {
+		const hoodie = resolveLook(rig, { outfit: 'hoodie-plaid' });
+		assert.equal(hoodie.outfit, 'hoodie-plaid');
+		assert.deepEqual(hoodie.slots.topBody, ['hoodie-body']);
+		assert.deepEqual(hoodie.slots.bottom, ['bottom-plaid']);
+	}
 });
 
-test('resolveLook：上衣+下装动态组合（3 上装 × 2 下装，含 topUnder 水手服）', () => {
+test('resolveLook：上衣+下装动态组合（4 上装 × 2 下装，含 topUnder 水手服与 hoodie）', () => {
 	const combos = [
 		['sweater', 'plaid', 'topBody', 'sweater-body', 'bottom-plaid'],
 		['sweater', 'pleated', 'topBody', 'sweater-body', 'bottom-pleated'],
 		['sailor', 'plaid', 'topUnder', 'sailor-body', 'bottom-plaid'],
 		['sailor', 'pleated', 'topUnder', 'sailor-body', 'bottom-pleated'],
+		['hoodie', 'plaid', 'topBody', 'hoodie-body', 'bottom-plaid'],
+		['hoodie', 'pleated', 'topBody', 'hoodie-body', 'bottom-pleated'],
 	];
 	for (const [top, bottom, slot, bodyId, bottomId] of combos) {
 		const look = resolveLook(CHIBI, { outfit: 'none', top, bottom });
@@ -256,15 +261,12 @@ test('resolveLook：上衣+下装动态组合（3 上装 × 2 下装，含 topUn
 		assert.equal(look.slots.sleeve.length, 1);
 		assert.equal(look.fallback, null);
 	}
-	// chibi 无 hoodie 素材 → 回退毛衣并记 warnings
-	const fallback = resolveLook(CHIBI, { outfit: 'none', top: 'hoodie', bottom: 'plaid' });
-	assert.deepEqual(fallback.slots.topBody, ['sweater-body']);
-	assert.ok(fallback.warnings.some((warning) => warning.startsWith('top:hoodie')));
-	assert.equal(fallback.fallback, 'partial');
-	// girl 有 hoodie → 不回退
-	const girlHoodie = resolveLook(GIRL, { outfit: 'none', top: 'hoodie', bottom: 'plaid' });
-	assert.deepEqual(girlHoodie.slots.topBody, ['hoodie-body']);
-	assert.equal(girlHoodie.warnings.length, 0);
+	// production 资产：两身形都有 hoodie → 不回退、无 warnings
+	for (const rig of [CHIBI, GIRL]) {
+		const hoodie = resolveLook(rig, { outfit: 'none', top: 'hoodie', bottom: 'pleated' });
+		assert.deepEqual(hoodie.slots.topBody, ['hoodie-body']);
+		assert.equal(hoodie.warnings.length, 0);
+	}
 });
 
 test('resolveLook：未知套装/缺下装时的回退与 warnings（不抛错）', () => {
