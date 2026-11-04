@@ -681,6 +681,106 @@ export function normalizeDiyPack(pack, options = {}) {
 }
 
 /**
+ * v2.1 → v2.2 cutout 的 base 引用迁移表（旧 DIY pack 的 pairing 引用 v2.1 generic drawable）。
+ * 目标 id 是 v2.2 production rig 的部件；运行时按目标 drawable 的 slot 自动落槽。
+ */
+export const LEGACY_V21_BASE_REFS = {
+	'bottom-plaid': ['sweater-plaid-skirt', 'sweater-plaid-skirt-under'],
+	'bottom-pleated': ['sweater-pleated-skirt', 'sweater-pleated-skirt-under'],
+	'sweater-body': ['sweater-plaid-torso'],
+	'sweater-sleeve': [
+		'sweater-plaid-sleeve-upper-L', 'sweater-plaid-sleeve-upper-R',
+		'sweater-plaid-sleeve-fore-L', 'sweater-plaid-sleeve-fore-R',
+	],
+	'hoodie-body': ['hoodie-plaid-torso'],
+	'hoodie-sleeve': [
+		'hoodie-plaid-sleeve-upper-L', 'hoodie-plaid-sleeve-upper-R',
+		'hoodie-plaid-sleeve-fore-L', 'hoodie-plaid-sleeve-fore-R',
+	],
+	'maid-body': ['maid-torso'],
+	'maid-sleeve': [
+		'maid-sleeve-upper-L', 'maid-sleeve-upper-R',
+		'maid-sleeve-fore-L', 'maid-sleeve-fore-R',
+	],
+	'sailor-body': ['sailor-plaid-torso'],
+	'sailor-sleeve': ['sailor-plaid-sleeve-upper-L', 'sailor-plaid-sleeve-upper-R'],
+};
+
+/**
+ * 旧 DIY pack 的 outfit 引用迁移：缺失的 v2.1 base id 按迁移表映射到 v2.2 现有部件；
+ * 目标部件不存在则安全置空并记 unmapped（不抛错、不改 pack 原对象）。
+ *
+ * @param {Record<string, any>} outfits
+ * @param {Record<string, any>} drawableById 当前场景的 drawable 表（id → {slot}）
+ * @param {string[]} [ownIds] 当前 pack 自带的 drawable id（注册前尚未进场景，需保留）
+ * @param {{ category?: string }} [options] pack 品类（用于「空配对自动补齐」，如旧 dress/outfit pack 无下装）
+ * @returns {{ outfits: Record<string, any>, warnings: string[], unmapped: string[] }}
+ */
+export function migrateDiyPackOutfits(outfits, drawableById = {}, ownIds = [], options = {}) {
+	/** @type {string[]} */
+	const warnings = [];
+	/** @type {string[]} */
+	const unmapped = [];
+	/** @type {Record<string, any>} */
+	const migrated = {};
+	const own = new Set(ownIds);
+	const push = (/** @type {Record<string, string[]>} */ target, /** @type {string} */ slot, /** @type {string} */ id) => {
+		if (!Array.isArray(target[slot])) target[slot] = [];
+		if (!target[slot].includes(id)) target[slot].push(id);
+	};
+	for (const [outfitId, outfit] of Object.entries(outfits || {})) {
+		/** @type {Record<string, string[]>} */
+		const next = {};
+		for (const slot of OUTFIT_SLOTS) {
+			for (const ref of Array.isArray(outfit && outfit[slot]) ? outfit[slot] : []) {
+				if (typeof ref !== 'string' || !ref) continue;
+				if ((drawableById && drawableById[ref]) || own.has(ref)) {
+					push(next, slot, ref);
+					continue;
+				}
+				const targets = LEGACY_V21_BASE_REFS[/** @type {keyof typeof LEGACY_V21_BASE_REFS} */ (ref)] || null;
+				if (!targets) {
+					unmapped.push(`${outfitId}.${slot}:${ref}`);
+					continue;
+				}
+				let mapped = 0;
+				for (const target of targets) {
+					const drawable = drawableById ? drawableById[target] : null;
+					if (!drawable) continue;
+					const targetSlot = OUTFIT_SLOTS.includes(drawable.slot) ? drawable.slot : slot;
+					push(next, targetSlot, target);
+					mapped += 1;
+				}
+				if (mapped > 0) warnings.push(`migrated:${ref}→${mapped}`);
+				else unmapped.push(`${outfitId}.${slot}:${ref}@missing-target`);
+			}
+		}
+		// 旧 pack 的 pairing 可能整体为空（v2.1 dress/outfit 本来不带下装；bottom 可缺上衣）：
+		// 按品类自动补一套 v2.2 配对部件（存在才补），避免「光腿/裸上身」。
+		const category = String(options.category || '');
+		if (category === 'bottom') {
+			if (!(next.topBody || []).length && drawableById && drawableById['sweater-plaid-torso']) {
+				push(next, 'topBody', 'sweater-plaid-torso');
+				for (const id of ['sweater-plaid-collar']) if (drawableById[id]) push(next, 'collar', id);
+				for (const id of ['sweater-plaid-sleeve-upper-L', 'sweater-plaid-sleeve-upper-R']) if (drawableById[id]) push(next, 'sleeveUpper', id);
+				for (const id of ['sweater-plaid-sleeve-fore-L', 'sweater-plaid-sleeve-fore-R']) if (drawableById[id]) push(next, 'sleeveFore', id);
+				warnings.push('migrated:auto-pair-top');
+			}
+		} else if (['top', 'coat', 'dress', 'outfit'].includes(category)) {
+			if (!(next.bottom || []).length && drawableById) {
+				const skirts = ['sweater-plaid-skirt', 'sweater-plaid-skirt-under'].filter((id) => drawableById[id]);
+				if (skirts.length) {
+					for (const id of skirts) push(next, 'bottom', id);
+					warnings.push('migrated:auto-pair-bottom');
+				}
+			}
+		}
+		migrated[outfitId] = next;
+	}
+	return { outfits: migrated, warnings, unmapped };
+}
+
+/**
  * 把一个已校验的 DIY pack 注册进场景数据结构（不涉及 GL；runtime 在上传 VAO/纹理后调用）。
  *
  * @param {any} scene

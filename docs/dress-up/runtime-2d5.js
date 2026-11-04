@@ -36,6 +36,7 @@ import {
 	faceStateKeys,
 	headFollowParams,
 	normalizeAtlases,
+	migrateDiyPackOutfits,
 	normalizeDiyPack,
 	registerDiyPack,
 	resolveDrawableAtlas,
@@ -46,7 +47,7 @@ import {
 	LEGACY_OUTFIT_SLOTS,
 	unregisterDiyPack,
 	visibleDrawables,
-} from './runtime-2d5-core.js?v=17';
+} from './runtime-2d5-core.js?v=18';
 
 /** 单个 spring 链节点相对 rest 的最大偏移（px，安全包络，POC 同值）。 */
 const CHAIN_OFFSET_LIMIT = 42;
@@ -411,6 +412,14 @@ function buildApi(rt) {
 			if (scene.diyPacks && scene.diyPacks.has(packId)) {
 				return { ok: true, packId, reused: true, memory: memoryInfo(rt) };
 			}
+			// v2.2 cutout 兼容：旧 pack 的 v2.1 base 引用按槽位迁移到 v2.2 现有部件（不污染 pack 原对象）
+			const migration = migrateDiyPackOutfits(
+				normalized.outfits,
+				scene.drawableById,
+				normalized.drawables.map((drawable) => drawable.id),
+				{ category: pack && pack.category ? String(pack.category) : '' },
+			);
+			const normalizedForRegister = { ...normalized, outfits: migration.outfits };
 			const assetBase = typeof options.assetBase === 'string' && options.assetBase
 				? options.assetBase.replace(/\/?$/, '/')
 				: '';
@@ -435,7 +444,7 @@ function buildApi(rt) {
 					stats.verts += drawable.verts || 0;
 					stats.tris += drawable.tris || 0;
 				}
-				const registered = registerDiyPack(scene, packId, normalized);
+				const registered = registerDiyPack(scene, packId, normalizedForRegister);
 				if (!registered.ok) throw new Error(`DIY pack 注册失败：${registered.code}`);
 				scene.stats.texBytes += stats.texBytes;
 				scene.stats.vboBytes += stats.vboBytes;
@@ -450,6 +459,11 @@ function buildApi(rt) {
 					textures: normalized.drawables.length,
 					textureBytes: stats.texBytes,
 					memory: memoryInfo(rt),
+					migration: {
+						warnings: migration.warnings,
+						unmapped: migration.unmapped,
+						migrated: migration.warnings.length > 0 || migration.unmapped.length > 0,
+					},
 				};
 			} catch (error) {
 				for (const drawable of normalized.drawables) {

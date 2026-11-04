@@ -19,9 +19,9 @@ import {
 	normalizeState,
 	randomOutfit,
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；加版本号让浏览器绕过旧缓存
-} from './wardrobe-core.js?v=17';
-import { createDiy } from './diy-ui.js?v=17';
-import { createDiyPacks } from './diy-packs.js?v=17';
+} from './wardrobe-core.js?v=18';
+import { createDiy } from './diy-ui.js?v=18';
+import { createDiyPacks } from './diy-packs.js?v=18';
 import {
 	ACTION_SPECS,
 	actionParams,
@@ -29,7 +29,7 @@ import {
 	hitZone,
 	moodFacePlan,
 	pickLine,
-} from './interaction-model.js?v=17';
+} from './interaction-model.js?v=18';
 
 (() => {
 	'use strict';
@@ -37,7 +37,7 @@ import {
 	const $ = (sel) => document.querySelector(sel);
 	const STORAGE_KEY = 'feiyu:outfit';
 	/** 2.5D runtime 模块（v2 唯一渲染路径；页面模块版本 v15）。 */
-	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=17';
+	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=18';
 	const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/';
 	/** 2.5D 资产版本（v1.0.0 起资产未变，保持 v13；页面模块升 v15）。 */
 	const RUNTIME_2D5_ASSET_VERSION = '14';

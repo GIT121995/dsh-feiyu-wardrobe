@@ -120,6 +120,24 @@ outfits 分类（图标 = pack 纹理缩略图）；`fallback=static` 的套装�
 导入：宿主校验 format/version/item/shape/纹理完整性后写 `packs/<id>/` + registry；非法包整体拒绝且不落盘。
 导出/导入均不经过 LLM（浏览器 ↔ 宿主本机）。
 
+## 5.5 v2.2 cutout 兼容（v2.2.1 起）
+
+v2.2 起 base rig 为 cutout 分部件（`sweater-plaid-torso/-skirt` 等），不再有 v2.1 的 generic
+`bottom-plaid/sweater-body/sweater-sleeve/maid-body…`。兼容策略：
+
+- **新 pack（v2.2.1 binder）**：`tools/diy/bind_layers.py` 的 pairing 从 base rig 的可用组合套装动态读取
+  （top/coat/dress → v2.2 裙对；bottom → v2.2 上衣/领/袖部件），`pairingSource` 写入 pack 报告，不再写死 v2.1 id；
+  legacy `sleeve` 槽位继续支持（DIY 自带袖层仍放 `sleeve` z60/61）。
+- **旧 pack（v2.1 生成）**：runtime `addOutfitPack` 注册时调用
+  `migrateDiyPackOutfits(outfits, scene.drawableById, ownIds, {category})`：
+  缺失的 v2.1 base 引用按迁移表映射到 v2.2 现有部件（`bottom-plaid→sweater-plaid-skirt/-skirt-under`、
+  `sweater-body→sweater-plaid-torso`、`sweater-sleeve→sleeveUpper/sleeveFore×2` 等）；
+  旧 dress/outfit pack 本来没有下装 → 按品类自动补 v2.2 裙对（避免光腿）；bottom pack 可自动补上衣；
+  目标均缺失则安全置空并记 `unmapped`（不抛错、不改 pack 原对象），`getState().look.slots` 语义不变。
+- 迁移只在运行时内存中生效，不写回 pack/registry，也不退回 v2.1 资产（v2.1 人物资产已删除）。
+- E2E 断言（v2.2.1 起）：选中任一 DIY pack 后 `look.slots.bottom` 非空且 bottom drawable 在 active；
+  旧 pack ×3 + 新 pack ×1 均验证（`.scratch/cutout/diy-v22/`）。
+
 ## 6. 兼容与限制
 
 - `formatVersion` 只升不降；S3 遇到未知版本 → 拒绝并回退 static。未知字段忽略。

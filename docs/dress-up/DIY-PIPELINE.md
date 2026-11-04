@@ -56,7 +56,7 @@ dsh-feiyu-diy remove --id <itemId> --dry-run
 |---|---|---|
 | generate | lib/diy-provider（Seedream 2 张；预算/缓存/重试/脱敏） | `gen/look.png`、`gen/flatout.png` |
 | split | `tools/diy/split_layers.py`（M1 浏览器算法 Python 移植；diff 自适应阈值/fill-under-hair/拆袖/羽化/QA；`.scratch/diy-m1` 8 件回归 IoU≥0.9996） | `layers/body.png`、`layers/sleeve.png`、`layers/split.json` |
-| bind | `tools/diy/bind_layers.py`（官方 rig 同口径网格/权重/裙链；**增量 pack，不复制 base rig**） | `pack/diy-pack.json`、`pack/tex/*.webp`、`pack/bind-report.json` |
+| bind | `tools/diy/bind_layers.py`（官方 rig 同口径网格/权重/裙链；**增量 pack，不复制 base rig**；v2.2.1 起 pairing 从 base rig 组合套装动态读取，不写死 base id） | `pack/diy-pack.json`、`pack/tex/*.webp`、`pack/bind-report.json` |
 | qa | 宿主结构 QA（格式/网格/UV/权重/纹理/覆盖率/成层分级） | `qa/qa.json`（未过 → `fallback=static`，不阻塞安装） |
 | install | 复制到 `<diy-home>/packs/<itemId>/` + 原子写 registry | `<diy-home>/registry.json`、`jobs/<job>/install.json` |
 
