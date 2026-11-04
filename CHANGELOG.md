@@ -1,8 +1,8 @@
 # Changelog
 
-## 2.0.0 — 2026-11-04（草稿 · 待 Lead 发版）
+## 2.0.0 — 2026-11-04
 
-「2.5D-only：删除 DOM 分层渲染路径（破壊性变更，用户拍板；需要 WebGL2）」
+「2.5D-only：删除 DOM 分层渲染路径（破坏性变更，用户拍板；需要 WebGL2）」
 
 > **破坏性变更**：v1.0.0 的「DOM 分层纸娃娃 + 2.5D 双渲染」收敛为 **2.5D 单一可见路径**。
 > 不支持 WebGL2 的浏览器/设备将**无法使用换装间**（仅显示文字提示 + 重试）；这是用户明确接受的取舍。
@@ -22,7 +22,8 @@
 - 页面模块 cache-bust 升 v14；2.5D 资产版本保持 v13（资产未变）。
 
 ### 兼容/回归
-- `npm run verify` 全绿（tsc + 230+ tests）；`.scratch/v2/e2e.mjs` 全绿（2.5D-only 默认/换装/身形/眨眼口型/摸头喂食 HUD/DIY 静态贴片/无 WebGL2 纯文本/立绘卡/悬浮鲸鱼/reduced-motion/0 pageerror）。
+- `npm run verify` 全绿（tsc + **233 tests**）；`.scratch/v2/e2e.mjs` **18/18 用例、4 组 fresh browser 全绿**（2.5D-only 默认/换装/身形/眨眼口型/摸头喂食 HUD/DIY 静态贴片/无 WebGL2 纯文本/立绘卡/悬浮鲸鱼/reduced-motion/0 pageerror）。
+- **包体**：`npm pack` **10.4MB**（解包 13.7MB，较 v1.0.0 11.0MB 减小）；2.5D 首屏 4 请求 ≈1.55MB（gzip），显存 chibi 17.14 / girl 16.65 MiB；README 换装间预览图已更新为 2.5D 实机画面。
 - **真机未测**：性能/内存为服务器侧 headless（SwANGLE 无 GPU）数据，不可代表真机。
 
 ## 1.0.0 — 2026-11-03
