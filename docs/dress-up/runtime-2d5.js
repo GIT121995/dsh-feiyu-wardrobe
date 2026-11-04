@@ -5,9 +5,11 @@
  * 产品化改动（相对 POC）：
  *   - ES 模块 + 工厂函数 `createRuntime2D5()`，无全局状态、无 URL 解析、无 DOM id 依赖；
  *   - 资产按需加载：`setShape(shape)` 才 fetch `art/2d5/<shape>/rig.json` + 图集（未开启零请求）；
- *   - 每身形一张 lossless WebP 图集（`tools/build_2d5.py` 构建），单 GL 纹理；
+ *   - 每身形 1–2 张 lossless WebP 图集（`tools/build_2d5.py` 构建；v2.2 cutout 支持多图集，
+ *     每 drawable 用 `atlas` 指定归属；旧单图集 rig 向后兼容）；
  *   - 全部纯逻辑（换装组合/可视列表/参数/固定步长/face 状态机）走 runtime-2d5-core.js（node 单测覆盖）；
- *   - 对外 API：setShape / setLook / setParams / setHeadFollow / triggerBlink / triggerSmile /
+ *   - 对外 API：setShape / setLook / addOutfitPack / removeOutfitPack / getOutfitPacks / setParams /
+ *     setHeadFollow / triggerBlink / triggerSmile /
  *     setTalking / tap / setQuality / setDPR / setPhysicsHz / setMaskPass / setMipmaps /
  *     freeze / step / advance / renderFrame / renderToCanvas / toDataURL / getMemory / getState /
  *     destroy；固定 60Hz 物理步进 + 降级开关 + 按需加载/释放（复用 POC 逻辑）。
@@ -33,11 +35,15 @@ import {
 	DIY_PACK_FORMAT_VERSION,
 	faceStateKeys,
 	headFollowParams,
+	normalizeAtlases,
 	normalizeDiyPack,
 	registerDiyPack,
+	resolveDrawableAtlas,
 	resolveLook,
 	resolveQuality,
 	summarizeInitialPayload,
+	CUTOUT_SLOTS,
+	LEGACY_OUTFIT_SLOTS,
 	unregisterDiyPack,
 	visibleDrawables,
 } from './runtime-2d5-core.js?v=16';
@@ -931,19 +937,37 @@ async function loadScene(rt, shape) {
 		const rig = JSON.parse(text);
 		if (!rig || !Array.isArray(rig.drawables)) throw new Error(`rig 格式非法：${rigUrl}`);
 		for (const drawable of rig.drawables) uploadDrawable(rt, drawable);
-		const atlasFile = (rig.atlas && rig.atlas.file) || 'atlas.webp';
-		const atlasUrl = `${rt.assetRoot}${shape}/${atlasFile}${assetQuery}`;
-		const image = await loadImage(atlasUrl);
-		rig.image = image;
-		const texture = textureFromImage(rt, image);
-		rig.atlasWidth = (rig.atlas && rig.atlas.width) || image.naturalWidth;
-		rig.atlasHeight = (rig.atlas && rig.atlas.height) || image.naturalHeight;
-		if (image.naturalWidth !== rig.atlasWidth || image.naturalHeight !== rig.atlasHeight) {
-			throw new Error(`图集尺寸不符：${atlasUrl} ${image.naturalWidth}x${image.naturalHeight} != ${rig.atlasWidth}x${rig.atlasHeight}`);
+		// 多图集（v2.2 cutout）：rig.atlases 1–2 张；旧 rig.atlas 单张向后兼容。
+		const atlasSet = normalizeAtlases(rig);
+		if (!atlasSet.ok) throw new Error(`图集配置非法：${atlasSet.errors.join(',')}`);
+		/** @type {Array<{ id: string, file: string, width: number, height: number, index: number, url: string, image: HTMLImageElement, texture: WebGLTexture, bytes: number }>} */
+		const atlases = [];
+		for (const def of atlasSet.atlases) {
+			const atlasUrl = `${rt.assetRoot}${shape}/${def.file}${assetQuery}`;
+			const image = await loadImage(atlasUrl);
+			const width = def.width || image.naturalWidth;
+			const height = def.height || image.naturalHeight;
+			if (image.naturalWidth !== width || image.naturalHeight !== height) {
+				throw new Error(`图集尺寸不符：${atlasUrl} ${image.naturalWidth}x${image.naturalHeight} != ${width}x${height}`);
+			}
+			atlases.push({
+				id: def.id, file: def.file, index: def.index, url: atlasUrl, image,
+				width, height, texture: textureFromImage(rt, image), bytes: width * height * 4,
+			});
 		}
-		rig.texture = texture;
-		for (const drawable of rig.drawables) drawable.tex = texture;
-		rig.texBytes = rig.atlasWidth * rig.atlasHeight * 4;
+		rig.atlases = atlases;
+		rig.atlasesLegacy = atlasSet.legacy;
+		rig.image = atlases[0].image;
+		rig.texture = atlases[0].texture;
+		rig.atlasWidth = atlases[0].width;
+		rig.atlasHeight = atlases[0].height;
+		for (const drawable of rig.drawables) {
+			const atlasIndex = resolveDrawableAtlas(drawable, atlases);
+			drawable.atlasIndex = atlasIndex;
+			drawable.atlasId = atlases[atlasIndex].id;
+			drawable.tex = atlases[atlasIndex].texture;
+		}
+		rig.texBytes = atlases.reduce((sum, atlas) => sum + atlas.bytes, 0);
 
 		// 场景运行时结构（与 POC 同口径）
 		rig.shape = shape;
@@ -1001,10 +1025,17 @@ async function loadScene(rt, shape) {
 		rt.assetInfo[shape] = {
 			rigUrl,
 			rigBytes: text.length,
-			atlasUrl,
-			atlasWidth: rig.atlasWidth,
-			atlasHeight: rig.atlasHeight,
-			atlasBytesApprox: rig.atlasWidth * rig.atlasHeight * 4,
+			// 兼容旧字段（第一张图集）+ 多图集明细（cutout）
+			atlasUrl: atlases[0].url,
+			atlasWidth: atlases[0].width,
+			atlasHeight: atlases[0].height,
+			atlasBytesApprox: atlases[0].bytes,
+			atlases: atlases.map((atlas) => ({
+				id: atlas.id, file: atlas.file, url: atlas.url,
+				width: atlas.width, height: atlas.height, bytes: atlas.bytes,
+			})),
+			legacyAtlas: atlasSet.legacy,
+			textureBytes: rig.texBytes,
 			loadMs: Math.round(rt.loadMs[shape]),
 		};
 		return rig;
@@ -1064,7 +1095,8 @@ function activateScene(rt, shape) {
 		artSource: scene.artSource || 'v2',
 		name: scene.name || shape,
 		file: scene.file,
-		atlas: scene.atlas ? { width: scene.atlas.width, height: scene.atlas.height } : null,
+		atlas: scene.atlases && scene.atlases.length ? { width: scene.atlases[0].width, height: scene.atlases[0].height } : null,
+		atlases: (scene.atlases || []).map((atlas) => ({ id: atlas.id, file: atlas.file, width: atlas.width, height: atlas.height })),
 		drawables: scene.drawables.length,
 		bones: scene.skeleton.bones.length,
 		chains: scene.physics.length,
@@ -1099,7 +1131,10 @@ function releaseScene(rt, shape) {
 		if (drawable.ibo) gl.deleteBuffer(drawable.ibo);
 		if (drawable.tex && drawable.tex !== scene.texture) deleteTexture(rt, drawable.tex);
 	}
-	if (scene.texture) deleteTexture(rt, scene.texture);
+	for (const atlas of scene.atlases || []) {
+		if (atlas.texture) deleteTexture(rt, atlas.texture);
+	}
+	if (scene.texture && !(scene.atlases || []).some((atlas) => atlas.texture === scene.texture)) deleteTexture(rt, scene.texture);
 	rt.glRes.vbos = Math.max(0, rt.glRes.vbos - scene.drawables.length * 2);
 	rt.scenes.delete(shape);
 	rt.releaseMs[shape] = performance.now() - t0;
@@ -1161,16 +1196,20 @@ function resizeCanvas(rt) {
 /** @param {any} rt */
 function reuploadTextures(rt) {
 	for (const scene of rt.scenes.values()) {
-		if (!scene.image) continue;
-		if (scene.texture) deleteTexture(rt, scene.texture);
-		scene.texture = textureFromImage(rt, scene.image);
+		if (!scene.atlases || scene.atlases.length === 0) continue;
+		for (const atlas of scene.atlases) {
+			if (atlas.texture) deleteTexture(rt, atlas.texture);
+			atlas.texture = textureFromImage(rt, atlas.image);
+		}
+		scene.texture = scene.atlases[0].texture;
 		for (const drawable of scene.drawables) {
 			// DIY 动态 drawable 自带纹理：mipmap/画质切换时按各自图片重传，不落回 base 图集
 			if (drawable.image) {
 				if (drawable.tex) deleteTexture(rt, drawable.tex);
 				drawable.tex = textureFromImage(rt, drawable.image);
 			} else {
-				drawable.tex = scene.texture;
+				const atlas = scene.atlases[drawable.atlasIndex || 0] || scene.atlases[0];
+				drawable.tex = atlas.texture;
 			}
 		}
 	}
@@ -1814,12 +1853,15 @@ function buildActive(rt) {
 
 /** @param {any} slots @returns {any} */
 function cloneSlots(slots) {
-	return {
-		topUnder: (slots.topUnder || []).slice(),
-		bottom: (slots.bottom || []).slice(),
-		topBody: (slots.topBody || []).slice(),
-		sleeve: (slots.sleeve || []).slice(),
-	};
+	const source = slots || {};
+	/** @type {Record<string, string[]>} 旧 4 键始终存在（语义不变）；cutout 新槽位仅非空时出现 */
+	const out = {};
+	for (const slot of LEGACY_OUTFIT_SLOTS) out[slot] = (source[slot] || []).slice();
+	for (const slot of CUTOUT_SLOTS) {
+		const values = source[slot] || [];
+		if (values.length) out[slot] = values.slice();
+	}
+	return out;
 }
 
 /** @param {any} rt */
