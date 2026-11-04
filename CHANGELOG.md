@@ -1,10 +1,10 @@
 # Changelog
 
-## 2.1.0 — 2026-11-04（草稿 · 待 Lead 发版）
+## 2.1.0 — 2026-11-04
 
 「DIY 全链路：agent 一张衣服图 → 自动成层/绑定/QA → 可动 2.5D 套装（安装/删除/.dshskin）」
 
-> 草稿：版本号/tag/npm/Release 由 Lead 执行；本分支只 commit。DIY 仍**默认关闭**（`diy.enabled`）。
+> DIY 仍**默认关闭**（`diy.enabled=false`）；开启后 agent 可通过 `dsh-feiyu-diy` CLI / `/diy` 命令调用。
 
 ### 新特性
 - **agent 可调用宿主管线（S2）**：`dsh-feiyu-diy` CLI（plan/run/status/install/list/remove，单行 JSON）+ `/diy` 命令；
@@ -28,6 +28,8 @@
 - `npm run verify` **248/248**（tsc + tests；新增 S2 管线 8 组 + S3 core/routes 测试）；页面模块 cache-bust **v16**，2.5D 资产版本仍 v13。
 - 旧行为保留：M1 浏览器 DIY 静态衣柜、互动/经济/立绘卡不变；默认关闭时换装间无任何 DIY 网络请求。
 - 已知限制：仅 chibi；真机未测；S3 的 QA 为宿主结构级 + S2 证据流程（runtime 帧视觉 QA 后续可加）。
+- **验证**：`npm run verify` **248/248**；S3 E2E 全链路（真实 S2 pack）0 pageerror；npm pack 7.2MB（87 files）。
+- **升级**：升级 profile/npm 后重启 DSH 生效；页面模块 cache-bust v16、2.5D 资产仍 v13；DIY 默认关闭，开启需宿主 `diy.enabled=true`。
 
 ## 2.0.1 — 2026-11-04
 
