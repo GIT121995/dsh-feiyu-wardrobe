@@ -52,6 +52,44 @@ PAIRING = {
     'dress': {'topBody': [], 'sleeve': [], 'bottom': [], 'topUnder': []},
     'outfit': {'topBody': [], 'sleeve': [], 'bottom': [], 'topUnder': []},
 }
+
+# outfit 槽位（v2.2 cutout：topBody/bottom/sleeve 之外新增 collar/sleeveUpper/sleeveFore；legacy sleeve 保留）
+PAIR_SLOTS = ('topBody', 'sleeve', 'bottom', 'topUnder', 'collar', 'sleeveUpper', 'sleeveFore')
+# 用哪套 base 组合做配对（v2.2 有 sweater-plaid 上下装配件；旧 rig 回退 PAIRING 常量）
+PAIR_REFERENCE_OUTFITS = ('sweater-plaid', 'sweater-pleated', 'maid', 'sailor-plaid')
+
+
+def derive_pairing(base_rig: dict, category: str) -> tuple[dict, dict]:
+    """从 base rig 的可用组合套装里取配对部件（v2.2 cutout），不再写死 v2.1 id。
+
+    - top/coat/dress/outfit：配对下装（避免 DIY 上衣/裙装光腿）；不配 base 上衣（DIY 自己提供）。
+    - bottom：配对 base 上衣/领/袖部件（避免 DIY 下装裸上身）。
+    - 目标部件必须真实存在于 base rig drawables；否则放弃并返回 warning（QA 可发现）。
+    - 保留 legacy `sleeve` 槽位：若 base rig 组合里有 sleeve 部件则一并作为配对。
+    """
+    outfits = base_rig.get('outfits') or {}
+    drawable_slot = {d.get('id'): d.get('slot') for d in base_rig.get('drawables') or []}
+    candidates = [oid for oid in PAIR_REFERENCE_OUTFITS if oid in outfits]
+    candidates += [oid for oid in outfits if oid not in candidates]
+    warnings: list[str] = []
+    for outfit_id in candidates:
+        outfit = outfits.get(outfit_id) or {}
+        slots = {}
+        for slot in PAIR_SLOTS:
+            slots[slot] = [did for did in (outfit.get(slot) or []) if did in drawable_slot]
+        if category in ('top', 'coat', 'dress', 'outfit'):
+            if slots.get('bottom'):
+                pairing = {slot: [] for slot in PAIR_SLOTS}
+                pairing['bottom'] = slots['bottom'][:]
+                return pairing, {'source': f'base-rig:{outfit_id}', 'warnings': warnings}
+        else:  # bottom
+            if slots.get('topBody'):
+                pairing = {slot: [] for slot in PAIR_SLOTS}
+                for slot in ('topBody', 'collar', 'sleeveUpper', 'sleeveFore', 'sleeve', 'topUnder'):
+                    pairing[slot] = slots.get(slot, [])[:]
+                return pairing, {'source': f'base-rig:{outfit_id}', 'warnings': warnings}
+    warnings.append('no_base_pair_outfit')
+    return json.loads(json.dumps(PAIRING[category])), {'source': 'legacy-static', 'warnings': warnings}
 FORMAT = 'feiyu-diy-pack'
 FORMAT_VERSION = 1
 GENERATOR = 'dsh-feiyu-diy/2.1.0'
@@ -365,9 +403,10 @@ def bind(layers_dir: Path, base_rig_path: Path, item_id: str, category: str, nam
                           'texture': f'tex/{sleeve_id}.webp', 'mesh': sleeve_mesh['mesh'], **sleeve_map})
         sleeve_verts = sleeve_mesh['verts']
 
-    pairing = json.loads(json.dumps(PAIRING[category]))
-    outfit = {'name': name, 'topBody': pairing['topBody'][:], 'sleeve': pairing['sleeve'][:],
-              'bottom': pairing['bottom'][:], 'topUnder': pairing['topUnder'][:]}
+    pairing, pairing_meta = derive_pairing(base_rig, category)
+    outfit = {slot: pairing.get(slot, [])[:] for slot in PAIR_SLOTS}
+    outfit['name'] = name
+    # body_role 即 topBody/bottom/topUnder；DIY 主体放在该槽位最前
     outfit[body_role].insert(0, body_id)
     if sleeve_id:
         outfit['sleeve'].append(sleeve_id)
@@ -382,6 +421,7 @@ def bind(layers_dir: Path, base_rig_path: Path, item_id: str, category: str, nam
         'drawables': drawables,
         'outfits': {item_id: outfit},
         'pairing': pairing,
+        'pairingSource': pairing_meta.get('source'),
         'createdAt': None,
     }
     report = {
@@ -394,6 +434,8 @@ def bind(layers_dir: Path, base_rig_path: Path, item_id: str, category: str, nam
         'skirtCfg': skirt_cfg, 'coverage': coverage,
         'alphaClean': {'body': clean_stats, 'sleeve': sleeve[2] if sleeve else None},
         'pairing': pairing,
+        'pairingSource': pairing_meta.get('source'),
+        'pairingWarnings': pairing_meta.get('warnings') or [],
         'bindMs': None,
     }
     pack['bind'] = report
