@@ -16,6 +16,9 @@ import {
 	desiredMouthKey,
 	estimateTextureMemory,
 	faceDrawableIds,
+	normalizeDiyPack,
+	registerDiyPack,
+	unregisterDiyPack,
 	faceStateKeys,
 	headFollowParams,
 	pickQualityTier,
@@ -313,4 +316,105 @@ test('resolveLook bare（DIY 静态贴片）：只留身体/头发/脸，不渲�
 test('BASE_CANVAS：与 DOM 分层素材同构（675×1200 9:16）', () => {
 	assert.deepEqual(BASE_CANVAS, { width: 675, height: 1200 });
 	assert.equal(BASE_CANVAS.width / BASE_CANVAS.height, 9 / 16);
+});
+
+/* ------------------------------------------------------- S3 · DIY 增量 pack --- */
+
+/** 构造一个最小可用 feiyu-diy-pack（2 drawables / 2 纹理，59 骨）。 */
+function makeDiyPack(overrides = {}) {
+	const drawable = (id, slot, z, texture) => ({
+		id, slot, z, role: slot, texture,
+		rect: [10, 10, 60, 60], texSize: [10, 10],
+		mesh: {
+			positions: [[10, 10], [20, 10], [20, 20]],
+			uvs: [[0, 0], [1, 0], [1, 1]],
+			bones: [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]],
+			weights: [[1, 0, 0, 0], [1, 0, 0, 0], [1, 0, 0, 0]],
+			deform: [[0, 0], [0, 0], [0, 0]],
+			indices: [0, 1, 2],
+		},
+	});
+	return {
+		format: 'feiyu-diy-pack', formatVersion: 1, item: 'diy-test-20260101000000',
+		name: '测试套装', shape: 'chibi', category: 'top',
+		base: { skeletonBones: 59 },
+		drawables: [drawable('diy-test-body', 'topBody', 40, 'tex/diy-test-body.webp'),
+			drawable('diy-test-sleeve', 'sleeve', 60, 'tex/diy-test-sleeve.webp')],
+		outfits: { 'diy-test-20260101000000': { name: '测试套装', topBody: ['diy-test-body'], sleeve: ['diy-test-sleeve'], bottom: [] } },
+		...overrides,
+	};
+}
+
+test('normalizeDiyPack：接受 v1 增量 pack（多 drawable/多纹理），拒绝坏数据', () => {
+	const pack = makeDiyPack();
+	const ok = normalizeDiyPack(pack, { bones: 59, shape: 'chibi' });
+	assert.equal(ok.ok, true);
+	assert.deepEqual(ok.errors, []);
+	assert.equal(ok.packId, 'diy-test-20260101000000');
+	assert.deepEqual(ok.textures, ['tex/diy-test-body.webp', 'tex/diy-test-sleeve.webp']);
+	assert.deepEqual(ok.outfits['diy-test-20260101000000'].topBody, ['diy-test-body']);
+
+	const bad = [
+		[{ format: 'nope' }, 'format_invalid'],
+		[{ formatVersion: 2 }, 'version_invalid'],
+		[{ base: { skeletonBones: 58 } }, 'skeleton_mismatch'],
+		[{ shape: 'girl' }, 'shape_mismatch'],
+		[{ outfits: {} }, 'outfit_missing'],
+	];
+	for (const [patch, expected] of bad) {
+		const result = normalizeDiyPack({ ...makeDiyPack(), ...patch }, { bones: 59, shape: 'chibi' });
+		assert.equal(result.ok, false, JSON.stringify(patch));
+		assert.ok(result.errors.includes(expected), `${expected} 未命中：${result.errors.join(',')}`);
+	}
+	const brokenMesh = makeDiyPack();
+	brokenMesh.drawables[0].mesh.uvs[0] = [2, 0];
+	brokenMesh.drawables[0].mesh.indices[0] = 99;
+	brokenMesh.drawables[0].mesh.weights[0] = [0.4, 0.4, 0.4, 0.4];
+	const meshResult = normalizeDiyPack(brokenMesh, { bones: 59, shape: 'chibi' });
+	assert.equal(meshResult.ok, false);
+	assert.ok(meshResult.errors.some((error) => error.startsWith('uv_out_of_range') || error.startsWith('index_out_of_range') || error.startsWith('weights_not_normalized')));
+});
+
+test('registerDiyPack/unregisterDiyPack：动态 drawable/outfit 注册与回滚，状态引用不破坏', () => {
+	const baseDrawables = [{ id: 'body', slot: 'body', z: 10 }];
+	const scene = {
+		drawables: baseDrawables,
+		drawableById: { body: baseDrawables[0] },
+		outfits: { maid: { name: 'maid', topBody: ['x'] } },
+		bones: [{ id: 'root' }],
+		chains: [{ id: 'skirtP0' }],
+		stats: { verts: 3, tris: 1 },
+	};
+	const bonesRef = scene.bones;
+	const chainsRef = scene.chains;
+	const normalized = normalizeDiyPack(makeDiyPack(), { bones: 59, shape: 'chibi' });
+	assert.equal(normalized.ok, true);
+	const first = registerDiyPack(scene, 'diy-test-20260101000000', normalized);
+	assert.equal(first.ok, true);
+	assert.equal(scene.drawables.length, 3);
+	assert.equal(scene.drawableById['diy-test-body'].slot, 'topBody');
+	assert.ok(scene.outfits['diy-test-20260101000000']);
+	assert.equal(scene.diyPacks.size, 1);
+	// 同状态引用（add 不重建骨架/物理链）
+	assert.equal(scene.bones, bonesRef);
+	assert.equal(scene.chains, chainsRef);
+	// 重复注册
+	const second = registerDiyPack(scene, 'diy-test-20260101000000', normalized);
+	assert.equal(second.ok, false);
+	assert.equal(second.code, 'pack_exists');
+	// 移除
+	const removed = unregisterDiyPack(scene, 'diy-test-20260101000000');
+	assert.equal(removed.ok, true);
+	assert.equal(scene.drawables.length, 1);
+	assert.equal(scene.drawableById['diy-test-body'], undefined);
+	assert.equal(scene.outfits['diy-test-20260101000000'], undefined);
+	assert.equal(scene.diyPacks.size, 0);
+	assert.equal(unregisterDiyPack(scene, 'diy-test-20260101000000').ok, false);
+});
+
+test('estimateTextureMemory：多纹理 DIY 显存估算（纹理独立、不进 base 图集）', () => {
+	const memory = estimateTextureMemory([{ width: 300, height: 320 }, { width: 294, height: 293 }], false);
+	assert.ok(memory.texBytes > 0);
+	assert.equal(memory.texMiB, Math.round((memory.texBytes / 1048576) * 100) / 100);
+	assert.ok(memory.texMiBwithMipmap >= memory.texMiB);
 });

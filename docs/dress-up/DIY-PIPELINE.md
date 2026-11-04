@@ -102,11 +102,25 @@ jobs/<job>/             # 中间产物（可清理）
 S1 spike 的视觉 QA（静置合成帧 diff/posed 光流/4x/发丝压衣/换装回归）在 `.scratch/diy2` 证据中；
 S3 会把它接入 runtime 级 QA（渲染真帧后复测）。**真机未测。**
 
-## 7. 已知限制（S2）
+## 7. 安装后消费（S3：runtime 动态 pack + 页面）
+
+S2 的 `install` 产物由 **S3** 消费（页面 boot 自动读取，无需重启宿主）：
+
+- 宿主路由（`lib/diy.js`，同源、默认关闭时 404）：`GET /feiyu/diy/registry.json`、
+  `GET /feiyu/diy/packs/<id>/...`、`POST /feiyu/diy/remove`、`POST /feiyu/diy/import`。
+- 页面 boot：读 registry → 把已安装套装注入衣柜 outfits 分类（🧵 图标 = pack 纹理缩略图）；
+  选中时 `runtime.addOutfitPack({pack, assetBase})` 动态合并（多纹理，参数/物理/时间/造型状态保留），
+  选中即动效换装；`QA fallback=static` 的套装走静态贴片并在面板标注「静态」。
+- 面板（🧵 按钮）：试穿 / 导出 `.dshskin` / 删除 / 刷新；文件导入 `.dshskin` → 宿主写入 pack+registry。
+- 生成进度：agent 用 CLI/`/diy` 生成并 install 后，页面面板"刷新"（或打开面板自动轮询 5s）即可看到新套装。
+- 格式与 runtime API 细节见 `docs/dress-up/DIY-PACK.md`；S3 实测数据见 `.scratch/diy2/S3-REPORT.md`。
+
+## 8. 已知限制（S2/S3）
 
 1. 仅 `chibi` 身形（girl 绑定后续 1–2 天）。
 2. QA 宿主结构级（尚未跑 runtime 渲染帧；S3 接 runtime 后补视觉 QA）。
-3. 增量 pack 尚未被页面消费（S3：runtime `addDiyPack`/registry 路由/IndexedDB/.dshskin）。
+3. 页面消费已由 S3 完成（runtime 动态 pack + registry 路由 + `.dshskin`；见 §7）；IndexedDB 安装记录仍走 M1 DIY 静态衣柜，动态套装以宿主 registry 为准。
 4. 品类自动识别未做：`--category auto` 默认 top + warning；建议 agent/用户显式传品类。
-5. 失败回退静态贴片的页面渲染路径沿用 M1（S3 统一）。
+5. 失败回退静态贴片的页面渲染路径沿用 M1（已接入页面：`fallback=static` 走静态贴片 + 提示）。
 6. 长任务建议放后台；`run` 为同步等待（2 张 API ≈20–70s）。
+7. S3 仅 chibi；真机未测（headless SwANGLE 数据）。

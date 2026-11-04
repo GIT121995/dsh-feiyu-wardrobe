@@ -29,13 +29,18 @@ import {
 	clampParams,
 	desiredEyeKey,
 	desiredMouthKey,
+	DIY_PACK_FORMAT,
+	DIY_PACK_FORMAT_VERSION,
 	faceStateKeys,
 	headFollowParams,
+	normalizeDiyPack,
+	registerDiyPack,
 	resolveLook,
 	resolveQuality,
 	summarizeInitialPayload,
+	unregisterDiyPack,
 	visibleDrawables,
-} from './runtime-2d5-core.js?v=15';
+} from './runtime-2d5-core.js?v=16';
 
 /** 单个 spring 链节点相对 rest 的最大偏移（px，安全包络，POC 同值）。 */
 const CHAIN_OFFSET_LIMIT = 42;
@@ -379,6 +384,127 @@ function buildApi(rt) {
 		},
 
 		/**
+		 * 动态叠加一个 DIY 增量 outfit pack（S3；格式见 docs/dress-up/DIY-PACK.md）。
+		 * 不重载 base rig/图集；参数/物理/时间/当前造型状态保持不变（随后按 lastLookState 重算 look）。
+		 * @param {{ pack: any, packId?: string, assetBase?: string, textures?: Record<string, HTMLImageElement> }} options
+		 * @returns {Promise<{ ok: boolean, packId: string, reused?: boolean, drawableIds?: string[], outfits?: string[], textures?: number, textureBytes?: number, memory?: any }>}
+		 */
+		async addOutfitPack(options = {}) {
+			if (rt.destroyed) throw new Error('runtime 已销毁');
+			const scene = rt.scene;
+			if (!scene) throw new Error('先 setShape 再 addOutfitPack');
+			const pack = options.pack;
+			const packId = String(options.packId || (pack && pack.item) || '');
+			const normalized = normalizeDiyPack(pack, { bones: scene.skeleton.bones.length, shape: rt.shape });
+			if (!normalized.ok || !packId) {
+				const error = new Error(`DIY pack 校验失败：${normalized.errors.join(',') || 'packId_missing'}`);
+				error.code = 'pack_invalid';
+				error.errors = normalized.errors;
+				throw error;
+			}
+			if (scene.diyPacks && scene.diyPacks.has(packId)) {
+				return { ok: true, packId, reused: true, memory: memoryInfo(rt) };
+			}
+			const assetBase = typeof options.assetBase === 'string' && options.assetBase
+				? options.assetBase.replace(/\/?$/, '/')
+				: '';
+			const provided = options.textures || null;
+			const gl = rt.gl;
+			const stats = { texBytes: 0, vboBytes: 0, verts: 0, tris: 0 };
+			try {
+				for (const drawable of normalized.drawables) {
+					uploadDrawable(rt, drawable);
+					const key = drawable.texture;
+					let image = provided && provided[key] ? provided[key] : null;
+					if (!image) {
+						if (!assetBase) throw new Error(`缺少纹理 ${key}（需要 assetBase 或 textures）`);
+						image = await loadImage(`${assetBase}${key}`);
+					}
+					drawable.image = image;
+					drawable.tex = textureFromImage(rt, image);
+					drawable.diy = true;
+					drawable.packId = packId;
+					stats.texBytes += image.naturalWidth * image.naturalHeight * 4;
+					stats.vboBytes += drawable.vboBytes || 0;
+					stats.verts += drawable.verts || 0;
+					stats.tris += drawable.tris || 0;
+				}
+				const registered = registerDiyPack(scene, packId, normalized);
+				if (!registered.ok) throw new Error(`DIY pack 注册失败：${registered.code}`);
+				scene.stats.texBytes += stats.texBytes;
+				scene.stats.vboBytes += stats.vboBytes;
+				scene.stats.verts += stats.verts;
+				scene.stats.tris += stats.tris;
+				rt.look = resolveLook(scene, rt.lastLookState || {});
+				buildActive(rt);
+				return {
+					ok: true, packId, reused: false,
+					drawableIds: normalized.drawables.map((drawable) => drawable.id),
+					outfits: Object.keys(normalized.outfits),
+					textures: normalized.drawables.length,
+					textureBytes: stats.texBytes,
+					memory: memoryInfo(rt),
+				};
+			} catch (error) {
+				for (const drawable of normalized.drawables) {
+					if (drawable.vao) gl.deleteVertexArray(drawable.vao);
+					if (drawable.vbo) gl.deleteBuffer(drawable.vbo);
+					if (drawable.ibo) gl.deleteBuffer(drawable.ibo);
+					if (drawable.tex) deleteTexture(rt, drawable.tex);
+					if (drawable.vbo) rt.glRes.vbos = Math.max(0, rt.glRes.vbos - 2);
+				}
+				throw error;
+			}
+		},
+
+		/**
+		 * 移除一个动态 DIY pack：释放其 VAO/VBO/纹理，删除 outfit；若当前正在穿它则回退到可用造型。
+		 * @param {string} packId
+		 * @returns {{ ok: boolean, packId?: string, code?: string, removedDrawables?: number, memory?: any }}
+		 */
+		removeOutfitPack(packId) {
+			const scene = rt.scene;
+			const id = String(packId || '');
+			if (!scene || !scene.diyPacks) return { ok: false, code: 'pack_not_found' };
+			const result = unregisterDiyPack(scene, id);
+			if (!result.ok) return result;
+			const gl = rt.gl;
+			for (const drawable of result.entry.drawables) {
+				if (drawable.vao) gl.deleteVertexArray(drawable.vao);
+				if (drawable.vbo) gl.deleteBuffer(drawable.vbo);
+				if (drawable.ibo) gl.deleteBuffer(drawable.ibo);
+				if (drawable.tex) deleteTexture(rt, drawable.tex);
+				if (drawable.vbo) rt.glRes.vbos = Math.max(0, rt.glRes.vbos - 2);
+				scene.stats.texBytes -= drawable.image ? drawable.image.naturalWidth * drawable.image.naturalHeight * 4 : 0;
+				scene.stats.vboBytes -= drawable.vboBytes || 0;
+				scene.stats.verts -= drawable.verts || 0;
+				scene.stats.tris -= drawable.tris || 0;
+				drawable.vao = null;
+				drawable.vbo = null;
+				drawable.ibo = null;
+				drawable.tex = null;
+			}
+			rt.look = resolveLook(scene, rt.lastLookState || {});
+			buildActive(rt);
+			return {
+				ok: true, packId: id,
+				removedDrawables: result.entry.drawableIds.length,
+				memory: memoryInfo(rt),
+			};
+		},
+
+		/** 已加载的动态 DIY pack 摘要（页面/E2E 用）。 */
+		getOutfitPacks() {
+			const scene = rt.scene;
+			if (!scene || !scene.diyPacks) return [];
+			return [...scene.diyPacks.entries()].map(([packId, entry]) => ({
+				packId,
+				drawableIds: entry.drawableIds.slice(),
+				outfits: entry.outfitIds.slice(),
+			}));
+		},
+
+		/**
 		 * 参数总线（M5 互动接口）：未知键忽略、越界钳制。
 		 * @param {Record<string, number>} partial
 		 */
@@ -662,6 +788,7 @@ function buildApi(rt) {
 				shapeName: (rt.scene && rt.scene.name) || rt.shape,
 				look: { ...rt.look, slots: cloneSlots(rt.look.slots) },
 				outfits: api.getOutfits(),
+				diyPacks: api.getOutfitPacks(),
 				time: rt.time,
 				fps: rt.fps,
 				eye: rt.eyeKey,
@@ -821,6 +948,7 @@ async function loadScene(rt, shape) {
 		// 场景运行时结构（与 POC 同口径）
 		rig.shape = shape;
 		rig.drawableById = Object.fromEntries(rig.drawables.map((drawable) => [drawable.id, drawable]));
+		rig.diyPacks = new Map();
 		rig.file = `${shape}/rig.json`;
 		rig.stats = {
 			texBytes: rig.texBytes,
@@ -969,6 +1097,7 @@ function releaseScene(rt, shape) {
 		if (drawable.vao) gl.deleteVertexArray(drawable.vao);
 		if (drawable.vbo) gl.deleteBuffer(drawable.vbo);
 		if (drawable.ibo) gl.deleteBuffer(drawable.ibo);
+		if (drawable.tex && drawable.tex !== scene.texture) deleteTexture(rt, drawable.tex);
 	}
 	if (scene.texture) deleteTexture(rt, scene.texture);
 	rt.glRes.vbos = Math.max(0, rt.glRes.vbos - scene.drawables.length * 2);
@@ -1035,7 +1164,15 @@ function reuploadTextures(rt) {
 		if (!scene.image) continue;
 		if (scene.texture) deleteTexture(rt, scene.texture);
 		scene.texture = textureFromImage(rt, scene.image);
-		for (const drawable of scene.drawables) drawable.tex = scene.texture;
+		for (const drawable of scene.drawables) {
+			// DIY 动态 drawable 自带纹理：mipmap/画质切换时按各自图片重传，不落回 base 图集
+			if (drawable.image) {
+				if (drawable.tex) deleteTexture(rt, drawable.tex);
+				drawable.tex = textureFromImage(rt, drawable.image);
+			} else {
+				drawable.tex = scene.texture;
+			}
+		}
 	}
 }
 
@@ -1075,7 +1212,7 @@ function memoryInfo(rt) {
 	return {
 		scenesLoaded: [...rt.scenes.keys()],
 		drawables,
-		textures: rt.scenes.size,
+		textures: rt.glRes.textures,
 		texBytes,
 		texMiB: Math.round((texBytes / 1048576) * 100) / 100,
 		texMiBwithMipmap: Math.round(((texBytes * 4) / 3 / 1048576) * 100) / 100,
