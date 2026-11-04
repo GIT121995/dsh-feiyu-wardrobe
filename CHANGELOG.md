@@ -1,5 +1,31 @@
 # Changelog
 
+## 2.0.0 — 2026-11-04
+
+「2.5D-only：删除 DOM 分层渲染路径（破坏性变更，用户拍板；需要 WebGL2）」
+
+> **破坏性变更**：v1.0.0 的「DOM 分层纸娃娃 + 2.5D 双渲染」收敛为 **2.5D 单一可见路径**。
+> 不支持 WebGL2 的浏览器/设备将**无法使用换装间**（仅显示文字提示 + 重试）；这是用户明确接受的取舍。
+> 回滚：v1.x 仍可在 npm/git tag 安装；本版本不提供 DOM 回退开关（按设计删除）。
+
+### 移除
+- **DOM 人物渲染路径**：`docs/dress-up/app.js` 的 `.figure-layer` 建层/换装 DOM 渲染/B1-lite 脸部补丁（眨眼/口型/笑眼 DOM 层）/DOM↔2.5D 双模式切换与渲染方式按钮；`index.html` 的 `#figure`/`face-layer`/`renderBtn`；`style.css` 的 figure-layer/face-layer/render-btn 样式。
+- **渲染开关与配置**：`config.dressUp.render`（`dom|2d5|auto`）、`?render=` URL 参数、`/feiyu/dress-up/render-config.json` 端点（改为 `client-config.json` 仅下发 interaction）。
+- **DOM 人物资产与构建工具**：`docs/dress-up/art/{chibi,girl}`（素体/手臂/前发/衣物层/face 补丁）、`tools/{build_masks.py,build_wardrobe.py,prepare_dress.py,masks/}`。
+- **静态兜底图**：无 WebGL2/context lost 不提供任何图片/人物兜底（用户 2026-11-04 明确），只显示纯文本提示 + 重试。
+
+### 变更
+- **2.5D 唯一路径**：页面 boot 即启动 runtime（按需加载当前身形 rig+图集），首屏 ≈1.5MB/4 请求（gzip）；切身形释放旧 GL 资源、状态保留。
+- **manifest v8**：移除 `drawOrder` / `shapes[].layers` / `items[].layers`；保留分类/单品名称图标/背景/特效/台词/默认穿搭/DIY 声明。
+- **DIY 改 canvas 静态贴片**：选中 DIY 条目时 runtime 冻结为静态帧、全画布贴片按槽位以 canvas 2D 叠加，UI 提示「DIY 造型为静态，不支持骨骼动画」；宿主 DIY 后端不变（默认关闭）。
+- **资产的 DIY 参考掩膜**：`art/diy/masks/chibi/{body,hair,arms}.webp`（DIY 成层算法的不可见输入，非渲染资产，~200KB）。
+- 页面模块 cache-bust 升 v14；2.5D 资产版本保持 v13（资产未变）。
+
+### 兼容/回归
+- `npm run verify` 全绿（tsc + **233 tests**）；`.scratch/v2/e2e.mjs` **18/18 用例、4 组 fresh browser 全绿**（2.5D-only 默认/换装/身形/眨眼口型/摸头喂食 HUD/DIY 静态贴片/无 WebGL2 纯文本/立绘卡/悬浮鲸鱼/reduced-motion/0 pageerror）。
+- **包体**：`npm pack` **10.4MB**（解包 13.7MB，较 v1.0.0 11.0MB 减小）；2.5D 首屏 4 请求 ≈1.55MB（gzip），显存 chibi 17.14 / girl 16.65 MiB；README 换装间预览图已更新为 2.5D 实机画面。
+- **真机未测**：性能/内存为服务器侧 headless（SwANGLE 无 GPU）数据，不可代表真机。
+
 ## 1.0.0 — 2026-11-03
 
 「2.5D 换装上线（可选 · 默认关闭）+ 养女儿互动：从会眨眼的纸娃娃，到有骨架、会回应的看板娘」

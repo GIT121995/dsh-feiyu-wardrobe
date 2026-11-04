@@ -1,29 +1,14 @@
 /**
  * 大肥鱼衣橱 · 换装间核心规则（纯函数，浏览器与单元测试共用）
  *
- * 换装模型（v6 · 七槽位纸娃娃）：
- *   - `manifest.drawOrder` 定义从下到上的深度槽位：
- *     body → topUnder → bottom → topBody → arms → sleeve → hair；
- *   - 身形固定提供 body / arms / hair 三层（素体、手臂+手、完整前发）；
- *   - 衣服按槽位拆层：上衣主体 topUnder（塞进裙子）或 topBody（盖在裙子外）、
- *     袖子 sleeve（盖在手臂上）、下装 bottom（在手臂层之下）；
- *   - 套装（连衣裙）走 topBody + sleeve，与「上衣 + 下装」互斥；
- *   - `resolveLayers` 把「身形层 + 当前穿搭层」按 drawOrder 排成一次绘制序列，
- *     页面 DOM、立绘卡、悬浮鲸鱼小图都按这个序列叠图。
- *
- * 图层都由「同一张素体上生成的单件穿着 look」经像素级 matte 得到，
- * 所有 look 都继承素体的构图（位置/比例/姿势），天然对齐，
- * 所以运行时不需要任何锚点/配准数据。
+ * v2（2.5D-only）：渲染由 runtime-2d5.js 负责，本模块只保留「换装状态 + 衣柜数据 + DIY 注入」
+ * 这类与渲染技术无关的规则：
+ *   - 穿搭状态：默认值/校验/选中/切身形/描述/随机；
+ *   - 衣柜数据：分类/单品查找/图鉴收集；
+ *   - DIY 本地衣柜记录 → 运行时注入单品（贴片渲染由页面 canvas 2D 负责）。
+ * DOM 分层纸娃娃（v6/v7 的 drawOrder/layers/face 补丁）在 2.0.0 移除。
  *
  * @module dsh-feiyu-wardrobe/wardrobe-core
- */
-
-/**
- * 一个可渲染的图层。
- * @typedef {object} Layer
- * @property {string} slot 槽位名（`manifest.drawOrder` 中的一项）
- * @property {string} file 相对 `docs/dress-up/` 的图片路径
- * @property {number} z 叠放层级（= 该槽位在 drawOrder 里的下标），越大越靠上
  */
 
 /**
@@ -34,7 +19,7 @@
  */
 
 /**
- * 按 id 找身形；找不到时回退第一个身形（与 resolveLayers 的容错规则一致）。
+ * 按 id 找身形；找不到时回退第一个身形（容错口径统一）。
  * @param {any} manifest
  * @param {string} [shapeId]
  * @returns {any | null}
@@ -54,99 +39,6 @@ function findShape(manifest, shapeId) {
 function findItem(manifest, categoryId, itemId) {
 	const groups = (manifest.items && manifest.items[categoryId]) || [];
 	return groups.find((entry) => entry.id === itemId) || null;
-}
-
-/**
- * drawOrder 里合法的槽位列表（去重、忽略非字符串项；manifest 没给时为 []）。
- * @param {any} manifest
- * @returns {string[]}
- */
-function drawOrderOf(manifest) {
-	const order = manifest && Array.isArray(manifest.drawOrder) ? manifest.drawOrder : [];
-	/** @type {string[]} */
-	const slots = [];
-	for (const slot of order) {
-		if (typeof slot !== 'string' || !slot || slots.includes(slot)) continue;
-		slots.push(slot);
-	}
-	return slots;
-}
-
-/**
- * 把「slot → 文件路径」映射里合法且存在的图层收进槽位表。
- * - 文件为空 / 不是字符串 → 视为缺文件，跳过；
- * - 槽位不在 drawOrder 里 → 视为非法槽位，跳过；
- * - 同一槽位只保留先出现的文件（身形层优先于单品层）。
- * @param {any} layers slot → 相对图片路径
- * @param {string[]} drawOrder
- * @param {Map<string, string>} out
- */
-function collectSlots(layers, drawOrder, out) {
-	if (!layers || typeof layers !== 'object') return;
-	for (const [slot, file] of Object.entries(layers)) {
-		if (typeof file !== 'string' || !file) continue;
-		if (!drawOrder.includes(slot)) continue;
-		if (out.has(slot)) continue;
-		out.set(slot, file);
-	}
-}
-
-/**
- * 收进某件单品在指定身形下的图层（manifest v6：`items[].layers[shapeId]`）。
- * @param {any} item
- * @param {string} shapeId
- * @param {string[]} drawOrder
- * @param {Map<string, string>} out
- */
-function collectItemSlots(item, shapeId, drawOrder, out) {
-	if (!item || !shapeId) return;
-	collectSlots(item.layers && item.layers[shapeId], drawOrder, out);
-}
-
-/**
- * 当前穿搭需要渲染的图层，按 `manifest.drawOrder` 从下到上排序。
- *
- * 规则（v6 契约 §4）：
- *   - `z` = 槽位在 `manifest.drawOrder` 里的下标，返回值按 z 升序；
- *   - 身形层恒在（body / arms / hair 等，无文件则跳过）；
- *   - 套装非空且不为 `'none'` → 只加套装的槽位层，与上衣 / 下装互斥；
- *   - 否则加下装层 + 上衣层（水手服的主体在 topUnder 槽位）；
- *   - `state.shape` 非法时回退 `shapes[0].id`；
- *   - 单品找不到、缺当前身形的图层、槽位非法、文件为空 → 跳过，不抛错。
- *
- * @param {any} manifest
- * @param {Record<string, string> | null | undefined} state
- * @returns {Layer[]}
- */
-export function resolveLayers(manifest, state) {
-	const snapshot = state || {};
-	const mf = manifest && typeof manifest === 'object' ? manifest : {};
-	const drawOrder = drawOrderOf(mf);
-	const shape = findShape(mf, snapshot.shape);
-	const shapeId = shape ? shape.id : '';
-
-	/** @type {Map<string, string>} */
-	const bySlot = new Map();
-	// 身形层（body / arms / hair）恒在
-	collectSlots(shape && shape.layers, drawOrder, bySlot);
-
-	const outfitId = snapshot.outfit;
-	if (typeof outfitId === 'string' && outfitId && outfitId !== 'none') {
-		// 套装模式：只叠套装层（topBody + sleeve 等），不加上衣 / 下装
-		collectItemSlots(findItem(mf, 'outfits', outfitId), shapeId, drawOrder, bySlot);
-	} else {
-		// 上下装模式：下装在下、上衣在上（各自可能占多个槽位）
-		collectItemSlots(findItem(mf, 'bottoms', snapshot.bottom), shapeId, drawOrder, bySlot);
-		collectItemSlots(findItem(mf, 'tops', snapshot.top), shapeId, drawOrder, bySlot);
-	}
-
-	/** @type {Layer[]} */
-	const layers = [];
-	for (let z = 0; z < drawOrder.length; z += 1) {
-		const file = bySlot.get(drawOrder[z]);
-		if (file) layers.push({ slot: drawOrder[z], file, z });
-	}
-	return layers;
 }
 
 /**
@@ -289,118 +181,7 @@ export function randomOutfit(manifest, state, random = Math.random) {
 	return next;
 }
 
-/* ---------------- 脸部叠加动画（B1-lite · v0.10） ---------------- */
-
-/** 脸部补丁使用的画布尺寸（与全部 675×1200 分层素材一致）。 */
-export const FACE_CANVAS = { width: 675, height: 1200 };
-
-/**
- * 脸部动画时序（毫秒）。app.js 只用这些常量起定时器，不参与 manifest。
- * - blinkMin/blinkMax：随机眨眼间隔
- * - blinkClose：闭眼停留时长
- * - smileMin/smileMax：随机笑眼间隔；smileHold：笑眼持续
- * - mouthPeriod：说话时口型帧切换间隔
- */
-export const FACE_TIMING = {
-	blinkMin: 2000,
-	blinkMax: 6000,
-	blinkClose: 110,
-	smileMin: 20000,
-	smileMax: 40000,
-	smileHold: 1200,
-	mouthPeriod: 130,
-};
-
-/** 每身形固定 4 个补丁 key（眼：眨眼/笑眼，嘴：微开/张开）。 */
-export const FACE_PATCH_KEYS = ['eyeBlink', 'eyeSmile', 'mouthMid', 'mouthOpen'];
-
-/**
- * 脸部补丁（运行时特效层，不进 manifest.drawOrder / 构建管线）。
- *
- * 补丁是从 Seedream 脸部关键帧里「diff ∩ 脸/嘴 ROI」提取的透明底 WebP，
- * 按 675×1200 画布坐标裁剪成小图 + 偏移定位，渲染层级在 hair 之下（刘海压住补丁上缘）。
- * 坐标为 675 画布像素（由 `.scratch/b1-lite/scripts/extract_face_patches.py` 生成）。
- *
- * @typedef {object} FacePatch
- * @property {string} file 相对 `docs/dress-up/` 的 WebP 路径
- * @property {number} x 裁剪矩形左上角 x（675 画布坐标）
- * @property {number} y 裁剪矩形左上角 y（675 画布坐标）
- * @property {number} w 裁剪矩形宽
- * @property {number} h 裁剪矩形高
- */
-
-/** @type {Record<string, Record<string, FacePatch>>} */
-export const FACE_PATCHES = {
-	girl: {
-		eyeBlink: { file: 'art/girl/face/eye_blink.webp', x: 249.61, y: 226.17, w: 189, h: 88 },
-		eyeSmile: { file: 'art/girl/face/eye_smile.webp', x: 249.61, y: 226.17, w: 189, h: 88 },
-		mouthMid: { file: 'art/girl/face/mouth_mid.webp', x: 294.14, y: 285.94, w: 100, h: 80 },
-		mouthOpen: { file: 'art/girl/face/mouth_open.webp', x: 294.14, y: 285.94, w: 100, h: 80 },
-	},
-	chibi: {
-		eyeBlink: { file: 'art/chibi/face/eye_blink.webp', x: 164.06, y: 333.98, w: 393, h: 152 },
-		eyeSmile: { file: 'art/chibi/face/eye_smile.webp', x: 172.85, y: 333.98, w: 388, h: 152 },
-		mouthMid: { file: 'art/chibi/face/mouth_mid.webp', x: 285.35, y: 450, w: 115, h: 96 },
-		mouthOpen: { file: 'art/chibi/face/mouth_open.webp', x: 285.35, y: 450, w: 115, h: 96 },
-	},
-};
-
-/**
- * 取某个身形的脸部补丁表。
- * 未配置该身形时回退到第一个有补丁的身形（与 findShape 的容错口径一致）。
- * @param {string} [shapeId]
- * @returns {Record<string, FacePatch> | null}
- */
-export function facePatchesOf(shapeId) {
-	const patches = shapeId ? FACE_PATCHES[shapeId] : null;
-	if (patches && Object.keys(patches).length) return patches;
-	for (const shape of Object.keys(FACE_PATCHES)) {
-		if (FACE_PATCHES[shape] && Object.keys(FACE_PATCHES[shape]).length) return FACE_PATCHES[shape];
-	}
-	return null;
-}
-
-/**
- * 取单个补丁；身形回退规则同 `facePatchesOf`，key 不存在返回 null。
- * @param {string | null | undefined} shapeId
- * @param {string} key `FACE_PATCH_KEYS` 之一
- * @returns {FacePatch | null}
- */
-export function facePatchOf(shapeId, key) {
-	const patches = facePatchesOf(shapeId);
-	return (patches && patches[key]) || null;
-}
-
-/**
- * 把补丁的 675 画布像素矩形换算成 `.figure` 容器内的百分比定位（纯函数）。
- * 分层素材与画布同为 9:16，百分比定位天然跟随容器缩放。
- * @param {FacePatch | null | undefined} patch
- * @returns {{ left: string, top: string, width: string, height: string } | null}
- */
-export function facePatchStyle(patch) {
-	if (!patch || !FACE_CANVAS.width || !FACE_CANVAS.height) return null;
-	const pct = (value, total) => `${Number(((value / total) * 100).toFixed(4))}%`;
-	return {
-		left: pct(patch.x, FACE_CANVAS.width),
-		top: pct(patch.y, FACE_CANVAS.height),
-		width: pct(patch.w, FACE_CANVAS.width),
-		height: pct(patch.h, FACE_CANVAS.height),
-	};
-}
-
-/**
- * 闭区间 `[min, max]` 内取随机整数（注入 random 便于单测）。
- * 参数顺序写反时自动交换，保证返回值总在区间内。
- * @param {number} min
- * @param {number} max
- * @param {() => number} [random]
- * @returns {number}
- */
-export function randomBetween(min, max, random = Math.random) {
-	const lo = Math.min(min, max);
-	const hi = Math.max(min, max);
-	return lo + Math.floor(random() * (hi - lo + 1));
-}
+/* ---------------- DIY 上传层（manifest v7 扩展，v6 数据语义不变） ---------------- */
 
 /** 衣柜里所有可展示的单品（图鉴用）。 */
 export function collectItems(manifest) {
@@ -411,8 +192,6 @@ export function collectItems(manifest) {
 	}
 	return groups;
 }
-
-/* ---------------- DIY 上传层（manifest v7 扩展，v6 数据语义不变） ---------------- */
 
 import { DIY_CATEGORY_SLOTS } from './diy-guard.js';
 
@@ -427,6 +206,27 @@ export const DIY_LAYER_SLOTS = DIY_CATEGORY_SLOTS;
 
 /** 本地衣柜默认上限（与 manifest.diy 一致）。 */
 export const DIY_MAX_ITEMS = 24;
+
+/**
+ * DIY 贴片按槽位顺序展开（2.5D 静态贴片用；全画布 675×1200 透明位图）。
+ * 顺序参考原 DOM drawOrder：bottom 低于 topBody，sleeve 最上。
+ * @param {any} item 注入后的 DIY 单品（含 `layers[shape][slot] = url|url[]`）
+ * @param {string} [shape]
+ * @returns {string[]}
+ */
+export function diyLayerUrls(item, shape = 'chibi') {
+	const layers = (item && item.layers && item.layers[shape]) || {};
+	const order = ['topUnder', 'bottom', 'topBody', 'body', 'sleeve'];
+	/** @type {string[]} */
+	const urls = [];
+	for (const slot of order) {
+		const value = layers[slot];
+		if (!value) continue;
+		for (const url of Array.isArray(value) ? value : [value]) if (url) urls.push(url);
+	}
+	return urls;
+}
+
 
 /**
  * DIY 衣柜记录（IndexedDB / `.dshskin` 共用 schema）。

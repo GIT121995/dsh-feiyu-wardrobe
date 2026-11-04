@@ -1,8 +1,7 @@
 /**
  * 大肥鱼衣橱 · 2.5D runtime 纯逻辑（浏览器 / Node 单测共用，无 WebGL / DOM 依赖）
  *
- * 这里放「能脱离 WebGL 验证」的产品逻辑：
- *   - 渲染模式决策（config / URL / 用户选择 / 平台能力）
+ * 这里放「能脱离 WebGL 验证」的产品逻辑（v2：2.5D-only，无渲染模式开关）：
  *   - 画质档与降级、DPR/物理频率上限
  *   - 参数总线（head follow / 眨眼 / 口型 / 呼吸 / 摆动）的默认值与钳制
  *   - 换装组合解析（套装、上衣+下装动态组合、缺件回退）
@@ -21,9 +20,6 @@ export const RUNTIME_2D5_VERSION = 1;
 
 /** 2.5D 画布逻辑尺寸（与 DOM 分层素材同构：675×1200 9:16）。 */
 export const BASE_CANVAS = { width: 675, height: 1200 };
-
-/** 渲染模式取值（`config.dressUp.render` / `?render=`）。 */
-export const RENDER_MODES = ['dom', '2d5', 'auto'];
 
 /** 画质档：DPR / 物理频率 / mask pass / mipmap。 */
 export const QUALITY_PRESETS = {
@@ -72,66 +68,6 @@ export const FACE_FALLBACK = {
 	eye: ['open', 'half', 'closed', 'smile'],
 	mouth: ['closed', 'small', 'mid', 'open', 'smile'],
 };
-
-/**
- * 把任意值解析成合法渲染模式；非法返回 null。
- * @param {unknown} value
- * @returns {'dom'|'2d5'|'auto'|null}
- */
-export function parseRenderMode(value) {
-	if (typeof value !== 'string') return null;
-	const normalized = value.trim().toLowerCase();
-	return RENDER_MODES.includes(/** @type {any} */ (normalized)) ? /** @type {any} */ (normalized) : null;
-}
-
-/**
- * 平台能力 → auto 模式解析结果。
- * auto 只在「WebGL2 可用 + 非减少动态效果 + 内存够」时选 2.5D，否则回 DOM（保守优先）。
- * @param {{ webgl2?: boolean, reducedMotion?: boolean, deviceMemory?: number|null }} [capable]
- * @returns {{ mode: 'dom'|'2d5', reason: string }}
- */
-export function resolveAutoMode(capable = {}) {
-	if (!capable.webgl2) return { mode: 'dom', reason: 'webgl2-unavailable' };
-	if (capable.reducedMotion) return { mode: 'dom', reason: 'prefers-reduced-motion' };
-	const memory = Number(capable.deviceMemory);
-	if (Number.isFinite(memory) && memory > 0 && memory < 2) {
-		return { mode: 'dom', reason: 'low-device-memory' };
-	}
-	return { mode: '2d5', reason: 'capable' };
-}
-
-/**
- * 渲染模式决策：URL > 用户本地选择 > 宿主配置 > 默认 dom。
- *
- * - URL 是回滚/灰度开关（`?render=dom|2d5|auto`），优先级最高；
- * - 用户在页面里手动切过就记住（localStorage），下次覆盖宿主配置；
- * - 宿主配置 `config.dressUp.render` 是默认值（M3 默认 'dom'）；
- * - auto 走 resolveAutoMode。
- *
- * @param {{
- *   config?: unknown, url?: unknown, stored?: unknown,
- *   capable?: { webgl2?: boolean, reducedMotion?: boolean, deviceMemory?: number|null },
- * }} [options]
- * @returns {{ mode: 'dom'|'2d5', requested: 'dom'|'2d5'|'auto', source: 'url'|'stored'|'config'|'default', reason: string }}
- */
-export function resolveRenderMode(options = {}) {
-	const capable = options.capable || {};
-	/** @type {Array<['url'|'stored'|'config', 'dom'|'2d5'|'auto'|null]>} */
-	const candidates = [
-		['url', parseRenderMode(options.url)],
-		['stored', parseRenderMode(options.stored)],
-		['config', parseRenderMode(options.config)],
-	];
-	for (const [source, requested] of candidates) {
-		if (!requested) continue;
-		if (requested === 'auto') {
-			const auto = resolveAutoMode(capable);
-			return { mode: auto.mode, requested, source, reason: auto.reason };
-		}
-		return { mode: requested, requested, source, reason: 'explicit' };
-	}
-	return { mode: 'dom', requested: 'dom', source: 'default', reason: 'default-dom' };
-}
 
 /**
  * 画质档解析：显式档位优先，`auto`/非法值按设备能力挑档。
@@ -521,11 +457,3 @@ export function summarizeInitialPayload({ rigBytes, rigTransferBytes, atlasBytes
 	};
 }
 
-/**
- * 渲染模式中文标签（UI 按钮/提示用）。
- * @param {'dom'|'2d5'} mode
- * @returns {string}
- */
-export function renderModeLabel(mode) {
-	return mode === '2d5' ? '2.5D 动态' : '分层纸娃娃';
-}

@@ -101,7 +101,7 @@ base(0) → 下装(20) → 上装(30) → 头发叠层(100)
 | 回归测试 | 100 tests | **108 tests 全绿**（`npm run verify`） | CI/本地 |
 
 实现细节见 [LAYER-MODEL.md](./LAYER-MODEL.md)，素材/掩膜见 `tools/masks/README.md`，
-分层可视化见 `docs/preview/layer-model.png`。
+分层可视化见 `.scratch` 历史证据（DOM 分层模型已于 v2.0.0 退役；图已移除）。
 
 ### 仍存在的近似（v0.9.1 可继续打磨）
 

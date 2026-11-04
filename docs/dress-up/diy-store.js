@@ -8,7 +8,7 @@
  *     内容策略标签、createdAt/lastUsedAt/bytes；
  *   - 配额：条目上限 + 字节上限；超限按 LRU（最久未穿）淘汰，刚保存的 keepId 受保护；
  *   - 与 manifest 的桥：`diyRecordToItem(record, { body: objectURL, sleeve: objectURL })`
- *     注入 `manifest.items[category]`，v6 渲染路径（resolveLayers）零改动消费；
+ *     注入 `manifest.items[category]`，由 2.5D canvas 静态贴片路径消费；
  *   - 默认关闭：`feiyu:diy:enabled`（默认 off）+ 首次开启显式同意 `feiyu:diy:consent`
  *     （记录时间/版本；清空 consent 即回到未同意状态）。
  *
