@@ -282,21 +282,107 @@ export const GARMENTS = {
 };
 
 /**
+ * B 方案 cutout（v2.2）drawOrder 槽位。
+ *
+ * - `BODY_DRAW_SLOTS`：身体部件/头发等常驻层（来自 rig.slots；旧 rig 缺省 → 空）；
+ * - `OUTFIT_SLOTS`：随 outfit/look 解析的服装槽位；新增 `sleeveUpper/sleeveFore/collar` 供 cutout 服装；
+ * - `legacy` 四个槽位（topUnder/bottom/topBody/sleeve）语义保持不变（getState().look.slots 向后兼容）。
+ */
+export const BODY_DRAW_SLOTS = [
+	'hairBack', 'strands', 'body', 'legs', 'arms', 'armUpper', 'armFore', 'hand', 'hair', 'hairFront', 'collar',
+];
+export const OUTFIT_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar'];
+/** v2.2 cutout 新增槽位（旧 rig 不出现即空，不影响既有渲染）。 */
+export const CUTOUT_SLOTS = ['legs', 'armUpper', 'armFore', 'hand', 'collar', 'sleeveUpper', 'sleeveFore'];
+/** 旧版四个服装槽位（向后兼容基线）。 */
+export const LEGACY_OUTFIT_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve'];
+/** 每身心最多图集数（cutout 首版；单张超过 4096 时可拆 2 张）。 */
+export const MAX_ATLASES = 2;
+/** DIY pack 旧槽位别名（S1/S2 早期产物可能用 arms 等命名）。 */
+export const DIY_SLOT_ALIASES = { arms: 'sleeve', arm: 'sleeve', sleeves: 'sleeve' };
+
+/**
+ * 空 look slots（含 cutout 新槽位；旧 4 键保持数组语义）。
+ * @returns {Record<string, string[]>}
+ */
+export function emptyLookSlots() {
+	/** @type {Record<string, string[]>} */
+	const slots = {};
+	for (const slot of OUTFIT_SLOTS) slots[slot] = [];
+	return slots;
+}
+
+/**
+ * 规范化图集列表：支持旧 rig 单图集（rig.atlas）与新 rig 多图集（rig.atlases）。
+ * @param {any} rig
+ * @returns {{ ok: boolean, errors: string[], legacy: boolean, atlases: Array<{ id: string, file: string, width: number, height: number, index: number }> }}
+ */
+export function normalizeAtlases(rig) {
+	const errors = [];
+	/** @type {Array<{ id: string, file: string, width: number, height: number, index: number }>} */
+	const atlases = [];
+	if (rig && Array.isArray(rig.atlases) && rig.atlases.length > 0) {
+		if (rig.atlases.length > MAX_ATLASES) errors.push('too_many_atlases');
+		const seen = new Set();
+		rig.atlases.forEach((/** @type {any} */ entry, i) => {
+			const id = String((entry && entry.id) || `atlas${i}`);
+			if (seen.has(id)) errors.push(`duplicate_atlas_id:${id}`);
+			seen.add(id);
+			const file = entry && typeof entry.file === 'string' && entry.file ? entry.file : '';
+			if (!file) errors.push(`atlas_file_missing:${id}`);
+			atlases.push({
+				id, file, index: i,
+				width: Math.max(0, Number(entry && entry.width) || 0),
+				height: Math.max(0, Number(entry && entry.height) || 0),
+			});
+		});
+		return { ok: errors.length === 0, errors, legacy: false, atlases };
+	}
+	const atlas = (rig && rig.atlas) || {};
+	atlases.push({
+		id: 'default', index: 0,
+		file: typeof atlas.file === 'string' && atlas.file ? atlas.file : 'atlas.webp',
+		width: Math.max(0, Number(atlas.width) || 0),
+		height: Math.max(0, Number(atlas.height) || 0),
+	});
+	return { ok: true, errors, legacy: true, atlases };
+}
+
+/**
+ * 解析 drawable 归属的图集下标（drawable.atlas 支持 id / 下标 / 文件名；缺省第一张）。
+ * @param {any} drawable
+ * @param {Array<{ id: string, file: string, index: number }>} atlases
+ * @returns {number}
+ */
+export function resolveDrawableAtlas(drawable, atlases) {
+	if (!Array.isArray(atlases) || atlases.length === 0) return 0;
+	const ref = drawable ? drawable.atlas : undefined;
+	if (typeof ref === 'number' && Number.isInteger(ref) && ref >= 0 && ref < atlases.length) return ref;
+	if (typeof ref === 'string' && ref) {
+		const byId = atlases.findIndex((atlas) => atlas.id === ref);
+		if (byId >= 0) return byId;
+		const byFile = atlases.findIndex((atlas) => atlas.file === ref);
+		if (byFile >= 0) return byFile;
+	}
+	return 0;
+}
+
+/**
  * 把换装页状态解析成 2.5D 组合：套装优先；否则「上衣 + 下装」动态组合；
  * 缺件时按「同槽位最近可用 → rig 默认套装」回退，并把原因记进 warnings。
  *
  * @param {any} rig 2.5D rig JSON
  * @param {{ outfit?: string, top?: string, bottom?: string, bare?: boolean }} state 换装页状态子集
  * @returns {{
- *   slots: { topUnder: string[], bottom: string[], topBody: string[], sleeve: string[] },
+ *   slots: Record<string, string[]>,
  *   outfit: string|null, label: string, fallback: string|null, warnings: string[],
  * }}
  */
 export function resolveLook(rig, state = {}) {
 	const available = drawableIdsOf(rig);
 	const outfits = (rig && rig.outfits) || {};
-	/** @type {{ topUnder: string[], bottom: string[], topBody: string[], sleeve: string[] }} */
-	const slots = { topUnder: [], bottom: [], topBody: [], sleeve: [] };
+	/** @type {Record<string, string[]>} */
+	const slots = emptyLookSlots();
 	const warnings = [];
 	const outfitId = typeof state.outfit === 'string' ? state.outfit : '';
 
@@ -309,7 +395,7 @@ export function resolveLook(rig, state = {}) {
 	// 1) 套装命中（M3 页面只有 maid；M4/M6 若扩展套装也走这里）
 	if (outfitId && outfitId !== 'none' && outfits[outfitId]) {
 		const outfit = outfits[outfitId];
-		for (const slot of /** @type {const} */ (['topUnder', 'bottom', 'topBody', 'sleeve'])) {
+		for (const slot of OUTFIT_SLOTS) {
 			for (const id of outfit[slot] || []) if (available.has(id)) slots[slot].push(id);
 		}
 		return { slots, outfit: outfitId, label: outfit.name || outfitId, fallback: null, warnings };
@@ -355,7 +441,7 @@ export function resolveLook(rig, state = {}) {
 		const fallbackId = (rig && rig.defaults && rig.defaults.outfit) || Object.keys(outfits)[0] || null;
 		const fallbackOutfit = fallbackId ? outfits[fallbackId] : null;
 		if (fallbackOutfit) {
-			for (const slot of /** @type {const} */ (['topUnder', 'bottom', 'topBody', 'sleeve'])) {
+			for (const slot of OUTFIT_SLOTS) {
 				for (const id of fallbackOutfit[slot] || []) if (available.has(id)) slots[slot].push(id);
 			}
 			warnings.push(`fallback:${fallbackId}`);
@@ -397,7 +483,7 @@ function bottomLabel(id) {
  * 与 POC buildActive 同口径（阴影/补边层靠 z 排）。
  *
  * @param {any} rig
- * @param {{ slots: { topUnder: string[], bottom: string[], topBody: string[], sleeve: string[] } }} look
+ * @param {{ slots: Record<string, string[]> }} look
  * @param {{ eye?: string, mouth?: string }} [faceKeys]
  * @returns {{ id: string, z: number }[]}
  */
@@ -411,10 +497,10 @@ export function visibleDrawables(rig, look, faceKeys = {}) {
 		if (drawable && !chosen.has(id)) chosen.set(id, drawable);
 	};
 	const slots = (rig && rig.slots) || {};
-	for (const slot of ['hairBack', 'strands', 'body', 'arms', 'hair', 'hairFront']) {
+	for (const slot of BODY_DRAW_SLOTS) {
 		for (const id of slots[slot] || []) add(id);
 	}
-	for (const slot of /** @type {const} */ (['topUnder', 'bottom', 'topBody', 'sleeve'])) {
+	for (const slot of OUTFIT_SLOTS) {
 		for (const id of (look && look.slots && look.slots[slot]) || []) add(id);
 	}
 	const eyeKey = faceKeys.eye || 'open';
@@ -492,7 +578,13 @@ export function normalizeDiyPack(pack, options = {}) {
 	if (shape && pack.shape && pack.shape !== shape) errors.push('shape_mismatch');
 	const packBones = Number(pack.base && pack.base.skeletonBones) || 0;
 	if (bones && packBones && packBones !== bones) errors.push('skeleton_mismatch');
-	const drawables = Array.isArray(pack.drawables) ? pack.drawables : [];
+	const rawDrawables = Array.isArray(pack.drawables) ? pack.drawables : [];
+	/** @type {any[]} */
+	const drawables = rawDrawables.map((drawable) => {
+		if (!drawable || typeof drawable !== 'object') return drawable;
+		const slot = DIY_SLOT_ALIASES[drawable.slot] || drawable.slot;
+		return slot === drawable.slot ? drawable : { ...drawable, slot };
+	});
 	if (drawables.length < 1 || drawables.length > 2) errors.push('drawables_count');
 	const textures = [];
 	const seenIds = new Set();
@@ -505,7 +597,7 @@ export function normalizeDiyPack(pack, options = {}) {
 		if (!id) errors.push('drawable_id_missing');
 		if (seenIds.has(id)) errors.push('drawable_duplicate');
 		seenIds.add(id);
-		if (!['topBody', 'topUnder', 'bottom', 'sleeve'].includes(drawable.slot)) errors.push(`slot_invalid:${id}`);
+		if (!OUTFIT_SLOTS.includes(drawable.slot)) errors.push(`slot_invalid:${id}`);
 		if (!Number.isFinite(Number(drawable.z))) errors.push(`z_invalid:${id}`);
 		if (typeof drawable.texture !== 'string' || !/\.(webp|png)$/i.test(drawable.texture)) errors.push(`texture_invalid:${id}`);
 		else textures.push(drawable.texture);
@@ -560,7 +652,7 @@ export function normalizeDiyPack(pack, options = {}) {
 	for (const outfitId of outfitIds) {
 		if (!outfitId.startsWith('diy-')) errors.push(`outfit_bad_name:${outfitId}`);
 		const outfit = outfits[outfitId] || {};
-		const refs = [...(outfit.topBody || []), ...(outfit.bottom || []), ...(outfit.sleeve || []), ...(outfit.topUnder || [])];
+		const refs = OUTFIT_SLOTS.flatMap((slot) => outfit[slot] || []);
 		if (!refs.some((ref) => seenIds.has(ref))) errors.push(`outfit_refs_missing:${outfitId}`);
 	}
 	return {

@@ -304,7 +304,11 @@ test('summarizeInitialPayload：首屏 raw/transfer 汇总', () => {
 
 test('resolveLook bare（DIY 静态贴片）：只留身体/头发/脸，不渲染任何服装层', () => {
 	const look = resolveLook(CHIBI, { bare: true });
-	assert.deepEqual(look.slots, { topUnder: [], bottom: [], topBody: [], sleeve: [] });
+	// 旧 4 键语义不变；cutout 新槽位以空数组存在（不渲染）
+	for (const slot of ['topUnder', 'bottom', 'topBody', 'sleeve']) {
+		assert.deepEqual(look.slots[slot], [], `${slot} 应为空`);
+	}
+	assert.ok(Object.values(look.slots).every((values) => Array.isArray(values) && values.length === 0));
 	assert.equal(look.outfit, null);
 	assert.deepEqual(look.warnings, [], 'bare 模式不应产生回退 warnings');
 	const ids = visibleDrawables(CHIBI, look, { eye: 'open', mouth: 'closed' }).map((entry) => entry.id);

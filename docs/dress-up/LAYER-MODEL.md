@@ -181,3 +181,17 @@
   超限按 LRU（lastUsedAt/createdAt）淘汰，`keepId`（本次新存）受保护。
 - `contentPolicy`：记录/分享包都带内容策略标签，导入时校验；`guardVersion` 与 `diy-guard.js` 对齐。
 - `.dshskin` 是**本地分享文件**（不经服务器），schema/校验见 `diy-skin.js` 与 `DIY-UPLOAD.md` §6。
+
+## 8. v2.2 cutout：drawOrder 槽位与多图集（runtime M3 契约）
+
+DOM 分层模型仍已退役；本节是 **2.5D cutout（B 方案）** 的新渲染契约（production 资产由 M4 合入）。
+
+- 槽位（z）：`legs(9) < body(10) < bottom(30) < topBody(40) < armUpper(45) < armFore(48) < collar(56) <
+  sleeveUpper(60) < sleeveFore(62) < hand(65) < bangs(70)`；旧 `topUnder(20)/sleeve(60)` 保留。
+- 身体部件（`legs/armUpper/armFore/hand`）来自 `rig.slots` 常驻层；服装件（`collar/sleeveUpper/sleeveFore`）
+  随 outfit 解析（与 `topBody/bottom/sleeve` 同机制）。
+- 多图集：`rig.atlases[1–2]` + 每 drawable `atlas` 字段；单张图集仍兼容。图集拆分建议：base（头/发/旧服装）+
+  cutout（躯干/四肢/新服装），单张 ≤4096。
+- 兼容：旧 rig / 旧 DIY pack 可直接加载；`visibleDrawables` 按 z 排序，`getState().look.slots` 旧 4 键语义不变。
+- 验收：M3 mock cutout（现 rig 拆 body → torso/legs + 2 图集 + 新槽位 debug 覆盖件）已抓帧通过；
+  M1 POC / M2 art 就绪后由 M4 用真资产复跑（before/after + 4x）。
