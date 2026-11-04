@@ -15,7 +15,8 @@
     "./diy": "./lib/diy.js"
   },
   "bin": {
-    "dsh-feiyu-report": "./bin/feiyu-report.mjs"
+    "dsh-feiyu-report": "./bin/feiyu-report.mjs",
+    "dsh-feiyu-diy": "bin/dsh-feiyu-diy.mjs"
   },
   "files": [
     "lib",
@@ -27,7 +28,8 @@
     "LICENSE",
     "docs/preview",
     "screenshots.json",
-    "docs/preview/fish-demo.png"
+    "docs/preview/fish-demo.png",
+    "tools/diy"
   ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",

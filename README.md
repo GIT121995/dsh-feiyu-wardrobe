@@ -117,6 +117,8 @@ python3 tools/build_2d5.py --rig .scratch/m4/dist/chibi/rig.json \
 
 ## DIY 上传（可选 · 默认关闭）
 
+> **v2.1.0 · agent 可调用宿主管线（S2）**：`dsh-feiyu-diy` CLI / `/diy` 命令把「图片 → Seedream look/flatout → 宿主 Python 自动成层 → 自动绑定 → QA → 安装」串成一条流水线（默认关闭、预算/守卫/缓存沿用本机 DIY 配置；失败自动回退静态贴片）。详见 [`docs/dress-up/DIY-PIPELINE.md`](docs/dress-up/DIY-PIPELINE.md)。
+
 「✨ DIY 上传」把**你自己拍的衣服**变成角色能穿的分层图层：上传一张衣服照片（挂拍/平铺/穿着均可）
 → 宿主本地代理调用云端图像 API（火山方舟 Seedream）生成「角色穿这件衣服」的 look + 同姿势平涂色版
 → **浏览器本地 canvas** 自动 diff 成层（自适应阈值 / 补头发遮挡 / 拆袖 / 自动 QA）→ 预览确认后存入

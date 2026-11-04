@@ -7,3 +7,6 @@ coverage/
 docs/preview/*.html
 __pycache__/
 *.pyc
+
+# worktree local deps symlink
+node_modules
