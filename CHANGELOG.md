@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.2.0 — 2026-11-04
+
+「素体重制：Live2D/Spine 式 cutout——分件 + 关节重叠余量 + 接缝补画，衣服更像穿在身上」
+
+### 新特性 / 改进
+- **素体 cutout（2 身形）**：body 拆为 torso / 上臂 / 前臂+手 / 腿 / 头 / 尾 等 13 个部件；服装按 6 组合 × 2 身形拆为 上衣躯干 / 领饰 / 上臂袖 / 前臂袖 / 裙 / 裙内衬；关节 8–12px 重叠余量、被遮挡区域确定性补画、2px 接缝 feather；水手服肩/袖、腋下、腰头、裙头接缝重做。
+- **精致素体**：清理 body 层「白发烘焙 / 脸部模糊占位 / 隐藏区条纹」，统一肤色、补画腋下；全部确定性处理（Seedream 0 张）。手脚沿用旧线稿（未精修，如实说明）。
+- **runtime**：新增 drawOrder 槽位 `legs/armUpper/armFore/hand/collar/sleeveUpper/sleeveFore`；单页大图集（chibi 4090×1739/85 drawables，girl 4085×1531/84）；`resolveLook` 组合套装优先；保留旧 rig 与 DIY pack 兼容层。
+- **缓存**：2.5D 资产版本 `13→14`，页面模块 `v16→v17`。
+
+### 数据 / 验证
+- `npm run verify` **258/258**；v2.2 E2E **18/18**（4 组 fresh browser，0 retry/crash/pageerror）；DIY S1/S2/S3 真实 pack 回归通过；**静置洋红洞 6×2 = 0**；换装/身形切换状态保留。
+- `npm pack` **8.5MB**（unpacked 12.3MB / 87 files）；2.5D 首屏 chibi **4 请求 / 2.27MiB（gzip）**（v2.1 为 1.55MiB）。
+- 显存（headless SwANGLE 无 GPU，**不可代表真机**）：chibi **27.13MiB**（mipmap 36.18）、girl **23.86MiB**；保留 quality 降级档。
+
+### 已知差异（接受并如实记录）
+- rest 未解释差异 chibi 0.21–0.33% / girl 0.16–0.19%（1–2px 边缘级，4x 无白块/缺件/灰带）；
+- 4x 下仍有 1px 细接缝线（1x 不可见）；girl yaw/arm 极少数 inside-body 背景洞 225–281px（0.028%）；
+- 手脚未精修、girl 后发仍烘焙在 body、无腿骨（腿绑 hips）、hoodie 帽子随躯干（后续）。
+### 升级 / 回滚
+- 升级 profile/npm 后重启 DSH 生效；v2.1.x 可正常回滚（旧 rig/资产格式仍受支持）。
+
 ## 2.1.0 — 2026-11-04
 
 「DIY 全链路：agent 一张衣服图 → 自动成层/绑定/QA → 可动 2.5D 套装（安装/删除/.dshskin）」
