@@ -192,43 +192,46 @@ test('resolveLook：套装命中（maid / sweater-plaid / hoodie-plaid 双身形
 	for (const rig of [CHIBI, GIRL]) {
 		const maid = resolveLook(rig, { outfit: 'maid' });
 		assert.equal(maid.outfit, 'maid');
-		assert.deepEqual(maid.slots.topBody, ['maid-body']);
-		assert.deepEqual(maid.slots.sleeve, ['maid-sleeve']);
-		assert.deepEqual(maid.slots.bottom, []);
+		assert.deepEqual(maid.slots.topBody, ['maid-torso']);
+		assert.deepEqual(maid.slots.sleeve, []);
+		assert.deepEqual(maid.slots.sleeveUpper, ['maid-sleeve-upper-L', 'maid-sleeve-upper-R']);
+		assert.deepEqual(maid.slots.sleeveFore, ['maid-sleeve-fore-L', 'maid-sleeve-fore-R']);
+		assert.deepEqual(maid.slots.bottom, ['maid-skirt', 'maid-skirt-under']);
+		assert.ok(maid.slots.collar.includes('maid-collar'));
 		assert.equal(maid.fallback, null);
 	}
 	// production 资产（M4）：两身形都有 hoodie 套装
 	for (const rig of [CHIBI, GIRL]) {
 		const hoodie = resolveLook(rig, { outfit: 'hoodie-plaid' });
 		assert.equal(hoodie.outfit, 'hoodie-plaid');
-		assert.deepEqual(hoodie.slots.topBody, ['hoodie-body']);
-		assert.deepEqual(hoodie.slots.bottom, ['bottom-plaid']);
+		assert.deepEqual(hoodie.slots.topBody, ['hoodie-plaid-torso']);
+		assert.deepEqual(hoodie.slots.bottom, ['hoodie-plaid-skirt', 'hoodie-plaid-skirt-under']);
+		assert.equal(hoodie.slots.sleeveUpper.length, 2);
+		assert.equal(hoodie.slots.sleeveFore.length, 2);
 	}
 });
 
-test('resolveLook：上衣+下装动态组合（4 上装 × 2 下装，含 topUnder 水手服与 hoodie）', () => {
+test('resolveLook：上衣+下装动态组合（v2.2 cutout 组合套装 `<top>-<bottom>`）', () => {
 	const combos = [
-		['sweater', 'plaid', 'topBody', 'sweater-body', 'bottom-plaid'],
-		['sweater', 'pleated', 'topBody', 'sweater-body', 'bottom-pleated'],
-		['sailor', 'plaid', 'topUnder', 'sailor-body', 'bottom-plaid'],
-		['sailor', 'pleated', 'topUnder', 'sailor-body', 'bottom-pleated'],
-		['hoodie', 'plaid', 'topBody', 'hoodie-body', 'bottom-plaid'],
-		['hoodie', 'pleated', 'topBody', 'hoodie-body', 'bottom-pleated'],
+		['sweater', 'plaid', 'topBody', 'sweater-plaid-torso', 'sweater-plaid-skirt'],
+		['sweater', 'pleated', 'topBody', 'sweater-pleated-torso', 'sweater-pleated-skirt'],
+		['sailor', 'plaid', 'topUnder', 'sailor-plaid-torso', 'sailor-plaid-skirt'],
+		['hoodie', 'plaid', 'topBody', 'hoodie-plaid-torso', 'hoodie-plaid-skirt'],
+		['hoodie', 'pleated', 'topBody', 'hoodie-pleated-torso', 'hoodie-pleated-skirt'],
 	];
 	for (const [top, bottom, slot, bodyId, bottomId] of combos) {
 		const look = resolveLook(CHIBI, { outfit: 'none', top, bottom });
 		assert.equal(look.outfit, null);
 		assert.deepEqual(look.slots[slot], [bodyId], `${top}+${bottom} 主体槽位`);
-		assert.deepEqual(look.slots.bottom, [bottomId]);
-		assert.equal(look.slots.sleeve.length, 1);
+		assert.equal(look.slots.bottom[0], bottomId, `${top}+${bottom} 下装槽位`);
+		assert.equal(look.slots.sleeveUpper.length, 2, `${top}+${bottom} 上臂袖`);
 		assert.equal(look.fallback, null);
+		assert.equal(look.warnings.length, 0);
 	}
-	// production 资产：两身形都有 hoodie → 不回退、无 warnings
-	for (const rig of [CHIBI, GIRL]) {
-		const hoodie = resolveLook(rig, { outfit: 'none', top: 'hoodie', bottom: 'pleated' });
-		assert.deepEqual(hoodie.slots.topBody, ['hoodie-body']);
-		assert.equal(hoodie.warnings.length, 0);
-	}
+	// 组合缺失（该身形无 sailor-pleated）→ 回退默认套装 + warnings，不抛错
+	const missing = resolveLook(CHIBI, { outfit: 'none', top: 'sailor', bottom: 'pleated' });
+	assert.ok(missing.warnings.length > 0);
+	assert.ok(missing.slots.topBody.length + missing.slots.topUnder.length > 0, '应回退到可用套装');
 });
 
 test('resolveLook：未知套装/缺下装时的回退与 warnings（不抛错）', () => {
@@ -250,21 +253,22 @@ test('visibleDrawables：按 z 升序、套装/上下装/face 状态切换、补
 		const zb = (open.find((entry) => entry.id === b) || {}).z;
 		return za - zb || a.localeCompare(b);
 	}), '应按 z 升序（同 z 按 id）');
-	assert.ok(ids.includes('body'));
-	assert.ok(ids.includes('maid-body'));
+	assert.ok(ids.includes('body-head') && ids.includes('body-torso'));
+	assert.ok(ids.includes('maid-torso'));
+	assert.ok(ids.includes('leg-L'));
 	assert.ok(ids.includes('face-eye-L-iris'));
 	assert.ok(ids.includes('face-mouth-neutral'));
 	assert.ok(!blink.map((entry) => entry.id).includes('face-eye-L-lid-closed') || true); // 部件存在性由 rig 决定
 	assert.notDeepEqual(open.map((entry) => entry.id), blink.map((entry) => entry.id), '眼态变化应改变可见 drawable');
-	// 补边层 z=4 必须在 body（z=10）之前绘制
+	// 补边层 z<10 必须在 body 部件之前绘制
 	const hairBackfill = open.find((entry) => entry.id === 'hair-backfill');
 	assert.ok(hairBackfill && hairBackfill.z < 10);
 	// 换装后服装 drawable 变化
 	const sweater = resolveLook(CHIBI, { outfit: 'none', top: 'sweater', bottom: 'pleated' });
 	const sweaterIds = visibleDrawables(CHIBI, sweater, { eye: 'open', mouth: 'closed' }).map((entry) => entry.id);
-	assert.ok(sweaterIds.includes('sweater-body'));
-	assert.ok(sweaterIds.includes('bottom-pleated'));
-	assert.ok(!sweaterIds.includes('maid-body'));
+	assert.ok(sweaterIds.includes('sweater-pleated-torso'));
+	assert.ok(sweaterIds.includes('sweater-pleated-skirt'));
+	assert.ok(!sweaterIds.includes('maid-torso'));
 });
 
 test('faceDrawableIds / faceStateKeys：rig face 部件表与兜底', () => {
@@ -312,8 +316,8 @@ test('resolveLook bare（DIY 静态贴片）：只留身体/头发/脸，不渲�
 	assert.equal(look.outfit, null);
 	assert.deepEqual(look.warnings, [], 'bare 模式不应产生回退 warnings');
 	const ids = visibleDrawables(CHIBI, look, { eye: 'open', mouth: 'closed' }).map((entry) => entry.id);
-	assert.ok(ids.includes('body'));
-	assert.ok(ids.includes('hair') || ids.includes('hair-front-bangs'), '应保留头发');
+	assert.ok(ids.includes('body-head') || ids.includes('body-torso'));
+	assert.ok(ids.includes('hair-front-bangs'), '应保留头发');
 	assert.ok(!ids.some((id) => /maid|sweater|sailor|hoodie|bottom-/.test(id)), '不应出现任何服装层');
 });
 

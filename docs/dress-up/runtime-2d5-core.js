@@ -401,9 +401,24 @@ export function resolveLook(rig, state = {}) {
 		return { slots, outfit: outfitId, label: outfit.name || outfitId, fallback: null, warnings };
 	}
 
-	// 2) 上衣 + 下装动态组合
+	// 2a) 上衣 + 下装动态组合（v2.2 cutout：优先命中组合套装 `<top>-<bottom>`）
 	let top = typeof state.top === 'string' ? state.top : '';
 	let bottom = typeof state.bottom === 'string' ? state.bottom : '';
+	const comboId = top && bottom ? `${top}-${bottom}` : '';
+	const comboOutfit = comboId && outfits[comboId] ? outfits[comboId] : null;
+	if (comboOutfit) {
+		for (const slot of OUTFIT_SLOTS) {
+			for (const id of comboOutfit[slot] || []) if (available.has(id)) slots[slot].push(id);
+		}
+		return {
+			slots,
+			outfit: null,
+			label: `${topLabel(top)} + ${bottomLabel(bottom)}`,
+			fallback: null,
+			warnings,
+		};
+	}
+	// 2b) 旧 rig（v2.1 及以前）：generic 上衣/下装 drawable 拼装（向后兼容）
 	const topDef = GARMENTS.top[/** @type {keyof typeof GARMENTS.top} */ (top)] || null;
 	const bottomDef = GARMENTS.bottom[/** @type {keyof typeof GARMENTS.bottom} */ (bottom)] || null;
 	let missing = false;

@@ -110,12 +110,18 @@ test('无兜底图资产：art/static-fallback* 不存在（用户口径：仅�
 
 test('2.5D 生产资产覆盖两身形与全部可见服装（含 chibi hoodie）', () => {
 	const requiredDrawables = [
-		'body', 'arms', 'hair-front-bangs',
-		'maid-body', 'maid-sleeve',
-		'sweater-body', 'sweater-sleeve',
-		'hoodie-body', 'hoodie-sleeve',
-		'sailor-body', 'sailor-sleeve',
-		'bottom-plaid', 'bottom-pleated',
+		// cutout 素体部件（v2.2）
+		'body-head', 'body-torso', 'leg-L', 'arm-upper-L', 'arm-fore-L', 'hand-L', 'seam-fill',
+		'hair-front-bangs', 'hair-backfill',
+		// 服装部件（6 组合）
+		'maid-torso', 'maid-skirt', 'maid-collar', 'maid-apron',
+		'sweater-plaid-torso', 'sweater-plaid-skirt', 'sweater-plaid-collar',
+		'sweater-pleated-torso', 'sweater-pleated-skirt',
+		'hoodie-plaid-torso', 'hoodie-plaid-skirt',
+		'hoodie-pleated-torso', 'hoodie-pleated-skirt',
+		'sailor-plaid-torso', 'sailor-plaid-skirt', 'sailor-plaid-collar',
+		'sweater-plaid-sleeve-upper-L', 'sweater-plaid-sleeve-fore-L',
+		// face 部件
 		'face-eye-L-sclera', 'face-eye-L-iris', 'face-eye-L-lash',
 		'face-eye-L-lid-half', 'face-eye-L-lid-closed', 'face-eye-L-lid-smile',
 		'face-brow-L', 'face-mouth-neutral', 'face-mouth-open',
@@ -124,11 +130,13 @@ test('2.5D 生产资产覆盖两身形与全部可见服装（含 chibi hoodie�
 		const rig = readRig(shape);
 		const ids = new Set(rig.drawables.map((drawable) => drawable.id));
 		for (const id of requiredDrawables) assert.ok(ids.has(id), `${shape} 缺少 drawable：${id}`);
+		// chibi 有后发层 hair-back；girl 后发由 hair-backfill 承担（无该 id）
+		if (shape === 'chibi') assert.ok(ids.has('hair-back'), 'chibi 缺少后发层 hair-back');
 		assert.ok(ids.has('hair-backfill'), `${shape} 缺少计算式补边层 hair-backfill`);
 		// 套装入口：6 套（含 hoodie-plaid / hoodie-pleated）
 		for (const outfit of ['maid', 'sweater-plaid', 'sweater-pleated', 'hoodie-plaid', 'hoodie-pleated', 'sailor-plaid']) {
 			assert.ok(rig.outfits[outfit], `${shape} 缺少套装 ${outfit}`);
-			for (const slot of ['topUnder', 'bottom', 'topBody', 'sleeve']) {
+			for (const slot of ['topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar']) {
 				for (const id of rig.outfits[outfit][slot] || []) assert.ok(ids.has(id), `${shape}/${outfit}.${slot} 引用缺失 drawable ${id}`);
 			}
 		}

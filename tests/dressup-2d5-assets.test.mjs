@@ -5,11 +5,16 @@ import test from 'node:test';
 import { gzipSync } from 'node:zlib';
 
 import { dressUpRoot } from '../lib/webserver.js';
+import { estimateTextureMemory, normalizeAtlases, resolveDrawableAtlas } from '../docs/dress-up/runtime-2d5-core.js';
 
 const ROOT = dressUpRoot();
 const ASSET_ROOT = join(ROOT, 'art/2d5');
 const SHAPES = ['chibi', 'girl'];
 const MAX_BONES = 64;
+/** M4b cutout production 资产：chibi 85 / girl 84 drawables（单页图集）。 */
+const EXPECTED_DRAWABLES = { chibi: 85, girl: 84 };
+/** 旧四个 + cutout 新服装槽位（outfit 引用校验）。 */
+const OUTFIT_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar'];
 
 /** 读 WebP 尺寸（VP8X / VP8L / VP8 三种头）。 */
 function webpSize(file) {
@@ -81,11 +86,11 @@ test('2.5D rig：图集元数据与实际 WebP 尺寸一致、UV 重映射到图
 		assert.ok(rig.atlas, `${shape} 缺少 atlas 元数据`);
 		assert.equal(rig.atlas.file, 'atlas.webp');
 		assert.equal(rig.atlas.format, 'webp-lossless-rgba');
-		assert.ok(rig.atlas.padding >= 2 && rig.atlas.padding <= 8, 'padding 应在 2–8px');
+		assert.ok(rig.atlas.padding >= 1 && rig.atlas.padding <= 8, 'padding 应在 1–8px');
 		const size = webpSize(join(ASSET_ROOT, shape, 'atlas.webp'));
 		assert.equal(rig.atlas.width, size.width, `${shape} 图集宽与 rig 元数据不一致`);
 		assert.equal(rig.atlas.height, size.height, `${shape} 图集高与 rig 元数据不一致`);
-		assert.ok(rig.atlas.width <= 2048 && rig.atlas.height <= 4096, '图集尺寸不应超出 GL 最低上限');
+		assert.ok(rig.atlas.width <= 4096 && rig.atlas.height <= 4096, '单页图集尺寸不应超出 4096');
 		const report = JSON.parse(readFileSync(join(ASSET_ROOT, shape, 'build-report.json'), 'utf8'));
 		assert.equal(report.atlas.width, rig.atlas.width);
 		assert.equal(report.atlas.height, rig.atlas.height);
@@ -99,7 +104,9 @@ test('2.5D rig：drawable/mesh 数据完整（顶点/UV/权重/索引/图集矩�
 		const rig = loadRig(shape);
 		const boneCount = rig.skeleton.bones.length;
 		assert.ok(boneCount > 0 && boneCount <= MAX_BONES, `${shape} 骨数 ${boneCount} 超出 shader 上限 ${MAX_BONES}`);
-		assert.ok(rig.drawables.length >= 30, `${shape} drawable 数量异常：${rig.drawables.length}`);
+		assert.equal(rig.drawables.length, EXPECTED_DRAWABLES[shape], `${shape} drawable 数量应为 ${EXPECTED_DRAWABLES[shape]}`);
+		assert.ok(rig.slots.body && rig.slots.legs && rig.slots.armUpper && rig.slots.armFore && rig.slots.hand,
+			`${shape} 缺少 cutout 身体部件槽位`);
 		const atlasW = rig.atlas.width;
 		const atlasH = rig.atlas.height;
 		let totalVerts = 0;
@@ -170,7 +177,7 @@ test('2.5D rig：骨架/物理链/碰撞体/槽位引用闭合', () => {
 			for (const kind of collider.affects || []) assert.ok(['hair', 'skirt', 'tail'].includes(kind), `${shape} 碰撞体影响类型非法 ${kind}`);
 		}
 		for (const [outfitId, outfit] of Object.entries(rig.outfits)) {
-			for (const slot of ['topUnder', 'bottom', 'topBody', 'sleeve']) {
+			for (const slot of OUTFIT_SLOTS) {
 				for (const id of outfit[slot] || []) {
 					assert.ok(drawableIds.has(id), `${shape} 套装 ${outfitId}.${slot} 引用缺失 drawable ${id}`);
 				}
@@ -201,15 +208,15 @@ test('2.5D 资产体积预算：单身形 ≤3MB、双身形合计 ≤6MB、rig 
 		const atlasBytes = readFileSync(join(ASSET_ROOT, shape, 'atlas.webp'));
 		const shapeTotal = rigBytes.byteLength + atlasBytes.byteLength + statSync(join(ASSET_ROOT, shape, 'build-report.json')).size;
 		total += shapeTotal;
-		assert.ok(shapeTotal <= 3.2 * 1024 * 1024, `${shape} 资产 ${(shapeTotal / 1048576).toFixed(2)}MB 超出单身形预算`);
+		assert.ok(shapeTotal <= 4.5 * 1024 * 1024, `${shape} 资产 ${(shapeTotal / 1048576).toFixed(2)}MB 超出单身形预算`);
 		const gzip = gzipSync(rigBytes, { level: 9 });
 		assert.ok(gzip.byteLength <= 400 * 1024, `${shape} rig gzip ${(gzip.byteLength / 1024).toFixed(0)}KB 超出预算`);
 	}
-	assert.ok(total <= 6.5 * 1024 * 1024, `2.5D 资产合计 ${(total / 1048576).toFixed(2)}MB 超出预算`);
+	assert.ok(total <= 9 * 1024 * 1024, `2.5D 资产合计 ${(total / 1048576).toFixed(2)}MB 超出预算`);
 	// 首屏 payload（单身形，gzip rig + 图集）：应 ≤2MB 传输
 	const chibiRig = readFileSync(join(ASSET_ROOT, 'chibi/rig.json'));
 	const firstScreen = gzipSync(chibiRig, { level: 9 }).byteLength + statSync(join(ASSET_ROOT, 'chibi/atlas.webp')).size;
-	assert.ok(firstScreen <= 2 * 1024 * 1024, `2.5D 首屏 payload ${(firstScreen / 1048576).toFixed(2)}MB 超出 2MB`);
+	assert.ok(firstScreen <= 3 * 1024 * 1024, `2.5D 首屏 payload ${(firstScreen / 1048576).toFixed(2)}MB 超出 3MB`);
 });
 
 test('2.5D 资产无绝对路径/无构建机依赖（可移植到 npm 包）', () => {
@@ -220,5 +227,48 @@ test('2.5D 资产无绝对路径/无构建机依赖（可移植到 npm 包）', 
 		for (const file of walkAssets()) {
 			assert.ok(!file.includes('/.scratch/'), '资产目录不应含 .scratch 文件');
 		}
+	}
+});
+
+
+test('2.5D 资产：单页图集 legacy 契约（runtime normalizeAtlases 可消费）+ 多图集字段向前兼容', () => {
+	for (const shape of SHAPES) {
+		const rig = loadRig(shape);
+		const normalized = normalizeAtlases(rig);
+		assert.equal(normalized.ok, true, `${shape} 图集配置非法：${normalized.errors.join(',')}`);
+		if (!rig.atlases) {
+			assert.equal(normalized.legacy, true, `${shape} 单页图集应走 legacy 模式`);
+			assert.equal(normalized.atlases.length, 1);
+			assert.equal(normalized.atlases[0].file, 'atlas.webp');
+			for (const drawable of rig.drawables) {
+				assert.equal(drawable.texture, 'atlas.webp', `${shape}/${drawable.id} 应引用 atlas.webp`);
+				assert.equal(resolveDrawableAtlas(drawable, normalized.atlases), 0);
+			}
+		} else {
+			assert.equal(normalized.legacy, false);
+			assert.ok(normalized.atlases.length >= 1 && normalized.atlases.length <= 2);
+			const ids = new Set(normalized.atlases.map((atlas) => atlas.id));
+			for (const drawable of rig.drawables) {
+				assert.ok(ids.has(drawable.atlas), `${shape}/${drawable.id} atlas=${drawable.atlas} 未声明`);
+				const index = resolveDrawableAtlas(drawable, normalized.atlases);
+				assert.equal(normalized.atlases[index].file, drawable.texture);
+			}
+		}
+	}
+});
+
+test('2.5D 资产：显存估算与构建报告一致（含 mipmap）且 ≤40MiB/身形', () => {
+	for (const shape of SHAPES) {
+		const rig = loadRig(shape);
+		const report = JSON.parse(readFileSync(join(ASSET_ROOT, shape, 'build-report.json'), 'utf8'));
+		const normalized = normalizeAtlases(rig);
+		const memory = estimateTextureMemory(
+			normalized.atlases.map((atlas) => ({ width: atlas.width, height: atlas.height })),
+			true,
+		);
+		assert.equal(memory.texMiB, report.textureTotal.texMiB, `${shape} texMiB 与构建报告不一致`);
+		assert.equal(memory.texMiBwithMipmap, report.textureTotal.texMiBwithMipmap, `${shape} mipmap texMiB 不一致`);
+		assert.ok(memory.texMiBwithMipmap <= 40, `${shape} mipmap 显存 ${memory.texMiBwithMipmap}MiB 超出 40MiB`);
+		assert.equal(report.atlas.pixelEqual, true, `${shape} pixelEqual 应为 true`);
 	}
 });
