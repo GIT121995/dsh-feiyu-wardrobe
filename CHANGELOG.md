@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.2.1 — 2026-11-04
+
+「修复：v2.2 cutout 后 DIY 套装缺少配对服饰（DIY 上衣光腿/没有下装）」
+
+- **修复 DIY binder**（`tools/diy/bind_layers.py`）：pairing 不再写死 v2.1 base id，改为从 v2.2 cutout base rig 动态读取——top/coat/dress → v2.2 裙对（`sweater-plaid-skirt`/`-skirt-under` 等），bottom → v2.2 上衣/领/袖分件；记录 `pairingSource`。
+- **修复已安装旧 pack**：runtime 新增 `migrateDiyPackOutfits`（`addOutfitPack` 注册前迁移 v2.1 引用到 v2.2 现有部件）；旧 dress/outfit 自动补裙对、bottom 自动补上衣；目标缺失安全置空 + warning，不抛错、不改 pack、不退回 v2.1 资产。
+- 页面模块 cache-bust **v17→v18**（runtime 行为变更）；2.5D 资产版本仍 **v14**（资产未改）。
+- **验证**：`npm run verify` **263/263**（+5 迁移/binder 测试）；DIY E2E 旧 3 pack + 新 1 pack（真实 Seedream 2 张 ≈¥0.6）选中后 `look.slots.bottom` 非空、bottom drawable 渲染、4x 有裙、0 pageerror；v2.2 E2E **18/18** 回归；npm pack 8.5MB。
+- **说明**：v2.2.0 集成时 DIY E2E 只校验 drawable 存在/参数保留，未校验配对服饰，导致该回归漏过；本版补齐断言并如实记录。
+- 迁移仅在运行时内存生效（旧 pack 文件仍含 v2.1 refs，重新导入会再次迁移）；如需彻底重写可用新 binder 重新生成。
+
 ## 2.2.0 — 2026-11-04
 
 「素体重制：Live2D/Spine 式 cutout——分件 + 关节重叠余量 + 接缝补画，衣服更像穿在身上」
