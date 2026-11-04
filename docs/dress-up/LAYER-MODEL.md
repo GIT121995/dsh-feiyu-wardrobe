@@ -1,3 +1,8 @@
+> **⚠️ 已退役（v2.0.0，2026-11-04）**：DOM 分层纸娃娃（本文的 7 槽位 `drawOrder`/`layers`/B1-lite 脸部补丁）已按用户拍板删除，
+> 换装间收敛为 **2.5D-only**（`docs/dress-up/2.5D-RUNTIME.md`）。本文仅作历史契约与旧素材管线参考，不再参与构建/渲染；
+> manifest 现行版本为 **v8**（无 `drawOrder` / `shapes[].layers` / `items[].layers`）。
+> 当前唯一渲染资产：`art/2d5/<shape>/{rig.json,atlas.webp}`（`tools/build_2d5.py` 构建）。
+
 # 换装分层模型 v6（纸娃娃分层 v2）· 设计契约
 
 > 状态：v0.9.1 维护中（v0.9.0 实施；v0.9.1 修复水手服配准导致露肩）。本文是 **素材构建 / manifest / 前端渲染** 三方的唯一契约。

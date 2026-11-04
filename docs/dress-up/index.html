@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>大肥鱼衣橱 · 换装间</title>
-<meta name="description" content="陪大肥鱼换衣服、一起过日子：分层自由搭配、切换 Q版/少女版、换背景和特效——开源免费。">
+<meta name="description" content="陪大肥鱼换衣服、一起过日子：2.5D 动态角色（WebGL2），自由搭配、切换 Q版/少女版、换背景和特效——开源免费。">
 <meta name="theme-color" content="#f6ecff">
-<link rel="stylesheet" href="style.css?v=13">
+<link rel="stylesheet" href="style.css?v=14">
 </head>
 <body>
 <main class="app">
@@ -14,9 +14,14 @@
     <img class="scene" id="scene" src="art/bg-snow.webp" alt="" decoding="async">
     <div class="scene-veil"></div>
 
-    <div class="figure-wrap" id="figureWrap">
+    <div class="figure-wrap" id="figureWrap" role="button" tabindex="0" aria-label="大肥鱼，点一下说话">
       <div class="figure-shadow" id="figureShadow"></div>
-      <div class="figure" id="figure" role="button" tabindex="0" aria-label="大肥鱼，点一下说话"></div>
+      <div class="fallback-notice" id="fallbackNotice" hidden>
+        <p class="fallback-title">换装间需要 WebGL2</p>
+        <p class="fallback-desc">当前浏览器/设备不支持 WebGL2。请升级浏览器，或在浏览器设置中开启硬件加速（GPU 渲染）后重试。</p>
+        <button id="retryBtn" class="btn" type="button">重试</button>
+      </div>
+      <div class="diy-static-note" id="diyNote" hidden>DIY 造型为静态，不支持骨骼动画</div>
     </div>
 
     <canvas class="fx" id="fx" aria-hidden="true"></canvas>
@@ -46,7 +51,6 @@
     <div class="wardrobe-head">
       <div class="shape-toggle" id="shapeToggle" role="group" aria-label="身形切换"></div>
       <div class="head-tools">
-        <button id="renderBtn" class="render-btn" type="button" aria-pressed="false" title="切到 2.5D 动态渲染（实验）" aria-label="切换渲染方式">🧊 2.5D</button>
         <button id="diyBtn" class="icon-btn light" type="button" title="DIY 上传（默认关闭）" aria-label="DIY 上传">✨</button>
         <button id="collectBtn" class="icon-btn light" type="button" title="图鉴" aria-label="图鉴">📖</button>
       </div>
@@ -81,6 +85,6 @@
   </div>
 </main>
 <canvas id="exportCanvas" width="900" height="1350" hidden></canvas>
-<script type="module" src="app.js?v=13"></script>
+<script type="module" src="app.js?v=14"></script>
 </body>
 </html>

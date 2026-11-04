@@ -18,13 +18,9 @@ import {
 	faceDrawableIds,
 	faceStateKeys,
 	headFollowParams,
-	parseRenderMode,
 	pickQualityTier,
-	renderModeLabel,
-	resolveAutoMode,
 	resolveLook,
 	resolveQuality,
-	resolveRenderMode,
 	summarizeInitialPayload,
 	visibleDrawables,
 } from '../docs/dress-up/runtime-2d5-core.js';
@@ -33,43 +29,6 @@ import { dressUpRoot } from '../lib/webserver.js';
 const ROOT = dressUpRoot();
 const CHIBI = JSON.parse(readFileSync(join(ROOT, 'art/2d5/chibi/rig.json'), 'utf8'));
 const GIRL = JSON.parse(readFileSync(join(ROOT, 'art/2d5/girl/rig.json'), 'utf8'));
-
-/* ---------------- 渲染模式决策 ---------------- */
-
-test('parseRenderMode：只接受 dom/2d5/auto（大小写/空白容错）', () => {
-	assert.equal(parseRenderMode('dom'), 'dom');
-	assert.equal(parseRenderMode(' 2D5 '), '2d5');
-	assert.equal(parseRenderMode('auto'), 'auto');
-	for (const value of ['webgl', '', null, undefined, 0, 1, true, {}, []]) assert.equal(parseRenderMode(value), null);
-});
-
-test('resolveRenderMode：URL > 本地选择 > 宿主配置 > 默认 dom', () => {
-	assert.equal(resolveRenderMode({}).mode, 'dom');
-	assert.equal(resolveRenderMode({}).source, 'default');
-	assert.deepEqual(resolveRenderMode({ config: '2d5' }), { mode: '2d5', requested: '2d5', source: 'config', reason: 'explicit' });
-	assert.deepEqual(resolveRenderMode({ config: '2d5', stored: 'dom' }), { mode: 'dom', requested: 'dom', source: 'stored', reason: 'explicit' });
-	assert.deepEqual(resolveRenderMode({ config: '2d5', stored: 'dom', url: '2d5' }), { mode: '2d5', requested: '2d5', source: 'url', reason: 'explicit' });
-	// URL 是回滚开关：非法 URL 不应阻断后续来源
-	assert.deepEqual(resolveRenderMode({ config: '2d5', url: 'nope' }), { mode: '2d5', requested: '2d5', source: 'config', reason: 'explicit' });
-	assert.equal(resolveRenderMode({ url: 'dom', config: '2d5' }).mode, 'dom');
-});
-
-test('resolveRenderMode：auto 按能力解析（WebGL2/减少动态/低内存）', () => {
-	assert.deepEqual(resolveAutoMode({ webgl2: true }), { mode: '2d5', reason: 'capable' });
-	assert.deepEqual(resolveAutoMode({}), { mode: 'dom', reason: 'webgl2-unavailable' });
-	assert.deepEqual(resolveAutoMode({ webgl2: true, reducedMotion: true }), { mode: 'dom', reason: 'prefers-reduced-motion' });
-	assert.deepEqual(resolveAutoMode({ webgl2: true, deviceMemory: 1 }), { mode: 'dom', reason: 'low-device-memory' });
-	const autoDecision = resolveRenderMode({ config: 'auto', capable: { webgl2: true } });
-	assert.equal(autoDecision.mode, '2d5');
-	assert.equal(autoDecision.requested, 'auto');
-	assert.equal(autoDecision.reason, 'capable');
-	assert.equal(resolveRenderMode({ config: 'auto', capable: { webgl2: false } }).mode, 'dom');
-});
-
-test('renderModeLabel：给 UI 的中文标签', () => {
-	assert.equal(renderModeLabel('dom'), '分层纸娃娃');
-	assert.equal(renderModeLabel('2d5'), '2.5D 动态');
-});
 
 /* ---------------- 画质/DPR/降级 ---------------- */
 

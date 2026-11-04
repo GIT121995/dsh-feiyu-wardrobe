@@ -1,20 +1,26 @@
+/**
+ * 大肥鱼衣橱 · 换装间（v2：2.5D-only）
+ *
+ * 唯一可见渲染路径：WebGL2 2.5D runtime（docs/dress-up/runtime-2d5.js）。
+ * - 不再有 DOM 分层纸娃娃 / B1-lite 脸部补丁 / 渲染方式开关；
+ * - 无 WebGL2 或 context lost：只显示纯文本提示（+重试按钮），不做任何静态图/人物兜底；
+ * - DIY 条目：runtime 冻结为静态帧 + canvas 2D 贴片（全画布位图），UI 明确提示「静态，不支持骨骼动画」；
+ * - 互动/喂食 HUD、背景/特效、立绘卡、悬浮鲸鱼小图、图鉴/衣柜均保留。
+ *
+ * @module dsh-feiyu-wardrobe/dress-up-app
+ */
 import {
-	FACE_PATCH_KEYS,
-	FACE_TIMING,
 	applySelection,
 	applyShape,
 	collectItems,
 	currentBounds,
 	describeOutfit,
-	facePatchStyle,
-	facePatchesOf,
+	diyLayerUrls,
 	normalizeState,
 	randomOutfit,
-	randomBetween,
-	resolveLayers,
-	// @ts-ignore tsc 不认识带 ?v= 的模块路径；这里加版本号是为了让浏览器绕过 wardrobe-core 的旧缓存
-} from './wardrobe-core.js?v=11';
-import { createDiy } from './diy-ui.js?v=11';
+	// @ts-ignore tsc 不认识带 ?v= 的模块路径；加版本号让浏览器绕过旧缓存
+} from './wardrobe-core.js?v=14';
+import { createDiy } from './diy-ui.js?v=14';
 import {
 	ACTION_SPECS,
 	actionParams,
@@ -22,21 +28,22 @@ import {
 	hitZone,
 	moodFacePlan,
 	pickLine,
-} from './interaction-model.js?v=12';
+} from './interaction-model.js?v=14';
 
 (() => {
 	'use strict';
 
 	const $ = (sel) => document.querySelector(sel);
 	const STORAGE_KEY = 'feiyu:outfit';
-	/** 渲染方式用户选择（M3：'dom' 分层纸娃娃 | '2d5' WebGL2 动态；默认不写）。 */
-	const RENDER_STORAGE_KEY = 'feiyu:render';
-	/** 2.5D runtime 模块与资产根（未开启 2.5D 时不会 import / 不会发请求）。 */
-	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=13';
+	/** 2.5D runtime 模块（v2 唯一渲染路径；页面模块版本 v14）。 */
+	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=14';
 	const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/';
-	/** 2.5D 资产版本（图集/rig 的 fetch 查询串；v1.0.0 升级后避免吃旧缓存）。 */
+	/** 2.5D 资产版本（v1.0.0 起资产未变，保持 v13；页面模块升 v14）。 */
 	const RUNTIME_2D5_ASSET_VERSION = '13';
 	const params = new URLSearchParams(location.search);
+	/** 悬浮小鲸鱼用的小图尺寸（9:16，与整张立绘画布同构）。 */
+	const PET_IMAGE_W = 184;
+	const PET_IMAGE_H = 328;
 
 	/** M5 互动控制器状态（宿主状态为唯一真相；local = 静态托管降级）。 */
 	const interaction = {
@@ -50,24 +57,17 @@ import {
 		idleTimer: 0,
 		moodTimer: 0,
 		reducedMotion: false,
-		lastGreetDay: null,
 	};
 	const INTERACTION_TIMEOUT_MS = 2500;
-	/** 图层槽位（v6 起由 manifest.drawOrder 决定，boot 时动态建 <img>，不再写死）。 */
-	/** @type {string[]} */
-	let layerSlots = [];
-	/** 悬浮小鲸鱼用的小图尺寸（9:16，与整张立绘画布同构）。 */
-	const PET_IMAGE_W = 184;
-	const PET_IMAGE_H = 328;
 
 	const els = {
 		stage: $('#stage'),
 		scene: $('#scene'),
 		figureWrap: $('#figureWrap'),
 		figureShadow: $('#figureShadow'),
-		figure: $('#figure'),
-		/** @type {Record<string, HTMLImageElement>} */
-		figureLayers: {},
+		fallbackNotice: $('#fallbackNotice'),
+		retryBtn: $('#retryBtn'),
+		diyNote: $('#diyNote'),
 		fx: $('#fx'),
 		bubble: $('#bubble'),
 		tip: $('#stageTip'),
@@ -98,75 +98,42 @@ import {
 	let tab = 'outfits';
 	/** 图片加载缓存：src → Promise<HTMLImageElement> */
 	const cache = new Map();
-	/** 已加载完成的图片：src → HTMLImageElement（合成小图时可以同步取用） */
+	/** 已加载完成的图片：src → HTMLImageElement */
 	const loaded = new Map();
-	/** 图层渲染序号：快速连续换装时，只让最新一次渲染落地，避免旧图后到覆盖新图。 */
-	let renderSeq = 0;
-	/** persist 序号：只让最新一次穿搭落盘。 */
+	/** persist 序号/定时器/签名。 */
 	let persistSeq = 0;
-	/** 上一次渲染的状态（背景/特效/布局/图层栈），用来跳过没变化的重复工作。 */
-	const lastRendered = { bg: '', effect: '', layoutKey: '', figureKey: '' };
-	/** persist 的 debounce 定时器。 */
 	let persistTimer = 0;
-	/** 上一次落盘的穿搭签名（同一穿搭不重复合成小图）。 */
 	let lastPersistKey = '';
+	/** 上一次渲染的状态（背景/特效/布局），用来跳过没变化的重复工作。 */
+	const lastRendered = { bg: '', effect: '', layoutKey: '' };
 	/** 身形切换按钮是否已构建（只构建一次）。 */
 	let shapeToggleBuilt = false;
-	/** 衣柜格子当前构建的分类（同一分类只更新选中态）。 */
+	/** 衣柜格子当前构建的分类。 */
 	let shelfBuiltCat = '';
 	/** @type {HTMLCanvasElement | null} */
 	let petCanvasEl = null;
 
-	/* ---------------- 渲染方式状态（M3：DOM 分层纸娃娃 / 2.5D canvas） ---------------- */
+	/* ---------------- 2.5D runtime 状态（唯一渲染路径） ---------------- */
 
-	/** 当前渲染方式：'dom' | '2d5'。 */
-	let renderMode = 'dom';
-	/** 页面请求的模式（config / URL / 本地选择解析结果）与来源。 */
-	let renderRequested = 'dom';
-	let renderSource = 'default';
-	/** 2.5D runtime 实例 / canvas / 启动 promise（未开启时全部为 null）。 */
 	/** @type {any} */
-	let render2d5 = null;
+	let runtime = null;
 	/** @type {HTMLCanvasElement | null} */
-	let render2d5Canvas = null;
+	let runtimeCanvas = null;
 	/** @type {Promise<any> | null} */
-	let render2d5Starting = null;
-	let render2d5Loading = false;
-	/** 2.5D 启动/运行失败原因（回退到 DOM 后展示）。 */
-	let render2d5Fallback = '';
+	let runtimeStarting = null;
+	/** WebGL2 不可用/context lost 的原因（纯文本提示用）。 */
+	let runtimeFailure = '';
 	/** 切身形/换装并发序号：只让最新一次同步落地。 */
-	let render2d5Seq = 0;
-	/** DOM 脸部动画是否已启动（2.5D 模式下按需延后）。 */
-	let faceStarted = false;
-	/** @type {MediaQueryList | null} */
-	let faceReduceMotion = null;
-	let talk2d5Timer = 0;
-
-	/* ---------------- 脸部叠加动画状态（B1-lite） ---------------- */
-
-	/**
-	 * 脸部特效层运行时状态：只靠定时器切 class/opacity，不重建 DOM、不跑 rAF、不碰 manifest。
-	 * 补丁本身是 675×1200 画布上的裁剪矩形（透明底 WebP），由 wardrobe-core.FACE_PATCHES 描述。
-	 */
-	const face = {
-		/** @type {Record<string, HTMLImageElement>} */
-		els: {},
-		ready: false,
-		/** 当前补丁对应的身形（切身形时才重新赋值 src / 定位）。 */
-		shape: '',
-		enabled: true,
-		blinking: false,
-		smiling: false,
-		mouthTalking: false,
-		mouthOpenFrame: false,
-		blinkTimer: 0,
-		blinkOffTimer: 0,
-		smileTimer: 0,
-		smileOffTimer: 0,
-		mouthTimer: 0,
-	};
-	/** QA 冻结姿态：'' = 正常播放；'open' | 'blink' | 'smile' | 'mouthMid' | 'mouthOpen'。 */
-	let facePose = '';
+	let syncSeq = 0;
+	/** DIY 静态贴片：overlay canvas + 当前是否处于 DIY 静态模式。 */
+	/** @type {HTMLCanvasElement | null} */
+	let diyOverlay = null;
+	let diyStatic = false;
+	/** 当前 DIY 条目（避免重复重绘）与贴片图片缓存。 */
+	let diyItemId = '';
+	/** @type {Map<string, HTMLImageElement>} */
+	const diyLayerImages = new Map();
+	let talkTimer = 0;
 
 	/* ---------------- 工具 ---------------- */
 
@@ -176,6 +143,15 @@ import {
 
 	function findItem(catId, itemId) {
 		return category(catId).find((item) => item.id === itemId) || null;
+	}
+
+	/** 在所有分类里找单品（DIY 注入可能出现在 tops/bottoms/outfits）。 */
+	function findAnyItem(itemId) {
+		for (const cat of manifest.categories) {
+			const found = findItem(cat.id, itemId);
+			if (found) return found;
+		}
+		return null;
 	}
 
 	function currentBackground() {
@@ -222,15 +198,9 @@ import {
 		}
 	}
 
-	/**
-	 * 当前穿搭的兜底小图（图层小图还没合成好时用素体 body 层顶上）。
-	 * @param {string} shapeId
-	 * @returns {string}
-	 */
-	function petFallbackImage(shapeId) {
-		const shape = manifest.shapes.find((entry) => entry.id === shapeId) || manifest.shapes[0];
-		const body = shape && shape.layers && shape.layers.body;
-		return body || 'art/chibi/body.webp';
+	/** 悬浮鲸鱼兜底图（2.5D 未就绪/合成失败时给固定占位）。 */
+	function petFallbackImage() {
+		return 'art/pet-default.webp';
 	}
 
 	/** 小图合公用 canvas（透明背景，不显示在页面上）。 */
@@ -244,7 +214,7 @@ import {
 	}
 
 	/**
-	 * 把 canvas 异步转成 data URL：优先 `toBlob` + `FileReader`（异步，不阻塞主线程），
+	 * 把 canvas 转成 data URL：优先 `toBlob` + `FileReader`（异步，不阻塞主线程），
 	 * 环境不支持时退回 `toDataURL`。
 	 * @param {HTMLCanvasElement} canvas
 	 * @returns {Promise<string>}
@@ -281,32 +251,19 @@ import {
 	}
 
 	/**
-	 * 把当前穿搭合成为悬浮小鲸鱼用的小图 data URL（异步，不阻塞点击/换装）。
-	 * `resolveLayers` 已按 drawOrder 从下到上排好序，这里按同一顺序整幅缩放叠放即可，
-	 * 图层共用同一张 675×1200 画布坐标，不需要任何锚点。
-	 * @param {Array<{ slot: string, file: string, z: number }>} layers
+	 * 把当前 2.5D 帧（+ DIY 静态贴片）合成为悬浮小鲸鱼用的 data URL。
 	 * @returns {Promise<string>}
 	 */
-	async function composePetImage(layers) {
-		// 2.5D 模式：直接取当前 canvas 帧（透明底）缩成小图；失败再退回 DOM 合成
-		if (renderMode === '2d5' && render2d5) {
-			const image2d5 = render2d5.toDataURL({
-				width: PET_IMAGE_W,
-				height: PET_IMAGE_H,
-				type: 'image/webp',
-				quality: 0.85,
-			});
-			if (image2d5) return image2d5;
-		}
-		const files = layers.map((layer) => layer.file).filter(Boolean);
-		if (!files.length) return '';
+	async function composePetImage() {
+		if (!runtime) return '';
+		const canvas = petCanvas();
+		const ctx = canvas.getContext('2d');
+		if (!ctx) return '';
 		try {
-			const images = await Promise.all(files.map((file) => preload(file)));
-			const canvas = petCanvas();
-			const ctx = canvas.getContext('2d');
-			if (!ctx) return '';
+			runtime.renderFrame();
 			ctx.clearRect(0, 0, PET_IMAGE_W, PET_IMAGE_H);
-			for (const img of images) if (img) ctx.drawImage(img, 0, 0, PET_IMAGE_W, PET_IMAGE_H);
+			ctx.drawImage(runtimeCanvas, 0, 0, PET_IMAGE_W, PET_IMAGE_H);
+			if (diyStatic && diyOverlay) ctx.drawImage(diyOverlay, 0, 0, PET_IMAGE_W, PET_IMAGE_H);
 			return await canvasToDataURL(canvas);
 		} catch {
 			return '';
@@ -315,29 +272,27 @@ import {
 
 	/**
 	 * 把穿搭写进 localStorage 给悬浮小鲸鱼用。
-	 * image 是合成好的小图 data URL（readOutfit 同时接受 art/ 路径兜底）。
-	 * @param {Record<string, string>} snapshot 穿搭状态快照
-	 * @param {string} [image] 合成好的小图 data URL；为空时用素体兜底
+	 * @param {Record<string, string>} snapshot
+	 * @param {string} image
 	 */
 	function writeOutfit(snapshot, image) {
 		try {
 			localStorage.setItem(
 				STORAGE_KEY,
-				JSON.stringify({ ...snapshot, image: image || petFallbackImage(snapshot.shape), updatedAt: Date.now() }),
+				JSON.stringify({ ...snapshot, image: image || petFallbackImage(), updatedAt: Date.now() }),
 			);
 		} catch {
 			/* 隐身模式 / 配额不足时忽略 */
 		}
 	}
 
-	/** 穿搭签名：决定是否需要重新写 localStorage / 重新合成小图（渲染方式也计入，2.5D 小图不同）。 */
+	/** 穿搭签名：决定是否需要重新写 localStorage / 重新合成小图。 */
 	function outfitKey(snapshot) {
-		return `${snapshot.shape}|${snapshot.outfit}|${snapshot.top}|${snapshot.bottom}|${snapshot.bg}|${snapshot.effect}|${renderMode}`;
+		return `${snapshot.shape}|${snapshot.outfit}|${snapshot.top}|${snapshot.bottom}|${snapshot.bg}|${snapshot.effect}|${diyStatic ? 'diy' : 'live'}`;
 	}
 
 	/**
 	 * 保存当前穿搭：debounce 250ms + 浏览器空闲时合成小图并写 localStorage。
-	 * 重活（drawImage + toBlob）全部移出点击路径；同一穿搭不重复合成。
 	 */
 	function persist() {
 		const snapshot = { ...state };
@@ -349,7 +304,7 @@ import {
 		persistTimer = setTimeout(() => {
 			const run = () => {
 				if (seq !== persistSeq) return;
-				composePetImage(resolveLayers(manifest, snapshot)).then((image) => {
+				composePetImage().then((image) => {
 					if (seq !== persistSeq) return;
 					writeOutfit(snapshot, image);
 				});
@@ -362,85 +317,8 @@ import {
 		}, 250);
 	}
 
-	/* ---------------- 渲染方式控制（M3：2.5D opt-in） ---------------- */
+	/* ---------------- 2.5D runtime 启动 / 失败提示 / 同步 ---------------- */
 
-	// 渲染模式决策的内联精简版：app.js 不静态 import runtime-2d5-core.js，
-	// 保证默认 DOM 模式下「零新增请求」（策略逻辑另有一份在 runtime-2d5-core.js，node 单测覆盖）。
-	/** 渲染模式合法值。 */
-	const RENDER_MODE_VALUES = ['dom', '2d5', 'auto'];
-
-	/** @param {unknown} value @returns {'dom'|'2d5'|'auto'|null} */
-	function parseRenderMode(value) {
-		if (typeof value !== 'string') return null;
-		const normalized = value.trim().toLowerCase();
-		return RENDER_MODE_VALUES.includes(normalized) ? /** @type {any} */ (normalized) : null;
-	}
-
-	/**
-	 * 渲染模式决策：URL > 本地用户选择 > 宿主配置 > 默认 dom；auto 按能力解析。
-	 * @param {{ config?: unknown, url?: unknown, stored?: unknown, capable?: any }} options
-	 * @returns {{ mode: 'dom'|'2d5', requested: 'dom'|'2d5'|'auto', source: string, reason: string }}
-	 */
-	function resolveRenderMode(options = {}) {
-		const capable = options.capable || {};
-		const resolveAuto = () => {
-			if (!capable.webgl2) return { mode: 'dom', reason: 'webgl2-unavailable' };
-			if (capable.reducedMotion) return { mode: 'dom', reason: 'prefers-reduced-motion' };
-			if (Number.isFinite(capable.deviceMemory) && capable.deviceMemory > 0 && capable.deviceMemory < 2) {
-				return { mode: 'dom', reason: 'low-device-memory' };
-			}
-			return { mode: '2d5', reason: 'capable' };
-		};
-		for (const [source, requested] of [
-			['url', parseRenderMode(options.url)],
-			['stored', parseRenderMode(options.stored)],
-			['config', parseRenderMode(options.config)],
-		]) {
-			if (!requested) continue;
-			if (requested === 'auto') {
-				const auto = resolveAuto();
-				return { mode: auto.mode, requested, source, reason: auto.reason };
-			}
-			return { mode: requested, requested, source, reason: 'explicit' };
-		}
-		return { mode: 'dom', requested: 'dom', source: 'default', reason: 'default-dom' };
-	}
-
-	/** 探测 2.5D 能力（WebGL2 / 减少动态 / 设备内存）；auto 模式用。 */
-	let cachedRenderCapabilities = null;
-
-	/**
-	 * 探测 2.5D 能力（WebGL2 / 减少动态 / 设备内存）；auto 模式用，结果缓存。
-	 * 探测用的临时 canvas/WebGL2 context 会在探测后立即 loseContext 并丢弃，
-	 * 不把「能力探测 context」留在页面里（避免每次进入 2.5D 多占一个 context）。
-	 */
-	function probeRenderCapabilities() {
-		if (cachedRenderCapabilities) return cachedRenderCapabilities;
-		let webgl2 = false;
-		try {
-			const probe = document.createElement('canvas');
-			const context = probe.getContext('webgl2');
-			if (context) {
-				webgl2 = true;
-				const lose = context.getExtension('WEBGL_lose_context');
-				if (lose && typeof lose.loseContext === 'function') lose.loseContext();
-			}
-			probe.width = 0;
-			probe.height = 0;
-		} catch {
-			webgl2 = false;
-		}
-		const reduce = typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-		cachedRenderCapabilities = {
-			webgl2,
-			reducedMotion: !!(reduce && reduce.matches),
-			deviceMemory: Number(navigator.deviceMemory) || null,
-			hardwareConcurrency: Number(navigator.hardwareConcurrency) || null,
-		};
-		return cachedRenderCapabilities;
-	}
-
-	/** 2.5D runtime 需要的设备信息（不创建探测 context）。 */
 	function renderDeviceInfo() {
 		return {
 			deviceMemory: Number(navigator.deviceMemory) || null,
@@ -448,584 +326,219 @@ import {
 		};
 	}
 
-	function readStoredRenderMode() {
-		try {
-			return localStorage.getItem(RENDER_STORAGE_KEY);
-		} catch {
-			return null;
+	/** 无 WebGL2 / context lost：只显示纯文本提示，不做任何静态图/人物兜底。 */
+	function showRuntimeUnavailable(reason) {
+		runtimeFailure = reason instanceof Error ? reason.message : String(reason || 'WebGL2 unavailable');
+		console.warn('[衣橱] 2.5D 不可用：', runtimeFailure);
+		if (runtime) {
+			try { runtime.destroy(); } catch { /* ignore */ }
+			runtime = null;
 		}
+		if (runtimeCanvas && runtimeCanvas.parentNode) runtimeCanvas.parentNode.removeChild(runtimeCanvas);
+		runtimeCanvas = null;
+		diyStatic = false;
+		diyItemId = '';
+		if (diyOverlay) diyOverlay.classList.remove('on');
+		if (els.diyNote) els.diyNote.hidden = true;
+		if (els.fallbackNotice) els.fallbackNotice.hidden = false;
+		if (els.figureShadow) els.figureShadow.style.display = 'none';
+		if (els.tip) els.tip.classList.add('gone');
 	}
 
-	function writeStoredRenderMode(mode) {
-		try {
-			localStorage.setItem(RENDER_STORAGE_KEY, mode);
-		} catch {
-			/* 隐身模式 / 配额不足时忽略 */
-		}
+	function hideRuntimeUnavailable() {
+		runtimeFailure = '';
+		if (els.fallbackNotice) els.fallbackNotice.hidden = true;
+		if (els.figureShadow) els.figureShadow.style.display = '';
 	}
 
-	/**
-	 * 读宿主配置 `render-config.json`（由 lib/webserver.js 提供）。
-	 * 静态托管（GitHub Pages / 本地 http.server）没有该文件时 404 → 回退 'dom'，不报错。
-	 * @returns {Promise<'dom'|'2d5'|'auto'>}
-	 */
-	async function readHostRenderConfig() {
-		return (await readHostConfig()).render;
-	}
-
-	/**
-	 * 读宿主配置（render-config.json v2）：渲染默认值 + M5 互动端点。
-	 * 旧宿主（v1/无 interaction 段）→ interaction.enabled=false，页面 local-only。
-	 */
-	async function readHostConfig() {
-		const fallback = { render: 'dom', interaction: { enabled: false } };
-		try {
-			const response = await fetch('render-config.json', { cache: 'no-store' });
-			if (!response.ok) return fallback;
-			const data = await response.json();
-			const render = parseRenderMode(data && data.render) || 'dom';
-			const raw = data && typeof data.interaction === 'object' ? data.interaction : null;
-			const enabled = !!(
-				raw &&
-				raw.enabled !== false &&
-				typeof raw.stateUrl === 'string' &&
-				typeof raw.actionUrl === 'string'
-			);
-			return {
-				render,
-				interaction: enabled
-					? { enabled: true, stateUrl: raw.stateUrl, actionUrl: raw.actionUrl }
-					: { enabled: false },
-			};
-		} catch {
-			return fallback;
-		}
-	}
-
-	/** 刷新渲染方式按钮（文案/提示/加载态/回退原因）。 */
-	function updateRenderButton() {
-		const button = $('#renderBtn');
-		if (!button) return;
-		button.classList.toggle('loading', render2d5Loading);
-		if (render2d5Loading) {
-			button.textContent = '⏳ 2.5D';
-			button.title = '2.5D 资产加载中…';
-			return;
-		}
-		if (renderMode === '2d5') {
-			button.textContent = '🎨 DOM';
-			button.title = '切回分层纸娃娃（DOM 渲染）';
-			button.classList.add('active');
-			button.setAttribute('aria-pressed', 'true');
-		} else {
-			button.textContent = '🧊 2.5D';
-			button.title = render2d5Fallback
-				? `2.5D 不可用（${render2d5Fallback}），点击重试`
-				: '切到 2.5D 动态渲染（实验：WebGL2，按需加载）';
-			button.classList.remove('active');
-			button.setAttribute('aria-pressed', 'false');
-		}
-	}
-
-	/**
-	 * 懒加载 2.5D runtime：只有真正要进 2.5D 时才 import 模块、建 canvas、拉资产
-	 * （默认 DOM 模式下这里不会执行，因此零新增请求）。
-	 * @returns {Promise<any>}
-	 */
-	function ensureRuntime2d5() {
-		if (render2d5) return Promise.resolve(render2d5);
-		if (render2d5Starting) return render2d5Starting;
-		render2d5Loading = true;
-		updateRenderButton();
-		render2d5Starting = (async () => {
+	/** 懒加载 runtime 模块 + 建 canvas（v2 是唯一渲染路径，boot 即调用）。 */
+	function ensureRuntime() {
+		if (runtime) return Promise.resolve(runtime);
+		if (runtimeStarting) return runtimeStarting;
+		runtimeStarting = (async () => {
 			const module = await import(RUNTIME_2D5_MODULE);
-			if (!render2d5Canvas) {
-				render2d5Canvas = document.createElement('canvas');
-				render2d5Canvas.className = 'figure-2d5';
-				render2d5Canvas.setAttribute('aria-hidden', 'true');
-				render2d5Canvas.addEventListener('click', onFigureTap);
-				els.figureWrap.appendChild(render2d5Canvas);
+			if (!runtimeCanvas) {
+				runtimeCanvas = document.createElement('canvas');
+				runtimeCanvas.className = 'figure-2d5';
+				runtimeCanvas.setAttribute('aria-hidden', 'true');
+				els.figureWrap.appendChild(runtimeCanvas);
 			}
-			const runtime = await module.createRuntime2D5({
-				canvas: render2d5Canvas,
+			const rt = await module.createRuntime2D5({
+				canvas: runtimeCanvas,
 				assetRoot: RUNTIME_2D5_ASSET_ROOT,
 				assetVersion: RUNTIME_2D5_ASSET_VERSION,
 				quality: 'auto',
 				device: renderDeviceInfo(),
 				onContextLost: () => {
-					// 启动失败时主动 destroy() 也会触发 context lost：只处理已就绪 runtime 的异常
-					if (render2d5 !== runtime) return;
-					render2d5Fallback = 'webglcontextlost';
-					if (renderMode === '2d5') applyRenderMode('dom');
+					if (runtime !== rt) return; // 启动失败主动 destroy 触发的 lost 不重复处理
+					showRuntimeUnavailable('webglcontextlost');
 				},
 			});
-			try {
-				await runtime.setShape(state.shape);
-				runtime.setLook({ outfit: state.outfit, top: state.top, bottom: state.bottom });
-				runtime.renderFrame();
-			} catch (err) {
-				runtime.destroy();
-				throw err;
-			}
-			render2d5 = runtime;
-			document.addEventListener('visibilitychange', sync2d5Visibility);
-			return runtime;
+			runtime = rt;
+			document.addEventListener('visibilitychange', () => {
+				if (runtime) runtime.setPaused(document.hidden);
+			});
+			return rt;
 		})().catch((err) => {
-			// 启动失败：销毁 canvas（其 WebGL context 已 lose），允许下次点击重试
-			if (render2d5Canvas && render2d5Canvas.parentNode) render2d5Canvas.parentNode.removeChild(render2d5Canvas);
-			render2d5Canvas = null;
+			if (runtimeCanvas && runtimeCanvas.parentNode) runtimeCanvas.parentNode.removeChild(runtimeCanvas);
+			runtimeCanvas = null;
 			throw err;
 		}).finally(() => {
-			render2d5Starting = null;
-			render2d5Loading = false;
-			updateRenderButton();
+			runtimeStarting = null;
 		});
-		return render2d5Starting;
+		return runtimeStarting;
 	}
 
-	/** 把页面状态同步到 2.5D runtime（身形按需加载、造型动态组合、状态保留）。 */
+	/** 启动/重试 2.5D：失败 → 纯文本提示（可重试）。 */
+	async function bootRuntime() {
+		try {
+			await ensureRuntime();
+			hideRuntimeUnavailable();
+			await runtime.setShape(state.shape);
+			runtime.setLook({ outfit: state.outfit, top: state.top, bottom: state.bottom });
+			runtime.freeze(false);
+			applyReducedMotionPreference();
+			applyDiyStatic();
+			runtime.renderFrame();
+			runtime.start();
+			lastPersistKey = '';
+			applyState();
+		} catch (err) {
+			showRuntimeUnavailable(err);
+		}
+	}
+
+	/** 把页面状态同步到 2.5D runtime（身形按需加载、造型动态组合、DIY 静态贴片）。 */
 	function sync2d5() {
-		if (!render2d5 || renderMode !== '2d5') return;
-		const seq = (render2d5Seq += 1);
+		if (!runtime) return;
+		const seq = (syncSeq += 1);
 		const shape = state.shape;
-		render2d5.setShape(shape).then((result) => {
-			if (seq !== render2d5Seq || renderMode !== '2d5') return;
+		runtime.setShape(shape).then((result) => {
+			if (seq !== syncSeq || !runtime) return;
 			if (result && result.stale) return;
-			render2d5.setLook({ outfit: state.outfit, top: state.top, bottom: state.bottom });
-			render2d5.renderFrame();
+			runtime.setLook({ outfit: state.outfit, top: state.top, bottom: state.bottom });
+			applyDiyStatic();
+			runtime.renderFrame();
 		}).catch((err) => {
-			console.warn('[衣橱] 2.5D 切换失败', err);
-			render2d5Fallback = err instanceof Error ? err.message : String(err);
-			applyRenderMode('dom');
+			console.warn('[衣橱] 2.5D 换装同步失败', err);
+			showRuntimeUnavailable(err);
 		});
 	}
 
-	/** 页面隐藏时暂停 2.5D 渲染循环（省电；恢复时从当前状态继续）。 */
-	function sync2d5Visibility() {
-		if (render2d5) render2d5.setPaused(document.hidden);
+	/** 减少动态效果：关闭随机眨眼/笑眼等自动动画（互动动作也由 interaction.reducedMotion 控制）。 */
+	function applyReducedMotionPreference() {
+		const reduce = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+		interaction.reducedMotion = reduce;
+		if (runtime) runtime.setAuto(!reduce);
+	}
+
+	/* ---------------- DIY 静态贴片（canvas 2D，不退回 DOM） ---------------- */
+
+	/** 当前选中单品里是否有 DIY（DIY 记录 shape=chibi，静态贴片只支持 Q 版）。 */
+	function activeDiyItem() {
+		for (const itemId of [state.outfit, state.top, state.bottom]) {
+			if (typeof itemId !== 'string' || !itemId.startsWith('diy-')) continue;
+			const item = findAnyItem(itemId);
+			if (item && item.diy) return item;
+		}
+		return null;
+	}
+
+	function ensureDiyOverlay() {
+		if (diyOverlay) return diyOverlay;
+		diyOverlay = document.createElement('canvas');
+		diyOverlay.className = 'diy-overlay';
+		diyOverlay.setAttribute('aria-hidden', 'true');
+		els.figureWrap.appendChild(diyOverlay);
+		return diyOverlay;
 	}
 
 	/**
-	 * 切换渲染方式（'dom' | '2d5'）。
-	 * - 2.5D 资产加载完成后才交叉淡入（背景/特效不动 → 无闪白）；失败保持 DOM 并记录原因；
-	 * - DOM ↔ 2.5D 共用同一份穿搭状态（state），切换不重置身形/穿搭/背景/特效。
-	 * @param {'dom'|'2d5'} mode
-	 * @param {{ persist?: boolean, force?: boolean }} [options]
-	 * @returns {Promise<'dom'|'2d5'>}
+	 * 进入 DIY 静态模式：runtime 冻结为静态帧，DIY 全画布位图以 canvas 2D 叠在上面。
+	 * @param {any} item
 	 */
-	async function applyRenderMode(mode, options = {}) {
-		const requested = mode === '2d5' ? '2d5' : 'dom';
-		if (options.persist) writeStoredRenderMode(requested);
-		if (requested === '2d5') {
-			if (renderMode === '2d5' && render2d5) {
-				updateRenderButton();
-				return '2d5';
+	async function enterDiyStatic(item) {
+		if (!runtime || !item) return;
+		const itemId = item.id;
+		if (diyStatic && diyItemId === itemId) return;
+		runtime.freeze(true);
+		runtime.renderFrame();
+		diyStatic = true;
+		diyItemId = itemId;
+		if (els.diyNote) els.diyNote.hidden = false;
+		const urls = diyLayerUrls(item, 'chibi');
+		const overlay = ensureDiyOverlay();
+		const quality = runtime.getQuality();
+		overlay.width = quality.canvas[0];
+		overlay.height = quality.canvas[1];
+		const ctx = overlay.getContext('2d');
+		if (ctx) {
+			ctx.clearRect(0, 0, overlay.width, overlay.height);
+			for (const url of urls) {
+				try {
+					const img = await new Promise((resolve, reject) => {
+						const cached = diyLayerImages.get(url);
+						if (cached) return resolve(cached);
+						const image = new Image();
+						image.onload = () => { diyLayerImages.set(url, image); resolve(image); };
+						image.onerror = reject;
+						image.src = url;
+					});
+					if (!diyStatic || diyItemId !== itemId) return;
+					ctx.drawImage(img, 0, 0, overlay.width, overlay.height);
+				} catch {
+					/* 单张贴片失败不影响其它层 */
+				}
 			}
-			els.tip.textContent = '2.5D 加载中…';
-			els.tip.classList.remove('gone');
-			try {
-				await ensureRuntime2d5();
-			} catch (err) {
-				render2d5Fallback = err instanceof Error ? err.message : String(err);
-				console.warn('[衣橱] 2.5D 启动失败，保持分层纸娃娃', err);
-				renderMode = 'dom';
-				renderFigure();
-				syncFaceShape();
-				startFace();
-				applyFaceMotionPreference();
-				lastPersistKey = '';
-				applyState();
-				updateRenderButton();
-				els.tip.textContent = '2.5D 暂不可用，已保持分层纸娃娃';
-				els.tip.classList.remove('gone');
-				return 'dom';
-			}
-			renderMode = '2d5';
-			render2d5Fallback = '';
-			render2d5.freeze(false); // 若之前为 QA 冻结，切回 2.5D 时恢复播放
-			render2d5.renderFrame();
-			render2d5.start();
-			if (render2d5Canvas) render2d5Canvas.classList.add('on');
-			els.figure.classList.add('figure-dim');
-			els.figure.setAttribute('aria-hidden', 'true');
-			setFaceEnabled(false);
-			els.tip.classList.add('gone');
-			lastPersistKey = '';
-			applyState();
-			updateRenderButton();
-			return '2d5';
 		}
-		// 切回 DOM
-		const previous = renderMode;
-		renderMode = 'dom';
-		if (previous === '2d5' && render2d5) {
-			if (render2d5Canvas) render2d5Canvas.classList.remove('on');
-			els.figure.classList.remove('figure-dim');
-			els.figure.removeAttribute('aria-hidden');
-			renderFigure();
-			syncFaceShape();
-			const runtime = render2d5;
-			setTimeout(() => {
-				if (renderMode === 'dom') runtime.stop();
-			}, 320);
-		}
-		startFace();
-		applyFaceMotionPreference();
-		lastPersistKey = '';
-		applyState();
-		updateRenderButton();
-		return 'dom';
+		overlay.classList.add('on');
 	}
 
-	/** 点击角色：头部=摸摸头（M5 互动），身体=说话；2.5D 用参数总线动作，DOM 用 hop+表情帧。 */
+	/** 退出 DIY 静态模式：清贴片、恢复 runtime 播放。 */
+	function exitDiyStatic() {
+		if (!diyStatic) return;
+		diyStatic = false;
+		diyItemId = '';
+		if (diyOverlay) diyOverlay.classList.remove('on');
+		if (els.diyNote) els.diyNote.hidden = true;
+		if (runtime) {
+			runtime.freeze(false);
+			runtime.setLook({ outfit: state.outfit, top: state.top, bottom: state.bottom });
+			runtime.renderFrame();
+			runtime.start();
+		}
+	}
+
+	/** 根据当前 state 决定是否进入/退出 DIY 静态贴片。 */
+	function applyDiyStatic() {
+		if (!runtime) return;
+		const item = activeDiyItem();
+		if (!item || state.shape !== 'chibi') {
+			exitDiyStatic();
+			return;
+		}
+		void enterDiyStatic(item);
+	}
+
+	/* ---------------- 人物交互（点击/键盘） ---------------- */
+
+	/** 点击角色：头部=摸摸头（M5 互动），身体=说话；动作走 2.5D 参数总线。 */
 	function onFigureTap(event) {
 		const zone = hitZoneFromEvent(event && typeof event.clientX === 'number' ? event : null);
 		if (zone === 'head' && (interaction.enabled || interaction.mode === 'local')) {
 			void interactPat();
 			return;
 		}
-		if (renderMode === '2d5' && render2d5) {
-			render2d5.tap();
-			speakRandom();
-			return;
-		}
-		els.figure.classList.remove('hop');
-		void els.figure.offsetWidth;
-		els.figure.classList.add('hop');
-		setTimeout(() => els.figure.classList.remove('hop'), 700);
+		if (runtime && !diyStatic) runtime.tap();
 		speakRandom();
 	}
 
-	/* ---------------- 人物图层栈 ---------------- */
-
-	/**
-	 * 按 `manifest.drawOrder` 动态创建图层 <img>（data-layer=槽位，初始 hidden）。
-	 * v6 不再在 index.html 里写死 5 个槽位；只在 boot 时建一次，之后换装只改 src/显隐。
-	 */
-	function buildFigureLayers() {
-		const drawOrder = Array.isArray(manifest.drawOrder) ? manifest.drawOrder : [];
-		/** @type {string[]} */
-		const slots = [];
-		for (const slot of drawOrder) {
-			if (typeof slot === 'string' && slot && !slots.includes(slot)) slots.push(slot);
-		}
-		layerSlots = slots;
-		els.figure.innerHTML = '';
-		for (let z = 0; z < layerSlots.length; z += 1) {
-			const slot = layerSlots[z];
-			const img = document.createElement('img');
-			img.className = 'figure-layer';
-			img.dataset.layer = slot;
-			img.alt = slot === 'body' ? '大肥鱼' : '';
-			img.draggable = false;
-			img.decoding = 'async';
-			img.hidden = true;
-			// z-index 按 drawOrder 固定：与 resolveLayers 返回的 z 一致，建层时设一次即可
-			img.style.zIndex = String(z);
-			els.figure.appendChild(img);
-			els.figureLayers[slot] = img;
-		}
-	}
-
-	/**
-	 * 按 `resolveLayers` 把变化过的槽位换成新图；未变化的槽位不重建、不重新赋值。
-	 * 隐藏当前穿搭用不到的槽位（套装与上下装互斥；槽位数量由 drawOrder 决定，v6 最多 7 个）。
-	 */
-	function renderFigure() {
-		const layers = resolveLayers(manifest, state);
-		const key = layers.map((layer) => `${layer.slot}:${layer.file}:${layer.z}`).join('|');
-		if (key === lastRendered.figureKey) return; // 只换背景/特效时整个图层栈都不用动
-		lastRendered.figureKey = key;
-		const seq = (renderSeq += 1);
-		/** @type {Map<string, { slot: string, file: string, z: number }>} */
-		const bySlot = new Map();
-		for (const layer of layers) bySlot.set(layer.slot, layer);
-		for (const slot of layerSlots) {
-			const el = els.figureLayers[slot];
-			if (!el) continue;
-			const layer = bySlot.get(slot);
-			if (!layer || !layer.file) {
-				el.hidden = true;
-				continue;
-			}
-			if (el.dataset.file === layer.file && el.getAttribute('src')) {
-				el.hidden = false;
-				continue; // 未变化：什么都不动
-			}
-			el.dataset.file = layer.file;
-			preload(layer.file).then(
-				(img) => {
-					if (seq !== renderSeq || el.dataset.file !== layer.file) return; // 已被更新的渲染取代
-					el.src = layer.file;
-					el.alt = slot === 'body' ? '大肥鱼' : '';
-					el.hidden = false;
-				},
-				() => {
-					console.warn(`[衣橱] 图层加载失败：${layer.file}`);
-					if (seq === renderSeq) el.hidden = true;
-				},
-			);
-		}
-		const text = describeOutfit(manifest, state);
-		els.figure.setAttribute('aria-label', `大肥鱼：${text.name}，点一下说话`);
-	}
-
-	/* ---------------- 脸部叠加动画（B1-lite · 眨眼 / 口型 / 笑眼） ---------------- */
-
-	/**
-	 * 建脸部 overlay `<img>`：运行时特效层，不改 manifest / drawOrder / 构建管线。
-	 * 层级取 drawOrder 里 hair 的下一层（v6 契约里 hair 恒为最上层），
-	 * 于是刘海压住补丁上缘，补丁里不会出现和头发层打架的发丝。
-	 * 只在 boot 时建一次，之后只切 src / class（CSS opacity），不重建 DOM。
-	 */
-	function buildFaceLayers() {
-		const hairIndex = layerSlots.lastIndexOf('hair');
-		const zIndex = String(hairIndex > 0 ? hairIndex - 1 : layerSlots.length);
-		for (const key of FACE_PATCH_KEYS) {
-			const img = document.createElement('img');
-			img.className = 'face-layer';
-			img.dataset.face = key;
-			img.alt = '';
-			img.draggable = false;
-			img.decoding = 'async';
-			img.style.zIndex = zIndex;
-			els.figure.appendChild(img);
-			face.els[key] = img;
-		}
-		face.ready = true;
-	}
-
-	/** 按当前身形切换补丁 src + 百分比定位；同身形重复调用直接返回（换装不重设）。 */
-	function syncFaceShape() {
-		if (!face.ready || face.shape === state.shape) return;
-		const patches = facePatchesOf(state.shape);
-		if (!patches) return;
-		face.shape = state.shape;
-		for (const key of FACE_PATCH_KEYS) {
-			const img = face.els[key];
-			const patch = patches[key];
-			if (!img) continue;
-			if (!patch) {
-				img.hidden = true;
-				continue;
-			}
-			const rect = facePatchStyle(patch);
-			img.style.left = rect.left;
-			img.style.top = rect.top;
-			img.style.width = rect.width;
-			img.style.height = rect.height;
-			if (img.dataset.file !== patch.file) {
-				img.dataset.file = patch.file;
-				img.src = patch.file;
-			}
-			img.hidden = false;
-		}
-		// 切身形先回到睁眼/闭嘴静态帧，避免残留上一个身形的动画状态
-		face.blinking = false;
-		face.smiling = false;
-		face.mouthOpenFrame = false;
-		faceApply();
-	}
-
-	/** 单个补丁显隐：只切 class（CSS opacity 过渡）。 */
-	function faceToggle(key, on) {
-		const img = face.els[key];
-		if (img) img.classList.toggle('on', !!on);
-	}
-
-	/** 按状态机刷新 4 个补丁；只在状态变化 / 定时器 tick 时调用，不每帧、不读布局。 */
-	function faceApply() {
-		const on = face.enabled;
-		const pose = facePose;
-		faceToggle('eyeBlink', on && (pose ? pose === 'blink' : face.blinking && !face.smiling));
-		faceToggle('eyeSmile', on && (pose ? pose === 'smile' : face.smiling));
-		faceToggle('mouthMid', on && (pose ? pose === 'mouthMid' : face.mouthTalking && !face.mouthOpenFrame));
-		faceToggle('mouthOpen', on && (pose ? pose === 'mouthOpen' : face.mouthTalking && face.mouthOpenFrame));
-	}
-
-	/** 随机眨眼：2–6s 一次，闭眼 ~110ms（关闭时间由 CSS opacity 过渡提供）。 */
-	function scheduleBlink() {
-		clearTimeout(face.blinkTimer);
-		if (!face.enabled || facePose) return;
-		face.blinkTimer = setTimeout(() => {
-			if (!face.enabled || facePose) return;
-			if (face.smiling) {
-				scheduleBlink(); // 笑眼期间不叠加眨眼
-				return;
-			}
-			face.blinking = true;
-			faceApply();
-			face.blinkOffTimer = setTimeout(() => {
-				face.blinking = false;
-				faceApply();
-				scheduleBlink();
-			}, FACE_TIMING.blinkClose);
-		}, randomBetween(FACE_TIMING.blinkMin, FACE_TIMING.blinkMax));
-	}
-
-	/** 偶尔笑眼：20–40s 一次，持续 1.2s。 */
-	function scheduleSmile() {
-		clearTimeout(face.smileTimer);
-		if (!face.enabled || facePose) return;
-		face.smileTimer = setTimeout(() => {
-			if (!face.enabled || facePose) return;
-			face.smiling = true;
-			faceApply();
-			face.smileOffTimer = setTimeout(() => {
-				face.smiling = false;
-				faceApply();
-				scheduleSmile();
-			}, FACE_TIMING.smileHold);
-		}, randomBetween(FACE_TIMING.smileMin, FACE_TIMING.smileMax));
-	}
-
-	/** 气泡显示期间启动口型循环：~130ms 交替 mouth_mid / mouth_open。 */
-	function startMouth() {
-		if (!face.enabled || face.mouthTalking) return;
-		face.mouthTalking = true;
-		face.mouthOpenFrame = false;
-		faceApply();
-		clearInterval(face.mouthTimer);
-		face.mouthTimer = setInterval(() => {
-			face.mouthOpenFrame = !face.mouthOpenFrame;
-			faceApply();
-		}, FACE_TIMING.mouthPeriod);
-	}
-
-	function stopMouth() {
-		clearInterval(face.mouthTimer);
-		face.mouthTalking = false;
-		face.mouthOpenFrame = false;
-		if (face.ready) faceApply();
-	}
-
-	/** 总开关（reduced-motion / `?facefx=0` 可关闭）：关掉时清空全部定时器与补丁显隐。 */
-	function setFaceEnabled(enabled) {
-		face.enabled = !!enabled;
-		clearTimeout(face.blinkTimer);
-		clearTimeout(face.blinkOffTimer);
-		clearTimeout(face.smileTimer);
-		clearTimeout(face.smileOffTimer);
-		clearInterval(face.mouthTimer);
-		face.blinking = false;
-		face.smiling = false;
-		face.mouthTalking = false;
-		face.mouthOpenFrame = false;
-		if (face.enabled && !facePose) {
-			scheduleBlink();
-			scheduleSmile();
-			if (!els.bubble.hidden) startMouth();
-		}
-		if (face.ready) faceApply();
-	}
-
-	/**
-	 * 系统「减少动态效果」/ `?facefx=` 解析：控制 B1-lite 脸部动画开关（DOM 模式）。
-	 * 2.5D 模式下脸部动画由 runtime 自己驱动（同参数总线），本函数只影响 DOM 层。
-	 */
-	function applyFaceMotionPreference() {
-		if (!face.ready) return;
-		const forced = params.get('facefx');
-		if (forced === '1') setFaceEnabled(true);
-		else if (forced === '0') setFaceEnabled(false);
-		else setFaceEnabled(!(faceReduceMotion && faceReduceMotion.matches));
-	}
-
-	/** 启动脸部动画：预加载补丁、监听气泡显隐（口型）、跟随系统「减少动态效果」偏好。 */
-	function startFace() {
-		if (!face.ready || faceStarted) return;
-		faceStarted = true;
-		// 预加载两身形补丁（各 4 张，小图），换身形时切 src 不闪
-		for (const shape of manifest.shapes) {
-			const patches = facePatchesOf(shape.id);
-			if (!patches) continue;
-			for (const key of FACE_PATCH_KEYS) {
-				if (patches[key]) preload(patches[key].file).catch(() => {});
-			}
-		}
-		// 口型跟现有气泡走：只监听 #bubble 的 hidden 属性，不改 say() 逻辑
-		const syncMouth = () => {
-			if (!face.enabled || els.bubble.hidden) stopMouth();
-			else startMouth();
-		};
-		new MutationObserver(syncMouth).observe(els.bubble, { attributes: true, attributeFilter: ['hidden'] });
-		syncMouth();
-		// 开关：?facefx=1/0 强制，否则默认跟随系统 reduced-motion
-		faceReduceMotion = typeof window.matchMedia === 'function'
-			? window.matchMedia('(prefers-reduced-motion: reduce)')
-			: null;
-		applyFaceMotionPreference();
-		if (faceReduceMotion && typeof faceReduceMotion.addEventListener === 'function' && !params.get('facefx')) {
-			faceReduceMotion.addEventListener('change', applyFaceMotionPreference);
-		}
-		/** QA / 自动化接口：冻结姿态、手动触发，正常播放不受影响。 */
-		window.__feiyuFace = {
-			timing: FACE_TIMING,
-			state: () => ({
-				ready: face.ready,
-				enabled: face.enabled,
-				pose: facePose,
-				shape: face.shape,
-				blinking: face.blinking,
-				smiling: face.smiling,
-				mouthTalking: face.mouthTalking,
-				mouthOpenFrame: face.mouthOpenFrame,
-			}),
-			setEnabled: setFaceEnabled,
-			/** 冻结到指定姿态（'open' | 'blink' | 'smile' | 'mouthMid' | 'mouthOpen'）。 */
-			freeze(pose) {
-				facePose = pose || '';
-				clearTimeout(face.blinkTimer);
-				clearTimeout(face.blinkOffTimer);
-				clearTimeout(face.smileTimer);
-				clearTimeout(face.smileOffTimer);
-				clearInterval(face.mouthTimer);
-				face.blinking = false;
-				face.smiling = false;
-				face.mouthTalking = false;
-				face.mouthOpenFrame = false;
-				faceApply();
-			},
-			unfreeze() {
-				facePose = '';
-				setFaceEnabled(face.enabled);
-			},
-			triggerBlink() {
-				if (!face.enabled || facePose) return;
-				clearTimeout(face.blinkTimer);
-				face.blinkTimer = 0;
-				face.blinking = true;
-				faceApply();
-				face.blinkOffTimer = setTimeout(() => {
-					face.blinking = false;
-					faceApply();
-					scheduleBlink();
-				}, FACE_TIMING.blinkClose);
-			},
-			triggerSmile() {
-				if (!face.enabled || facePose) return;
-				clearTimeout(face.smileTimer);
-				face.smileTimer = 0;
-				face.smiling = true;
-				faceApply();
-				face.smileOffTimer = setTimeout(() => {
-					face.smiling = false;
-					faceApply();
-					scheduleSmile();
-				}, FACE_TIMING.smileHold);
-			},
-			triggerMouth(on) {
-				if (!face.enabled || facePose) return;
-				if (on) startMouth();
-				else stopMouth();
-			},
-		};
-	}
+	/* ---------------- 背景 / 布局 / 状态 ---------------- */
 
 	function renderScene() {
 		const bg = currentBackground();
 		if (!bg) return;
-		if (lastRendered.bg === bg.file) return; // 背景没变就不重设大图 src
+		if (lastRendered.bg === bg.file) return;
 		lastRendered.bg = bg.file;
 		els.scene.decoding = 'async';
 		els.scene.classList.add('fading');
@@ -1038,9 +551,8 @@ import {
 	}
 
 	/**
-	 * 按背景地面线站位 + 内容边界自动缩放。
-	 * 用 resizeFx 缓存的舞台尺寸做 key：换装/换背景没变时直接跳过（避免每次都强制 reflow）。
-	 * @param {boolean} [force] 窗口尺寸变化时强制重算
+	 * 按背景地面线站位 + 内容边界自动缩放（2.5D canvas 铺满 figureWrap）。
+	 * @param {boolean} [force]
 	 */
 	function layoutFigure(force) {
 		const H = fx.h;
@@ -1077,20 +589,7 @@ import {
 		const lookKey = `${state.shape}|${state.outfit}|${state.top}|${state.bottom}`;
 		if (lastLookKey && lastLookKey !== lookKey) flashSwap();
 		lastLookKey = lookKey;
-		if (renderMode === '2d5') {
-			// 2.5D 模式：DOM 人物层不维护，只同步 canvas 与周边 UI（背景/特效/衣柜不变）
-			sync2d5();
-			renderScene();
-			renderMeta();
-			setEffect(state.effect);
-			renderShapeToggle();
-			renderShelf();
-			layoutFigure();
-			persist();
-			return;
-		}
-		renderFigure();
-		syncFaceShape();
+		sync2d5();
 		renderScene();
 		renderMeta();
 		setEffect(state.effect);
@@ -1161,7 +660,7 @@ import {
 		return cat && state[cat.stateKey] === itemId;
 	}
 
-	/** 衣柜格子：同一分类只构建一次，换装只更新选中态（省掉整片 DOM 重建）。 */
+	/** 衣柜格子：同一分类只构建一次，换装只更新选中态。 */
 	function renderShelf() {
 		const cat = manifest.categories.find((entry) => entry.id === tab);
 		if (!cat) return;
@@ -1210,23 +709,13 @@ import {
 	}
 
 	function popFigure() {
-		if (renderMode === '2d5') {
-			// 2.5D：canvas 轻微弹一下（换装过渡无闪白；运行时只重绘当前帧）
-			if (!render2d5Canvas) return;
-			render2d5Canvas.classList.remove('pop-2d5');
-			void render2d5Canvas.offsetWidth;
-			render2d5Canvas.classList.add('pop-2d5');
-			setTimeout(() => {
-				if (render2d5Canvas) render2d5Canvas.classList.remove('pop-2d5');
-			}, 360);
-			return;
-		}
-		// 下一帧再加类名来重启动画，避免同步读 offsetWidth 触发强制 reflow
-		els.figure.classList.remove('pop');
-		requestAnimationFrame(() => {
-			els.figure.classList.add('pop');
-			setTimeout(() => els.figure.classList.remove('pop'), 420);
-		});
+		if (!runtimeCanvas) return;
+		runtimeCanvas.classList.remove('pop-2d5');
+		void runtimeCanvas.offsetWidth;
+		runtimeCanvas.classList.add('pop-2d5');
+		setTimeout(() => {
+			if (runtimeCanvas) runtimeCanvas.classList.remove('pop-2d5');
+		}, 360);
 	}
 
 	function select(catId, itemId) {
@@ -1234,8 +723,12 @@ import {
 		applyState();
 		popFigure();
 		const item = findItem(catId, itemId);
-		if (renderMode === '2d5' && typeof itemId === 'string' && itemId.startsWith('diy-')) {
-			say('2.5D 模式暂时只显示内置服装，切回分层模式就能看到 DIY 单品～');
+		if (item && item.diy) {
+			if (state.shape !== 'chibi') {
+				say('DIY 单品只做了 Q 版，切到 Q 版就能看到啦～');
+				return;
+			}
+			say('穿上 DIY 单品啦～（静态贴片，不支持骨骼动画）');
 			return;
 		}
 		say(`换上「${item ? item.name : itemId}」啦，好看吗？`);
@@ -1252,12 +745,11 @@ import {
 		bubbleTimer = setTimeout(() => {
 			els.bubble.hidden = true;
 		}, 2800);
-		// 2.5D：说话期间口型走 runtime 参数总线（DOM 模式由 B1-lite 的 MutationObserver 接管）
-		if (renderMode === '2d5' && render2d5) {
-			render2d5.setTalking(true);
-			clearTimeout(talk2d5Timer);
-			talk2d5Timer = setTimeout(() => {
-				if (render2d5) render2d5.setTalking(false);
+		if (runtime && !diyStatic) {
+			runtime.setTalking(true);
+			clearTimeout(talkTimer);
+			talkTimer = setTimeout(() => {
+				if (runtime) runtime.setTalking(false);
 			}, 2800);
 		}
 	}
@@ -1275,7 +767,7 @@ import {
 	}
 
 	/**
-	 * 立绘卡里人物的绘制区域（DOM 与 2.5D 共用同一套排版，保证两种模式卡片一致）。
+	 * 立绘卡里人物的绘制区域（2.5D canvas 与卡片共用同一套排版）。
 	 * @param {number} W
 	 * @param {number} H
 	 * @param {{ top: number, bottom: number }} bounds
@@ -1295,30 +787,21 @@ import {
 		const canvas = els.canvas;
 		const ctx = canvas.getContext('2d');
 		if (!ctx) return;
+		if (!runtime) {
+			say('当前设备不支持 WebGL2，暂时生成不了 2.5D 立绘卡');
+			return;
+		}
 		const W = canvas.width;
 		const H = canvas.height;
 		const bg = currentBackground();
 		const bounds = currentBounds(manifest, state);
-		const use2d5 = renderMode === '2d5' && render2d5;
 		let bgImg;
-		/** @type {Map<string, HTMLImageElement>} */
-		const layerImgs = new Map();
-		/** @type {Array<{ slot: string, file: string, z: number }>} */
-		let layers = [];
 		try {
 			bgImg = /** @type {HTMLImageElement} */ (await preload(bg.file));
-			if (!use2d5) {
-				layers = resolveLayers(manifest, state);
-				const files = layers.map((layer) => layer.file).filter(Boolean);
-				const imgs = await Promise.all(files.map((file) => preload(file)));
-				files.forEach((file, index) => layerImgs.set(file, /** @type {HTMLImageElement} */ (imgs[index])));
-			}
 		} catch {
 			alert('图片还没准备好，稍等一下再试～');
 			return;
 		}
-		// 立绘卡只导出静态帧：2.5D 用 runtime.renderFrame()→drawImage（当前参数下的定帧），
-		// DOM 用 resolveLayers 静态分层；脸部特效层不参与导出（任意时刻结果确定）。
 		const scaleBg = Math.max(W / bgImg.width, H / bgImg.height);
 		const bw = bgImg.width * scaleBg;
 		const bh = bgImg.height * scaleBg;
@@ -1328,14 +811,9 @@ import {
 		ctx.fillRect(0, 0, W, H);
 
 		const area = cardFigureArea(W, H, bounds);
-		if (use2d5) {
-			render2d5.renderToCanvas(ctx, area.fx0, area.fy0, area.figW, area.figH);
-		} else {
-			for (const layer of layers) {
-				const img = layerImgs.get(layer.file);
-				if (img) ctx.drawImage(img, area.fx0, area.fy0, area.figW, area.figH);
-			}
-		}
+		// 立绘卡只导出静态帧：runtime.renderFrame() → drawImage（当前参数下的定帧）
+		runtime.renderToCanvas(ctx, area.fx0, area.fy0, area.figW, area.figH);
+		if (diyStatic && diyOverlay) ctx.drawImage(diyOverlay, area.fx0, area.fy0, area.figW, area.figH);
 
 		const grad = ctx.createLinearGradient(0, H * 0.62, 0, H);
 		grad.addColorStop(0, 'rgba(20,12,45,0)');
@@ -1396,7 +874,8 @@ import {
 				els.sheetBody.appendChild(cell);
 			}
 		}
-		els.sheetStat.textContent = `共 ${total} 件 · 两种身形（Q版 / 少女版）· 角色：${manifest.character}`;
+		const hasDiy = collectItems(manifest).some((group) => group.items.some((item) => item.diy));
+		els.sheetStat.textContent = `共 ${total} 件 · 2.5D 动态角色（Q版 / 少女版）· 角色：${manifest.character}${hasDiy ? ' · 含本地 DIY（静态）' : ''}`;
 		const credit = document.createElement('p');
 		credit.className = 'sheet-credit';
 		credit.textContent = manifest.credits || '';
@@ -1439,7 +918,7 @@ import {
 	}
 
 	function setEffect(id) {
-		if (lastRendered.effect === id) return; // 特效没变就不重造粒子
+		if (lastRendered.effect === id) return;
 		lastRendered.effect = id;
 		fx.type = id;
 		spawnParticles(id);
@@ -1520,11 +999,11 @@ import {
 		els.sheet.addEventListener('click', (event) => {
 			if (event.target === els.sheet) els.sheet.hidden = true;
 		});
-		els.figure.addEventListener('click', onFigureTap);
-		els.figure.addEventListener('keydown', (event) => {
+		els.figureWrap.addEventListener('click', onFigureTap);
+		els.figureWrap.addEventListener('keydown', (event) => {
 			if (event.key === 'Enter' || event.key === ' ') {
 				event.preventDefault();
-				speakRandom();
+				onFigureTap(event);
 			}
 		});
 		window.addEventListener('keydown', (event) => {
@@ -1541,37 +1020,33 @@ import {
 			if (event.key.toLowerCase() === 'r') randomLook();
 			if (event.key === 'Escape') els.sheet.hidden = true;
 		});
-		const renderButton = $('#renderBtn');
-		if (renderButton) {
-			renderButton.addEventListener('click', () => {
-				applyRenderMode(renderMode === '2d5' ? 'dom' : '2d5', { persist: true });
-			});
-		}
+		if (els.retryBtn) els.retryBtn.addEventListener('click', () => void bootRuntime());
 		// M5 互动 HUD 按钮（宿主模式生效；local-only 时拍头可播动作、喂食禁用）
 		if (els.patBtn) els.patBtn.addEventListener('click', () => void interactPat());
 		if (els.feedSmallBtn) els.feedSmallBtn.addEventListener('click', () => void interactFeed('small'));
 		if (els.feedBigBtn) els.feedBigBtn.addEventListener('click', () => void interactFeed('big'));
-		// 2.5D head follow：指针在角色框内移动 → 头部轻微跟随（参数总线；M5 互动复用）
+		// head follow：指针在角色框内移动 → 头部轻微跟随（参数总线；M5 互动复用）
 		els.stage.addEventListener('pointermove', (event) => {
-			if (renderMode !== '2d5' || !render2d5) return;
+			if (!runtime || diyStatic) return;
 			const rect = els.figureWrap.getBoundingClientRect();
 			if (!rect.width || !rect.height) return;
-			render2d5.setHeadFollow(
+			runtime.setHeadFollow(
 				((event.clientX - rect.left) / rect.width) * 2 - 1,
 				((event.clientY - rect.top) / rect.height) * 2 - 1,
 			);
 		});
 		els.stage.addEventListener('pointerleave', () => {
-			if (render2d5) render2d5.setHeadFollow(null);
-		});
-		document.addEventListener('visibilitychange', () => {
-			if (render2d5) render2d5.setPaused(document.hidden);
+			if (runtime) runtime.setHeadFollow(null);
 		});
 		window.addEventListener('resize', () => {
 			resizeFx();
 			spawnParticles(fx.type);
 			layoutFigure(true);
 		});
+		const reduce = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+		if (reduce && typeof reduce.addEventListener === 'function') {
+			reduce.addEventListener('change', applyReducedMotionPreference);
+		}
 	}
 
 	/* ---------------- 视差（鼠标移动时场景/人物轻微错位） ---------------- */
@@ -1616,7 +1091,7 @@ import {
 		return pickLine(manifest.bubbleSets, group, { recent: interaction.recentLines, fallback });
 	}
 
-	/** 指针 → 角色框归一化坐标 → 头部/身体/框外（2.5D/DOM 共用几何近似）。 */
+	/** 指针 → 角色框归一化坐标 → 头部/身体/框外。 */
 	function hitZoneFromEvent(event) {
 		if (!event) return 'body';
 		const rect = els.figureWrap.getBoundingClientRect();
@@ -1624,28 +1099,7 @@ import {
 		return hitZone((event.clientX - rect.left) / rect.width, (event.clientY - rect.top) / rect.height);
 	}
 
-	function flashFigure() {
-		if (interaction.reducedMotion) return;
-		els.figure.classList.remove('hop');
-		void els.figure.offsetWidth;
-		els.figure.classList.add('hop');
-		setTimeout(() => els.figure.classList.remove('hop'), 700);
-	}
-
-	let faceFlashTimer = 0;
-	/** DOM 模式下的「笑眼一帧」（B1-lite 补丁，仅 CSS class 切换）。 */
-	function faceFlashSmile(ms = 800) {
-		if (!face.ready || !face.enabled || facePose || interaction.reducedMotion) return;
-		face.smiling = true;
-		faceApply();
-		clearTimeout(faceFlashTimer);
-		faceFlashTimer = setTimeout(() => {
-			face.smiling = false;
-			faceApply();
-		}, ms);
-	}
-
-	/** 换装过渡（DOM/2.5D 共用 .figure-wrap 容器；reduced-motion 时跳过）。 */
+	/** 换装过渡（figure-wrap 容器；reduced-motion 时跳过）。 */
 	let lastLookKey = '';
 	function flashSwap() {
 		if (interaction.reducedMotion) return;
@@ -1662,31 +1116,25 @@ import {
 		// 打断上一条动作：先把上一动作的基准参数写回，避免把中间态当成新基准（端点不归零）
 		if (interaction.action) {
 			if (interaction.action.raf) cancelAnimationFrame(interaction.action.raf);
-			if (renderMode === '2d5' && render2d5 && interaction.action.base) {
-				render2d5.setParams(interaction.action.base);
-			}
+			if (runtime && interaction.action.base) runtime.setParams(interaction.action.base);
 			interaction.action = null;
 		}
-		if (renderMode === '2d5' && render2d5) {
-			const base = render2d5.getState().params;
-			const startedAt = performance.now();
-			if (kind === 'pat') render2d5.tap();
-			if (spec.face && spec.face.smileMs) render2d5.triggerSmile(spec.face.smileMs / 1000);
-			if (kind === 'feed') render2d5.triggerTalk(1.3);
-			const tick = () => {
-				const { done, params } = actionParams(kind, performance.now() - startedAt, base);
-				render2d5.setParams(params);
-				if (!done) interaction.action.raf = requestAnimationFrame(tick);
-				else {
-					render2d5.setParams(base);
-					interaction.action = null;
-				}
-			};
-			interaction.action = { kind, raf: requestAnimationFrame(tick) };
-			return;
-		}
-		if (kind === 'pat' || kind === 'feed' || kind === 'greet') flashFigure();
-		if (spec.face && spec.face.smileMs) faceFlashSmile(spec.face.smileMs);
+		if (!runtime) return;
+		const base = runtime.getState().params;
+		if (kind === 'pat' && !diyStatic) runtime.tap();
+		if (spec.face && spec.face.smileMs) runtime.triggerSmile(spec.face.smileMs / 1000);
+		if (kind === 'feed' && !diyStatic) runtime.triggerTalk(1.3);
+		const startedAt = performance.now();
+		const tick = () => {
+			const { done, params: next } = actionParams(kind, performance.now() - startedAt, base);
+			if (runtime) runtime.setParams(next);
+			if (!done) interaction.action.raf = requestAnimationFrame(tick);
+			else {
+				if (runtime) runtime.setParams(base);
+				interaction.action = null;
+			}
+		};
+		interaction.action = { kind, raf: requestAnimationFrame(tick) };
 	}
 
 	const INTERACTION_REASON_TEXT = {
@@ -1787,8 +1235,8 @@ import {
 
 	async function interactPat() {
 		if (interaction.inFlight) return;
-		const state2 = await postInteraction('pat');
-		if (!state2) {
+		const next = await postInteraction('pat');
+		if (!next) {
 			if (interaction.mode === 'local') {
 				playAction('pat');
 				sayLine(pickInteractionLine('pat'));
@@ -1845,9 +1293,8 @@ import {
 			const range = plan.smileEvery;
 			const wait = range ? range[0] + Math.random() * (range[1] - range[0]) : 15000;
 			interaction.moodTimer = setTimeout(() => {
-				if (!document.hidden && !interaction.reducedMotion) {
-					if (renderMode === '2d5' && render2d5) render2d5.triggerSmile(1.2);
-					else faceFlashSmile(900);
+				if (!document.hidden && !interaction.reducedMotion && runtime && !diyStatic) {
+					runtime.triggerSmile(1.2);
 				}
 				tick();
 			}, wait);
@@ -1865,13 +1312,12 @@ import {
 	}
 
 	/**
-	 * 初始化互动：读宿主端点；失败/静态托管 → local-only（台词/表情可用、鱼粮不扣）。
+	 * 初始化互动：读宿主客户端配置（client-config.json，仅 interaction 段）；
+	 * 失败/静态托管 → local-only（台词/动作可用、鱼粮不扣）。
 	 * @param {{ enabled: boolean, stateUrl?: string, actionUrl?: string }} host
 	 */
 	async function initInteraction(host) {
-		interaction.reducedMotion = !!(
-			window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
-		);
+		applyReducedMotionPreference();
 		if (!host || host.enabled !== true) {
 			interaction.mode = 'local';
 			interaction.enabled = false;
@@ -1912,12 +1358,35 @@ import {
 		return raw;
 	}
 
+	/** 读宿主客户端配置（v2：只含 interaction；无渲染开关）。 */
+	async function readHostConfig() {
+		const fallback = { interaction: { enabled: false } };
+		try {
+			const response = await fetch('client-config.json', { cache: 'no-store' });
+			if (!response.ok) return fallback;
+			const data = await response.json();
+			const raw = data && typeof data.interaction === 'object' ? data.interaction : null;
+			const enabled = !!(
+				raw &&
+				raw.enabled !== false &&
+				typeof raw.stateUrl === 'string' &&
+				typeof raw.actionUrl === 'string'
+			);
+			return {
+				interaction: enabled
+					? { enabled: true, stateUrl: raw.stateUrl, actionUrl: raw.actionUrl }
+					: { enabled: false },
+			};
+		} catch {
+			return fallback;
+		}
+	}
+
 	async function boot() {
 		if (params.has('embed')) document.body.classList.add('embed');
 		const res = await fetch('manifest.json', { cache: 'no-cache' });
 		manifest = await res.json();
-		// DIY 本地衣柜（默认关闭）：开启过才从 IndexedDB 读记录并注入 manifest.items；
-		// 注入必须发生在 normalizeState 之前，旧穿搭里选中的 DIY 单品才能被还原。
+		// DIY 本地衣柜（默认关闭）：开启过才从 IndexedDB 读记录并注入 manifest.items。
 		diy = createDiy({ manifest });
 		try {
 			await diy.prepare();
@@ -1925,53 +1394,23 @@ import {
 			console.warn('[衣橱] DIY 本地衣柜加载失败（不影响换装）', err);
 		}
 		state = normalizeState(manifest, { ...readSaved(), ...readUrlOverrides() });
-		buildFigureLayers();
-		buildFaceLayers();
 		document.title = `${manifest.character} · 大肥鱼衣橱`;
 		renderShapeToggle();
 		renderTabs();
 		setTab('outfits');
 		resizeFx();
 
-		// 渲染方式决策（M3）：URL ?render= > 本地用户选择 > 宿主 config.dressUp.render > 默认 dom。
-		// 默认 dom 时以下 2.5D 代码路径都不会执行（不 import runtime、不发任何 2.5D 请求）。
-		const hostConfig = await readHostConfig();
-		const hostRender = hostConfig.render;
-		const requestedMode = parseRenderMode(params.get('render'))
-			|| parseRenderMode(readStoredRenderMode())
-			|| parseRenderMode(hostRender)
-			|| 'dom';
-		// 只有 auto 需要能力探测；显式 dom/2d5 不创建探测 context（零额外资源）
-		const decision = resolveRenderMode({
-			config: hostRender,
-			url: params.get('render'),
-			stored: readStoredRenderMode(),
-			capable: requestedMode === 'auto' ? probeRenderCapabilities() : {},
-		});
-		renderRequested = decision.requested;
-		renderSource = decision.source;
-
-		// 与渲染方式无关的页面骨架先出（背景/特效/衣柜/布局），2.5D 加载期间不白屏
-		renderShapeToggle();
+		// 页面骨架先出（背景/特效/衣柜/布局），2.5D 加载期间不白屏
 		renderScene();
 		renderMeta();
 		setEffect(state.effect);
 		renderShelf();
 		layoutFigure(true);
 
-		if (decision.mode === '2d5') {
-			const mode = await applyRenderMode('2d5');
-			if (mode !== '2d5') {
-				renderFigure();
-				syncFaceShape();
-				startFace();
-			}
-		} else {
-			applyState();
-			startFace();
-		}
-		updateRenderButton();
 		bind();
+		// 2.5D 是唯一渲染路径：boot 即尝试；失败 → 纯文本提示（可重试）
+		await bootRuntime();
+		const hostConfig = await readHostConfig();
 		await initInteraction(hostConfig.interaction);
 		diy.attach({
 			getState: () => state,
@@ -2002,29 +1441,38 @@ import {
 			reducedMotion: () => interaction.reducedMotion,
 			lastAction: () => (interaction.action ? interaction.action.kind : ''),
 		};
-		/** 2.5D E2E / 调试入口：渲染方式、runtime 状态、资源请求、确定性步进。 */
+		/** 2.5D E2E / 调试入口（v2：无渲染模式开关）。 */
 		window.__feiyu2d5 = {
-			mode: () => renderMode,
-			requested: () => renderRequested,
-			source: () => renderSource,
-			fallbackReason: () => render2d5Fallback,
-			runtime: () => render2d5,
-			switchTo: (mode, options) => applyRenderMode(mode, options),
-			ensure: () => ensureRuntime2d5(),
-			sync: () => sync2d5(),
-			getState: () => (render2d5 ? render2d5.getState() : null),
-			getMemory: () => (render2d5 ? render2d5.getMemory() : null),
-			getAssetInfo: () => (render2d5 ? render2d5.getAssetInfo() : null),
+			ready: () => !!runtime,
+			runtime: () => runtime,
+			failure: () => runtimeFailure,
+			unavailable: () => !!(els.fallbackNotice && !els.fallbackNotice.hidden),
+			retry: () => bootRuntime(),
+			getState: () => (runtime ? runtime.getState() : null),
+			getMemory: () => (runtime ? runtime.getMemory() : null),
+			getAssetInfo: () => (runtime ? runtime.getAssetInfo() : null),
+			diyMode: () => diyStatic,
+			diyOverlayVisible: () => !!(diyOverlay && diyOverlay.classList.contains('on')),
+			/** E2E 预置：模拟选中一个 DIY 贴片（url 为 675×1200 透明到底图）。 */
+			simulateDiy: (url, slot) => {
+				const item = {
+					id: 'diy-e2e',
+					diy: true,
+					layers: { chibi: { [slot || 'topBody']: url } },
+				};
+				void enterDiyStatic(item);
+			},
+			clearDiy: () => exitDiyStatic(),
 			freeze: (value) => {
-				if (render2d5) render2d5.freeze(value);
+				if (runtime) runtime.freeze(value);
 			},
 			setAuto: (value) => {
-				if (render2d5) render2d5.setAuto(value);
+				if (runtime) runtime.setAuto(value);
 			},
-			advance: (n, dt) => (render2d5 ? render2d5.advance(n, dt) : 0),
-			step: (dt) => (render2d5 ? render2d5.step(dt) : 0),
+			advance: (n, dt) => (runtime ? runtime.advance(n, dt) : 0),
+			step: (dt) => (runtime ? runtime.step(dt) : 0),
 			resources: () => performance.getEntriesByType('resource')
-				.filter((entry) => entry.name.includes('/art/2d5/') || entry.name.includes('runtime-2d5'))
+				.filter((entry) => entry.name.includes('/art/2d5/') || entry.name.includes('runtime-2d5') || entry.name.includes('manifest.json'))
 				.map((entry) => ({
 					name: entry.name,
 					transferSize: entry.transferSize,

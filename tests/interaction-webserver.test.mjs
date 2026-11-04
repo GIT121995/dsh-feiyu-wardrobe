@@ -7,7 +7,7 @@ import {
 	DRESS_UP_ENTRY,
 	DRESS_UP_INTERACTION_ACTION,
 	DRESS_UP_INTERACTION_STATE,
-	DRESS_UP_RENDER_CONFIG,
+	DRESS_UP_CLIENT_CONFIG,
 	createDressUpHandler,
 	dressUpRoot,
 } from '../lib/webserver.js';
@@ -65,7 +65,6 @@ function fakeSummary() {
 function makeHandler({ enabled = true, act = null, now = () => NOW } = {}) {
 	const calls = [];
 	const handler = createDressUpHandler(ROOT, {
-		render: '2d5',
 		now,
 		interaction: {
 			enabled,
@@ -185,13 +184,14 @@ test('令牌桶：突发 5 次后 429；2s 后恢复（固定 now）', async () 
 	assert.equal((await post()).statusCode, 200);
 });
 
-test('render-config v2：interaction 段含 enabled/stateUrl/actionUrl', async () => {
+test('client-config v2：仅 interaction 段（无 render 字段），含 enabled/stateUrl/actionUrl', async () => {
 	const { handler } = makeHandler();
-	const res = await hit(handler, createReq({ url: DRESS_UP_RENDER_CONFIG }));
+	const res = await hit(handler, createReq({ url: DRESS_UP_CLIENT_CONFIG }));
 	assert.equal(res.statusCode, 200);
 	const body = JSON.parse(String(res.body));
 	assert.equal(body.version, DRESS_UP_CONFIG_VERSION);
 	assert.equal(body.version, 2);
+	assert.equal('render' in body, false, 'v2 客户端配置不应再有 render 字段');
 	assert.deepEqual(body.interaction, {
 		enabled: true,
 		stateUrl: DRESS_UP_INTERACTION_STATE,

@@ -45,7 +45,9 @@ import { DIY_MAX_ITEMS, diyRecordToItem, isDiyItemId } from './wardrobe-core.js'
 const PROXY_STATUS = '/feiyu/diy/status';
 const PROXY_GENERATE = '/feiyu/diy/generate';
 const MAX_UPLOAD_EDGE = 1024;
-const ART_BASE = 'art/chibi/';
+// DIY 本地成层需要的素体掩膜（hair/arms/body）：随包发布的参考掩膜，不是 DOM 人物渲染资产。
+// v2 起 DOM 分层渲染退役，这三个文件只被 extractDiyLayer 当作掩膜输入使用。
+const ART_BASE = 'art/diy/masks/chibi/';
 /** 本地成层算法是否已预热（在等待云端 API 时跑一次真实尺寸 warmup，降低首件 JIT 冷启动）。 */
 let layersWarmed = false;
 

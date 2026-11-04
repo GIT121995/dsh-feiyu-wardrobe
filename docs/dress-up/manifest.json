@@ -1,17 +1,8 @@
 {
-  "version": 7,
+  "version": 8,
   "title": "大肥鱼衣橱 · 换装间",
   "character": "大肥鱼 · 经典鲸鱼娘",
   "credits": "立绘 / 服装：本项目用 Seedream 5.0（火山方舟）基于自建素体生成 · 角色参考：大肥鱼社区二创（仅作风格参考，未直接使用原画）· 非官方，禁止商用",
-  "drawOrder": [
-    "body",
-    "topUnder",
-    "bottom",
-    "topBody",
-    "arms",
-    "sleeve",
-    "hair"
-  ],
   "shapes": [
     {
       "id": "chibi",
@@ -20,11 +11,6 @@
       "bounds": {
         "top": 0.04,
         "bottom": 0.9725
-      },
-      "layers": {
-        "body": "art/chibi/body.webp",
-        "arms": "art/chibi/arms.webp",
-        "hair": "art/chibi/hair.webp"
       }
     },
     {
@@ -34,11 +20,6 @@
       "bounds": {
         "top": 0.0292,
         "bottom": 0.9725
-      },
-      "layers": {
-        "body": "art/girl/body.webp",
-        "arms": "art/girl/arms.webp",
-        "hair": "art/girl/hair.webp"
       }
     }
   ],
@@ -86,17 +67,7 @@
         "id": "maid",
         "name": "经典女仆装",
         "desc": "她本来的样子。",
-        "icon": "art/icons/maid.webp",
-        "layers": {
-          "chibi": {
-            "topBody": "art/chibi/layers/dress-maid-body.webp",
-            "sleeve": "art/chibi/layers/dress-maid-sleeve.webp"
-          },
-          "girl": {
-            "topBody": "art/girl/layers/dress-maid-body.webp",
-            "sleeve": "art/girl/layers/dress-maid-sleeve.webp"
-          }
-        }
+        "icon": "art/icons/maid.webp"
       }
     ],
     "tops": [
@@ -104,49 +75,19 @@
         "id": "sweater",
         "name": "白色高领毛衣",
         "desc": "软乎乎的，像一条围巾。",
-        "icon": "art/icons/sweater.webp",
-        "layers": {
-          "chibi": {
-            "topBody": "art/chibi/layers/top-sweater-body.webp",
-            "sleeve": "art/chibi/layers/top-sweater-sleeve.webp"
-          },
-          "girl": {
-            "topBody": "art/girl/layers/top-sweater-body.webp",
-            "sleeve": "art/girl/layers/top-sweater-sleeve.webp"
-          }
-        }
+        "icon": "art/icons/sweater.webp"
       },
       {
         "id": "hoodie",
         "name": "白色连帽卫衣",
         "desc": "宽宽松松，把自己藏进去。",
-        "icon": "art/icons/hoodie.webp",
-        "layers": {
-          "chibi": {
-            "topBody": "art/chibi/layers/top-hoodie-body.webp",
-            "sleeve": "art/chibi/layers/top-hoodie-sleeve.webp"
-          },
-          "girl": {
-            "topBody": "art/girl/layers/top-hoodie-body.webp",
-            "sleeve": "art/girl/layers/top-hoodie-sleeve.webp"
-          }
-        }
+        "icon": "art/icons/hoodie.webp"
       },
       {
         "id": "sailor",
         "name": "水手服上衣",
         "desc": "海风味的日常。",
-        "icon": "art/icons/sailor.webp",
-        "layers": {
-          "chibi": {
-            "topUnder": "art/chibi/layers/top-sailor-body.webp",
-            "sleeve": "art/chibi/layers/top-sailor-sleeve.webp"
-          },
-          "girl": {
-            "topUnder": "art/girl/layers/top-sailor-body.webp",
-            "sleeve": "art/girl/layers/top-sailor-sleeve.webp"
-          }
-        }
+        "icon": "art/icons/sailor.webp"
       }
     ],
     "bottoms": [
@@ -154,29 +95,13 @@
         "id": "plaid",
         "name": "格纹百褶裙",
         "desc": "校园里最普通也最好看的那条。",
-        "icon": "art/icons/plaid.webp",
-        "layers": {
-          "chibi": {
-            "bottom": "art/chibi/layers/bottom-plaid.webp"
-          },
-          "girl": {
-            "bottom": "art/girl/layers/bottom-plaid.webp"
-          }
-        }
+        "icon": "art/icons/plaid.webp"
       },
       {
         "id": "pleated",
         "name": "深蓝百褶裙",
         "desc": "转一圈，裙摆会开成花。",
-        "icon": "art/icons/pleated.webp",
-        "layers": {
-          "chibi": {
-            "bottom": "art/chibi/layers/bottom-pleated.webp"
-          },
-          "girl": {
-            "bottom": "art/girl/layers/bottom-pleated.webp"
-          }
-        }
+        "icon": "art/icons/pleated.webp"
       }
     ],
     "backgrounds": [
@@ -355,6 +280,6 @@
       "ext": ".dshskin",
       "version": 1
     },
-    "note": "DIY 层不写进本文件：运行时由 IndexedDB 记录经 diyRecordToItem() 注入 items；v7 只是扩展声明，v6 数据语义不变（仅 version+1）。"
+    "note": "v8：不再有 DOM 分层资产；DIY 记录仍由 IndexedDB 注入 items，但渲染改为 2.5D runtime 静态帧 + canvas 2D 贴片（无骨骼动画）。"
   }
 }

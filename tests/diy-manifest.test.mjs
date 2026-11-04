@@ -9,8 +9,8 @@ import {
 	DIY_LAYER_SLOTS,
 	DIY_MAX_ITEMS,
 	diyRecordToItem,
+	diyLayerUrls,
 	isDiyItemId,
-	resolveLayers,
 	selectDiyEvictions,
 	validateDiyRecord,
 } from '../docs/dress-up/wardrobe-core.js';
@@ -20,20 +20,21 @@ const ROOT = join(fileURLToPath(new URL('..', import.meta.url)), 'docs', 'dress-
 const MANIFEST = JSON.parse(readFileSync(join(ROOT, 'manifest.json'), 'utf8'));
 const STATE_KEYS = MANIFEST.categories.map((category) => category.stateKey);
 
-/* ---------------- manifest v7：扩展声明，v6 数据语义不变 ---------------- */
+/* ---------------- manifest v8：DOM 分层退役，2.5D-only 数据契约 ---------------- */
 
-test('manifest v7：版本号+1，drawOrder/身形/分类/默认穿搭与 v6 完全一致', () => {
-	assert.equal(MANIFEST.version, 7);
-	assert.deepEqual(MANIFEST.drawOrder, ['body', 'topUnder', 'bottom', 'topBody', 'arms', 'sleeve', 'hair']);
+test('manifest v8：DOM 图层字段全部移除，身形/分类/默认穿搭保持', () => {
+	assert.equal(MANIFEST.version, 8);
+	assert.equal('drawOrder' in MANIFEST, false, 'v8 不应再有 DOM drawOrder');
 	assert.deepEqual(MANIFEST.shapes.map((shape) => shape.id), ['chibi', 'girl']);
 	assert.deepEqual(MANIFEST.categories.map((category) => category.id), ['outfits', 'tops', 'bottoms', 'backgrounds', 'effects']);
 	assert.ok(MANIFEST.defaults && typeof MANIFEST.defaults.shape === 'string');
-	// v6 的 7 个槽位文件映射仍在原位（旧数据/旧渲染路径不变）
 	for (const shape of MANIFEST.shapes) {
-		for (const slot of ['body', 'arms', 'hair']) assert.ok(shape.layers[slot], `${shape.id}.${slot}`);
+		assert.equal('layers' in shape, false, `${shape.id} 不应再有 DOM 图层映射`);
+		assert.ok(shape.bounds && typeof shape.bounds.top === 'number', `${shape.id} 仍需要内容边界（2.5D 布局用）`);
 	}
-	// v7 只新增 diy 扩展，不引入新的 drawOrder 槽位
-	assert.equal(MANIFEST.drawOrder.includes('diy'), false);
+	for (const items of Object.values(MANIFEST.items)) {
+		for (const item of items) assert.equal('layers' in item, false, `${item.id} 不应再有 DOM 图层映射`);
+	}
 });
 
 test('manifest.diy：声明默认关闭、chibi、IndexedDB、v1 分享格式与内容策略', () => {
@@ -112,7 +113,7 @@ test('validateDiyRecord：合法记录通过，非法 schema 明确报错', () =
 	assert.equal(validateDiyRecord([1, 2]).ok, false);
 });
 
-/* ---------------- 运行时注入：manifest v6 resolveLayers 直接消费 DIY item ---------------- */
+/* ---------------- 运行时注入：DIY item → 2.5D 静态贴片顺序 ---------------- */
 
 test('diyRecordToItem：按品类映射槽位，blob URL 原样保留', () => {
 	const top = diyRecordToItem(makeRecord(), { body: 'blob:body', sleeve: 'blob:sleeve' });
@@ -128,45 +129,18 @@ test('diyRecordToItem：按品类映射槽位，blob URL 原样保留', () => {
 	assert.equal(isDiyItemId('sweater'), false);
 });
 
-test('resolveLayers 消费注入的 DIY item（v6 渲染路径零改动），且不污染静态单品', () => {
-	const manifest = JSON.parse(JSON.stringify(MANIFEST));
-	manifest.items.tops.push(diyRecordToItem(makeRecord(), { body: 'blob:body', sleeve: 'blob:sleeve' }));
-	const layers = resolveLayers(manifest, {
-		shape: 'chibi',
-		outfit: 'none',
-		top: 'diy-0123456789ab',
-		bottom: 'plaid',
-		bg: 'bg-snow',
-		effect: 'snow',
-	});
-	const bySlot = Object.fromEntries(layers.map((layer) => [layer.slot, layer.file]));
-	assert.equal(bySlot.topBody, 'blob:body');
-	assert.equal(bySlot.sleeve, 'blob:sleeve');
-	assert.equal(bySlot.bottom, 'art/chibi/layers/bottom-plaid.webp');
-	// 原有静态单品的行为不变
-	const original = resolveLayers(MANIFEST, {
-		shape: 'chibi',
-		outfit: 'none',
-		top: 'sweater',
-		bottom: 'plaid',
-		bg: 'bg-snow',
-		effect: 'snow',
-	});
-	assert.deepEqual(
-		original.map((layer) => layer.slot),
-		['body', 'bottom', 'topBody', 'arms', 'sleeve', 'hair'],
-	);
-	// girl 身形找不到 DIY item 的图层 → 只回退身形层，不抛错
-	const girl = resolveLayers(manifest, {
-		shape: 'girl',
-		outfit: 'none',
-		top: 'diy-0123456789ab',
-		bottom: 'plaid',
-		bg: 'bg-snow',
-		effect: 'snow',
-	});
-	assert.equal(girl.some((layer) => layer.file.startsWith('blob:')), false);
-	for (const layer of girl) assert.ok(typeof layer.file === 'string' && layer.file.length > 0);
+test('diyLayerUrls：贴片按 bottom → topBody → sleeve 顺序，缺层跳过，girl 无贴片', () => {
+	const top = diyRecordToItem(makeRecord(), { body: 'blob:body', sleeve: 'blob:sleeve' });
+	const bottomRecord = makeRecord({ category: 'bottom', layers: { body: 'blob:b' } });
+	const bottom = diyRecordToItem(bottomRecord, { body: 'blob:b' });
+	// 组合顺序：下装先、衣身其次、袖子最上
+	const merged = { ...top, layers: { chibi: { ...bottom.layers.chibi, ...top.layers.chibi } } };
+	assert.deepEqual(diyLayerUrls(merged, 'chibi'), ['blob:b', 'blob:body', 'blob:sleeve']);
+	// 只有单件时按自身槽位
+	assert.deepEqual(diyLayerUrls(bottom, 'chibi'), ['blob:b']);
+	// 未注入／其它身形返回空数组（不抛错）
+	assert.deepEqual(diyLayerUrls(null, 'chibi'), []);
+	assert.deepEqual(diyLayerUrls(top, 'girl'), []);
 });
 
 /* ---------------- 本地衣柜 LRU / 配额 ---------------- */
