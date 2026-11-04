@@ -47,7 +47,7 @@ import {
 	LEGACY_OUTFIT_SLOTS,
 	unregisterDiyPack,
 	visibleDrawables,
-} from './runtime-2d5-core.js?v=18';
+} from './runtime-2d5-core.js?v=19';
 
 /** 单个 spring 链节点相对 rest 的最大偏移（px，安全包络，POC 同值）。 */
 const CHAIN_OFFSET_LIMIT = 42;

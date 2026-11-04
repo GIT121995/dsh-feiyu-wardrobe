@@ -184,7 +184,7 @@
 
 ## 8. v2.2 cutout：drawOrder 槽位与多图集（runtime M3 契约）
 
-DOM 分层模型仍已退役；本节是 **2.5D cutout（B 方案）** 的新渲染契约（v2.2 已合入 M4b production 资产：
+DOM 分层模型仍已退役；本节是 **2.5D cutout（B 方案）** 的新渲染契约（v2.3 为 M4b production 资产的手/脚精修版：
 chibi 85 / girl 84 drawables、单页图集 4090×1739 / 4085×1531；运行时同时保留 ≤2 页多图集能力）。
 
 - 槽位（z）：`legs(9) < body(10) < bottom(30) < topBody(40) < armUpper(45) < armFore(48) < collar(56) <

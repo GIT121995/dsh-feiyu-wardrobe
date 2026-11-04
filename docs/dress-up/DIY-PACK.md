@@ -120,7 +120,10 @@ outfits 分类（图标 = pack 纹理缩略图）；`fallback=static` 的套装�
 导入：宿主校验 format/version/item/shape/纹理完整性后写 `packs/<id>/` + registry；非法包整体拒绝且不落盘。
 导出/导入均不经过 LLM（浏览器 ↔ 宿主本机）。
 
-## 5.5 v2.2 cutout 兼容（v2.2.1 起）
+## 5.5 v2.2 cutout 兼容（v2.2.1 起；v2.3 资产沿用）
+
+> v2.3.0 仅替换手/脚精修像素（资产版本 15、页面模块 v19）：base rig 的 drawable id/slot/骨架/物理链与 v2.2 完全一致，
+> 已安装 pack（v2.2 refs）无需重建，按本节规则兼容；旧 v2.1 refs 由运行时迁移兜底。
 
 v2.2 起 base rig 为 cutout 分部件（`sweater-plaid-torso/-skirt` 等），不再有 v2.1 的 generic
 `bottom-plaid/sweater-body/sweater-sleeve/maid-body…`。兼容策略：
