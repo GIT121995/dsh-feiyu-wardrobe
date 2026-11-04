@@ -299,6 +299,17 @@ test('summarizeInitialPayload：首屏 raw/transfer 汇总', () => {
 	assert.equal(summarizeInitialPayload({ rigBytes: 100, atlasBytes: 200 }).transferBytes, 300);
 });
 
+test('resolveLook bare（DIY 静态贴片）：只留身体/头发/脸，不渲染任何服装层', () => {
+	const look = resolveLook(CHIBI, { bare: true });
+	assert.deepEqual(look.slots, { topUnder: [], bottom: [], topBody: [], sleeve: [] });
+	assert.equal(look.outfit, null);
+	assert.deepEqual(look.warnings, [], 'bare 模式不应产生回退 warnings');
+	const ids = visibleDrawables(CHIBI, look, { eye: 'open', mouth: 'closed' }).map((entry) => entry.id);
+	assert.ok(ids.includes('body'));
+	assert.ok(ids.includes('hair') || ids.includes('hair-front-bangs'), '应保留头发');
+	assert.ok(!ids.some((id) => /maid|sweater|sailor|hoodie|bottom-/.test(id)), '不应出现任何服装层');
+});
+
 test('BASE_CANVAS：与 DOM 分层素材同构（675×1200 9:16）', () => {
 	assert.deepEqual(BASE_CANVAS, { width: 675, height: 1200 });
 	assert.equal(BASE_CANVAS.width / BASE_CANVAS.height, 9 / 16);

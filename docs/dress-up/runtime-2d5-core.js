@@ -286,7 +286,7 @@ export const GARMENTS = {
  * 缺件时按「同槽位最近可用 → rig 默认套装」回退，并把原因记进 warnings。
  *
  * @param {any} rig 2.5D rig JSON
- * @param {{ outfit?: string, top?: string, bottom?: string }} state 换装页状态子集
+ * @param {{ outfit?: string, top?: string, bottom?: string, bare?: boolean }} state 换装页状态子集
  * @returns {{
  *   slots: { topUnder: string[], bottom: string[], topBody: string[], sleeve: string[] },
  *   outfit: string|null, label: string, fallback: string|null, warnings: string[],
@@ -299,6 +299,12 @@ export function resolveLook(rig, state = {}) {
 	const slots = { topUnder: [], bottom: [], topBody: [], sleeve: [] };
 	const warnings = [];
 	const outfitId = typeof state.outfit === 'string' ? state.outfit : '';
+
+	// 0) DIY 静态贴片模式（bare=true）：只保留身体/头发/脸，不渲染任何服装层，
+	//    避免「基础造型衣服 + DIY 贴片」叠成两层衣服（v2.0.1 修复）。
+	if (state && state.bare === true) {
+		return { slots, outfit: null, label: 'DIY 静态造型', fallback: null, warnings };
+	}
 
 	// 1) 套装命中（M3 页面只有 maid；M4/M6 若扩展套装也走这里）
 	if (outfitId && outfitId !== 'none' && outfits[outfitId]) {

@@ -40,20 +40,25 @@ test('index.html：删除 DOM 人物容器/脸部层/渲染开关，保留舞台
 	assert.ok(INDEX.includes('id="diyNote"'), '应有 DIY 静态贴片提示');
 	assert.match(INDEX, /不支持骨骼动画/, 'DIY 提示应说明不支持骨骼动画');
 	// 版本号（v2 页面模块升 v14）
-	assert.match(INDEX, /app\.js\?v=14/);
-	assert.match(INDEX, /style\.css\?v=14/);
+	assert.match(INDEX, /app\.js\?v=15/);
+	assert.match(INDEX, /style\.css\?v=15/);
 	assert.ok(INDEX.includes('type="module"'));
 });
 
 test('app.js：唯一渲染路径是 2.5D runtime，DOM 渲染/双模式代码全部移除', () => {
 	// 必须保留：runtime 懒加载（boot 即唯一路径）+ 资产版本 + 文本提示 + DIY 静态
-	assert.ok(APP.includes("const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=14'"));
+	assert.ok(APP.includes("const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=15'"));
 	assert.ok(APP.includes('import(RUNTIME_2D5_MODULE)'), '应动态 import 2.5D runtime');
 	assert.ok(APP.includes('bootRuntime()'), 'boot 应启动 2.5D runtime（唯一路径）');
 	assert.ok(APP.includes('RUNTIME_2D5_ASSET_VERSION'), 'rig/atlas 应带资产版本');
 	assert.ok(APP.includes('client-config.json'), '页面应读宿主 client-config（仅互动）');
 	assert.ok(APP.includes('diyLayerUrls'), 'DIY 应改 canvas 静态贴片');
 	assert.ok(APP.includes('不支持骨骼动画'), 'DIY 静态提示文案');
+	// v2.0.1 回归：DIY 贴片前必须先切 bare，避免「基础造型衣服 + DIY 贴片」两层衣服
+	assert.ok(APP.includes('runtime.setLook({ bare: true })'), 'DIY 静态模式应先切 bare（隐藏基础服装层）');
+	const enterDiy = APP.slice(APP.indexOf('async function enterDiyStatic('), APP.indexOf('/** 退出 DIY 静态模式'));
+	assert.ok(enterDiy.includes('bare: true'), 'enterDiyStatic 内应设置 bare');
+	assert.ok(enterDiy.indexOf('bare: true') < enterDiy.indexOf('overlay.classList.add'), '应先隐藏基础服装层再叠 DIY 贴片');
 	assert.match(APP, /不支持 WebGL2|不支持 WebGL2。/, '无 WebGL2 时文本提示');
 	// 必须删除：DOM 图层/脸部补丁/渲染模式开关/渲染配置/兜底图
 	for (const forbidden of [
@@ -87,7 +92,7 @@ test('wardrobe-core / runtime core：不再提供 DOM 渲染或渲染模式决�
 	}
 	assert.ok(CORE.includes('export function resolveLook'));
 	assert.ok(CORE.includes('export function visibleDrawables'));
-	assert.ok(RUNTIME.includes("from './runtime-2d5-core.js?v=14'"), 'runtime 模块应按 v14 复用 core');
+	assert.ok(RUNTIME.includes("from './runtime-2d5-core.js?v=15'"), 'runtime 模块应按 v14 复用 core');
 	assert.ok(RUNTIME.includes('assetVersion'), 'runtime 应支持资产版本查询串');
 });
 

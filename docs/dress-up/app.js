@@ -19,8 +19,8 @@ import {
 	normalizeState,
 	randomOutfit,
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；加版本号让浏览器绕过旧缓存
-} from './wardrobe-core.js?v=14';
-import { createDiy } from './diy-ui.js?v=14';
+} from './wardrobe-core.js?v=15';
+import { createDiy } from './diy-ui.js?v=15';
 import {
 	ACTION_SPECS,
 	actionParams,
@@ -28,17 +28,17 @@ import {
 	hitZone,
 	moodFacePlan,
 	pickLine,
-} from './interaction-model.js?v=14';
+} from './interaction-model.js?v=15';
 
 (() => {
 	'use strict';
 
 	const $ = (sel) => document.querySelector(sel);
 	const STORAGE_KEY = 'feiyu:outfit';
-	/** 2.5D runtime 模块（v2 唯一渲染路径；页面模块版本 v14）。 */
-	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=14';
+	/** 2.5D runtime 模块（v2 唯一渲染路径；页面模块版本 v15）。 */
+	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=15';
 	const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/';
-	/** 2.5D 资产版本（v1.0.0 起资产未变，保持 v13；页面模块升 v14）。 */
+	/** 2.5D 资产版本（v1.0.0 起资产未变，保持 v13；页面模块升 v15）。 */
 	const RUNTIME_2D5_ASSET_VERSION = '13';
 	const params = new URLSearchParams(location.search);
 	/** 悬浮小鲸鱼用的小图尺寸（9:16，与整张立绘画布同构）。 */
@@ -460,9 +460,16 @@ import {
 	async function enterDiyStatic(item) {
 		if (!runtime || !item) return;
 		const itemId = item.id;
-		if (diyStatic && diyItemId === itemId) return;
+		// DIY 造型 = 基础身体 + DIY 贴片：先切到 bare（隐藏所有基础服装层），
+		// 避免出现「基础造型衣服 + DIY 贴片」两层衣服（v2.0.1 修复）。
+		runtime.setLook({ bare: true });
 		runtime.freeze(true);
 		runtime.renderFrame();
+		if (diyStatic && diyItemId === itemId) {
+			if (els.diyNote) els.diyNote.hidden = false;
+			if (diyOverlay) diyOverlay.classList.add('on');
+			return;
+		}
 		diyStatic = true;
 		diyItemId = itemId;
 		if (els.diyNote) els.diyNote.hidden = false;

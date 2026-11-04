@@ -35,7 +35,7 @@ import {
 	resolveQuality,
 	summarizeInitialPayload,
 	visibleDrawables,
-} from './runtime-2d5-core.js?v=14';
+} from './runtime-2d5-core.js?v=15';
 
 /** 单个 spring 链节点相对 rest 的最大偏移（px，安全包络，POC 同值）。 */
 const CHAIN_OFFSET_LIMIT = 42;
@@ -357,7 +357,7 @@ function buildApi(rt) {
 
 		/**
 		 * 设置当前造型：套装优先，否则上衣+下装动态组合（缺件回退见 core.resolveLook）。
-		 * @param {{ outfit?: string, top?: string, bottom?: string }} state
+		 * @param {{ outfit?: string, top?: string, bottom?: string, bare?: boolean }} state
 		 * @returns {{ slots: any, outfit: string|null, label: string, fallback: string|null, warnings: string[] }}
 		 */
 		setLook(state) {
