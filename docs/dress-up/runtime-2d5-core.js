@@ -463,3 +463,165 @@ export function summarizeInitialPayload({ rigBytes, rigTransferBytes, atlasBytes
 	};
 }
 
+
+/* ------------------------------------------------------- DIY 增量 outfit pack ---
+ * S3：运行时动态加载 S2 产出的 feiyu-diy-pack v1（不复制 base rig；多纹理）。
+ * 纯函数（无 GL）：runtime-2d5.js 负责 VAO/纹理上传与释放；node 单测覆盖本段。
+ */
+
+/** 增量 pack 格式标识（与 .scratch/diy2/S2-S3-PACK-SPEC.md 一致）。 */
+export const DIY_PACK_FORMAT = 'feiyu-diy-pack';
+export const DIY_PACK_FORMAT_VERSION = 1;
+
+/**
+ * 校验并规范化增量 DIY pack（不修改输入）。
+ *
+ * @param {any} pack
+ * @param {{ bones?: number, shape?: string }} [options]
+ * @returns {{ ok: boolean, errors: string[], packId: string, drawables: any[], outfits: Record<string, any>, textures: string[] }}
+ */
+export function normalizeDiyPack(pack, options = {}) {
+	const errors = [];
+	const bones = Number(options.bones) || 0;
+	const shape = String(options.shape || '');
+	const empty = { ok: false, errors, packId: '', drawables: [], outfits: {}, textures: [] };
+	if (!pack || typeof pack !== 'object') return { ...empty, errors: ['pack_invalid'] };
+	if (pack.format !== DIY_PACK_FORMAT) errors.push('format_invalid');
+	if (Number(pack.formatVersion) !== DIY_PACK_FORMAT_VERSION) errors.push('version_invalid');
+	if (!pack.item || typeof pack.item !== 'string') errors.push('item_missing');
+	if (shape && pack.shape && pack.shape !== shape) errors.push('shape_mismatch');
+	const packBones = Number(pack.base && pack.base.skeletonBones) || 0;
+	if (bones && packBones && packBones !== bones) errors.push('skeleton_mismatch');
+	const drawables = Array.isArray(pack.drawables) ? pack.drawables : [];
+	if (drawables.length < 1 || drawables.length > 2) errors.push('drawables_count');
+	const textures = [];
+	const seenIds = new Set();
+	for (const drawable of drawables) {
+		if (!drawable || typeof drawable !== 'object') {
+			errors.push('drawable_invalid');
+			continue;
+		}
+		const id = String(drawable.id || '');
+		if (!id) errors.push('drawable_id_missing');
+		if (seenIds.has(id)) errors.push('drawable_duplicate');
+		seenIds.add(id);
+		if (!['topBody', 'topUnder', 'bottom', 'sleeve'].includes(drawable.slot)) errors.push(`slot_invalid:${id}`);
+		if (!Number.isFinite(Number(drawable.z))) errors.push(`z_invalid:${id}`);
+		if (typeof drawable.texture !== 'string' || !/\.(webp|png)$/i.test(drawable.texture)) errors.push(`texture_invalid:${id}`);
+		else textures.push(drawable.texture);
+		const mesh = drawable.mesh;
+		if (!mesh || !Array.isArray(mesh.positions) || mesh.positions.length === 0) {
+			errors.push(`mesh_missing:${id}`);
+			continue;
+		}
+		const count = mesh.positions.length;
+		if (!Array.isArray(mesh.uvs) || mesh.uvs.length !== count
+			|| !Array.isArray(mesh.bones) || mesh.bones.length !== count
+			|| !Array.isArray(mesh.weights) || mesh.weights.length !== count
+			|| !Array.isArray(mesh.deform) || mesh.deform.length !== count
+			|| !Array.isArray(mesh.indices) || mesh.indices.length % 3 !== 0) {
+			errors.push(`mesh_attr_length:${id}`);
+			continue;
+		}
+		for (let i = 0; i < count; i += 1) {
+			const uv = mesh.uvs[i];
+			if (!Array.isArray(uv) || uv.length !== 2 || uv[0] < 0 || uv[0] > 1 || uv[1] < 0 || uv[1] > 1) {
+				errors.push(`uv_out_of_range:${id}`);
+				break;
+			}
+		}
+		for (const index of mesh.indices) {
+			if (!Number.isInteger(index) || index < 0 || index >= count) {
+				errors.push(`index_out_of_range:${id}`);
+				break;
+			}
+		}
+		for (let i = 0; i < count; i += 1) {
+			const rowBones = mesh.bones[i];
+			const rowWeights = mesh.weights[i];
+			if (!Array.isArray(rowBones) || rowBones.length !== 4 || !Array.isArray(rowWeights) || rowWeights.length !== 4) {
+				errors.push(`four_influence:${id}`);
+				break;
+			}
+			if (bones && rowBones.some((bone) => !Number.isInteger(bone) || bone < 0 || bone >= bones)) {
+				errors.push(`bone_out_of_range:${id}`);
+				break;
+			}
+			const sum = rowWeights.reduce((total, weight) => total + Number(weight), 0);
+			if (Math.abs(sum - 1) > 0.02) {
+				errors.push(`weights_not_normalized:${id}`);
+				break;
+			}
+		}
+	}
+	const outfits = pack.outfits && typeof pack.outfits === 'object' ? pack.outfits : {};
+	const outfitIds = Object.keys(outfits);
+	if (outfitIds.length === 0) errors.push('outfit_missing');
+	for (const outfitId of outfitIds) {
+		if (!outfitId.startsWith('diy-')) errors.push(`outfit_bad_name:${outfitId}`);
+		const outfit = outfits[outfitId] || {};
+		const refs = [...(outfit.topBody || []), ...(outfit.bottom || []), ...(outfit.sleeve || []), ...(outfit.topUnder || [])];
+		if (!refs.some((ref) => seenIds.has(ref))) errors.push(`outfit_refs_missing:${outfitId}`);
+	}
+	return {
+		ok: errors.length === 0,
+		errors,
+		packId: String(pack.item || ''),
+		drawables,
+		outfits,
+		textures,
+	};
+}
+
+/**
+ * 把一个已校验的 DIY pack 注册进场景数据结构（不涉及 GL；runtime 在上传 VAO/纹理后调用）。
+ *
+ * @param {any} scene
+ * @param {string} packId
+ * @param {ReturnType<typeof normalizeDiyPack>} normalized
+ * @returns {{ ok: boolean, code?: string, entry?: any }}
+ */
+export function registerDiyPack(scene, packId, normalized) {
+	if (!scene || !normalized || !normalized.ok) return { ok: false, code: 'pack_invalid' };
+	if (!scene.diyPacks) scene.diyPacks = new Map();
+	if (scene.diyPacks.has(packId)) return { ok: false, code: 'pack_exists' };
+	for (const drawable of normalized.drawables) {
+		if (scene.drawableById[drawable.id]) return { ok: false, code: `drawable_id_conflict:${drawable.id}` };
+	}
+	for (const drawable of normalized.drawables) {
+		scene.drawables.push(drawable);
+		scene.drawableById[drawable.id] = drawable;
+	}
+	if (!scene.outfits) scene.outfits = {};
+	const outfitIds = [];
+	for (const [outfitId, outfit] of Object.entries(normalized.outfits)) {
+		scene.outfits[outfitId] = outfit;
+		outfitIds.push(outfitId);
+	}
+	const entry = {
+		packId,
+		drawableIds: normalized.drawables.map((drawable) => drawable.id),
+		drawables: normalized.drawables,
+		outfitIds,
+		textures: normalized.textures,
+	};
+	scene.diyPacks.set(packId, entry);
+	return { ok: true, entry };
+}
+
+/**
+ * 从场景数据结构中移除一个 DIY pack（不涉及 GL；runtime 负责释放 VAO/纹理）。
+ * @param {any} scene
+ * @param {string} packId
+ * @returns {{ ok: boolean, code?: string, entry?: any }}
+ */
+export function unregisterDiyPack(scene, packId) {
+	const entry = scene && scene.diyPacks ? scene.diyPacks.get(packId) : null;
+	if (!entry) return { ok: false, code: 'pack_not_found' };
+	scene.diyPacks.delete(packId);
+	const ids = new Set(entry.drawableIds);
+	scene.drawables = scene.drawables.filter((drawable) => !ids.has(drawable.id));
+	for (const id of entry.drawableIds) delete scene.drawableById[id];
+	for (const outfitId of entry.outfitIds) delete scene.outfits[outfitId];
+	return { ok: true, entry };
+}

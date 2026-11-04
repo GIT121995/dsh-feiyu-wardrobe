@@ -1,5 +1,36 @@
 # Changelog
 
+## 2.1.0 — 2026-11-04
+
+「DIY 全链路：agent 一张衣服图 → 自动成层/绑定/QA → 可动 2.5D 套装（安装/删除/.dshskin）」
+
+> DIY 仍**默认关闭**（`diy.enabled=false`）；开启后 agent 可通过 `dsh-feiyu-diy` CLI / `/diy` 命令调用。
+
+### 新特性
+- **agent 可调用宿主管线（S2）**：`dsh-feiyu-diy` CLI（plan/run/status/install/list/remove，单行 JSON）+ `/diy` 命令；
+  `lib/diy-pipeline.js` 编排 generate（Seedream 2 张/件）→ split（Python 移植 M1 成层，无浏览器）→
+  bind（增量 outfit pack）→ qa（宿主结构 QA）→ install（`~/.dsh/feiyu/diy/` + registry）。
+  预算/缓存/内容守卫/脱敏沿用 M1；QA 未过自动 `fallback=static`；默认关闭、失败零污染。
+- **可动 DIY 套装（S3）**：2.5D runtime 新增 `addOutfitPack/removeOutfitPack/getOutfitPacks`——
+  运行时动态合并增量 pack（多纹理、按 drawable 纹理绑定、不重建 base 图集），参数/物理/时间/造型状态保留，
+  移除时释放 VAO/VBO/纹理；页面 boot 从宿主读 registry，已安装套装进衣柜（🧵）选中即动效换装；
+  QA fallback=static 走静态贴片提示；支持删除、`.dshskin` 导出/导入、面板刷新（生成后可见）。
+- **宿主路由**：`GET /feiyu/diy/registry.json`、`GET /feiyu/diy/packs/<id>/...`（白名单路径）、
+  `POST /feiyu/diy/remove`、`POST /feiyu/diy/import`；同源 + `x-feiyu-diy` 头；默认关闭时 404（最小暴露）。
+- **文档**：新增 `docs/dress-up/DIY-PIPELINE.md`（S2 管线）与 `docs/dress-up/DIY-PACK.md`（增量 pack v1 + runtime API）。
+
+### 数据（真实 Seedream，本分支实测）
+- 3 件真实衣服端到端（top/dress/coat）：3/3 成功，6 张图 **¥1.8**，单件 **36.7–39.0s**，增量 pack **307–594KB/件**；
+  split Python 移植对 M1 证据 8 件 IoU ≥0.9996；S3 动态加载 **42–82ms/件**、额外显存 **0.77–1.79MiB**，
+  移除后资源计数回基线；E2E 全链路 0 pageerror（加载→衣柜→选中→动画→切 base→删除→刷新→`.dshskin` 导入恢复）。
+
+### 兼容/回归
+- `npm run verify` **248/248**（tsc + tests；新增 S2 管线 8 组 + S3 core/routes 测试）；页面模块 cache-bust **v16**，2.5D 资产版本仍 v13。
+- 旧行为保留：M1 浏览器 DIY 静态衣柜、互动/经济/立绘卡不变；默认关闭时换装间无任何 DIY 网络请求。
+- 已知限制：仅 chibi；真机未测；S3 的 QA 为宿主结构级 + S2 证据流程（runtime 帧视觉 QA 后续可加）。
+- **验证**：`npm run verify` **248/248**；S3 E2E 全链路（真实 S2 pack）0 pageerror；npm pack 7.2MB（87 files）。
+- **升级**：升级 profile/npm 后重启 DSH 生效；页面模块 cache-bust v16、2.5D 资产仍 v13；DIY 默认关闭，开启需宿主 `diy.enabled=true`。
+
 ## 2.0.1 — 2026-11-04
 
 「修复：DIY 静态造型出现两层衣服 / 与衣柜选中项不一致」

@@ -6,7 +6,7 @@
 
 > 把 DSH 的 token 账单，变成一条鱼的衣柜。
 
-当前版本：`2.0.1`（2.5D-only；破坏性变更见 [CHANGELOG](CHANGELOG.md)）
+当前版本：`2.1.0`（2.5D-only + DIY 全链路；破坏性变更见 [CHANGELOG](CHANGELOG.md)）
 
 **🆕 v2.0.0（2.5D-only，破坏性变更）**：装好插件后，DSH 侧边栏会出现 **🎀 换装间**，点开即玩——**左边舞台 + 右边衣柜**的经典换装布局；角色是**自研 WebGL2 2.5D 动态看板娘**（59 骨 / 15 弹簧链、LBS 蒙皮、头部跟随 / 歪头 / 点头、呼吸、发丝与裙摆物理、眨眼 / 笑眼 / 口型、双身形在线切换），**不再有 DOM 分层纸娃娃**（旧 DOM 渲染路径已按用户拍板删除）；**Q版 / 少女版双身形**，上衣 3（毛衣 / 卫衣 / 水手服）× 下装 2（格纹 / 深蓝百褶）任意混搭 + 经典女仆长裙，另有 6 张场景背景、4 种粒子特效。养女儿向互动保留：摸摸头、喂食（消耗鱼粮）、心情、亲密度、每日问候、待机台词，与鱼粮经济联动。**需要浏览器支持 WebGL2**；不支持时换装间只显示文字提示（不做静态人物兜底），详见 `docs/dress-up/2.5D-RUNTIME.md`。**真机性能未测。**
 
@@ -116,6 +116,8 @@ python3 tools/build_2d5.py --rig .scratch/m4/dist/chibi/rig.json \
 - 本项目免费开源、**不商业化、不卖皮肤**
 
 ## DIY 上传（可选 · 默认关闭）
+
+> **v2.1.0 · agent 可调用宿主管线（S2）+ 可动套装安装（S3）**：`dsh-feiyu-diy` CLI / `/diy` 命令把「图片 → Seedream look/flatout → 宿主 Python 自动成层 → 自动绑定 → QA → 安装」串成一条流水线（默认关闭、预算/守卫/缓存沿用本机 DIY 配置；失败自动回退静态贴片）。安装后的 DIY 套装会出现在换装间衣柜（🧵）：选中即**动态 2.5D 可动换装**（runtime 运行时合并增量 pack，不重建 base 图集），支持删除与 `.dshskin` 导出/导入；页面通过宿主 `/feiyu/diy/registry.json` 读取（静态托管/未开启 → 无 DIY，不报错）。格式见 [`docs/dress-up/DIY-PACK.md`](docs/dress-up/DIY-PACK.md)、管线见 [`docs/dress-up/DIY-PIPELINE.md`](docs/dress-up/DIY-PIPELINE.md)。
 
 「✨ DIY 上传」把**你自己拍的衣服**变成角色能穿的分层图层：上传一张衣服照片（挂拍/平铺/穿着均可）
 → 宿主本地代理调用云端图像 API（火山方舟 Seedream）生成「角色穿这件衣服」的 look + 同姿势平涂色版

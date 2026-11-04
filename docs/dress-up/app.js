@@ -19,8 +19,9 @@ import {
 	normalizeState,
 	randomOutfit,
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；加版本号让浏览器绕过旧缓存
-} from './wardrobe-core.js?v=15';
-import { createDiy } from './diy-ui.js?v=15';
+} from './wardrobe-core.js?v=16';
+import { createDiy } from './diy-ui.js?v=16';
+import { createDiyPacks } from './diy-packs.js?v=16';
 import {
 	ACTION_SPECS,
 	actionParams,
@@ -28,7 +29,7 @@ import {
 	hitZone,
 	moodFacePlan,
 	pickLine,
-} from './interaction-model.js?v=15';
+} from './interaction-model.js?v=16';
 
 (() => {
 	'use strict';
@@ -36,7 +37,7 @@ import {
 	const $ = (sel) => document.querySelector(sel);
 	const STORAGE_KEY = 'feiyu:outfit';
 	/** 2.5D runtime 模块（v2 唯一渲染路径；页面模块版本 v15）。 */
-	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=15';
+	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=16';
 	const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/';
 	/** 2.5D 资产版本（v1.0.0 起资产未变，保持 v13；页面模块升 v15）。 */
 	const RUNTIME_2D5_ASSET_VERSION = '13';
@@ -94,6 +95,8 @@ import {
 
 	let manifest = null;
 	let diy = null;
+	/** S3：宿主已安装的 DIY 动态套装（registry + 增量 pack）。 */
+	let diyPacks = null;
 	let state = null;
 	let tab = 'outfits';
 	/** 图片加载缓存：src → Promise<HTMLImageElement> */
@@ -413,9 +416,22 @@ import {
 		if (!runtime) return;
 		const seq = (syncSeq += 1);
 		const shape = state.shape;
-		runtime.setShape(shape).then((result) => {
+		runtime.setShape(shape).then(async (result) => {
 			if (seq !== syncSeq || !runtime) return;
 			if (result && result.stale) return;
+			// S3：动态 DIY 套装按需加载（多纹理；不重建 base 图集）
+			if (diyPacks) {
+				const packItem = diyPacks.findByOutfit(state.outfit);
+				if (packItem && packItem.animated) {
+					try {
+						await diyPacks.ensureLoaded(runtime, packItem.id);
+					} catch (err) {
+						console.warn('[衣橱] DIY 动态套装加载失败，回退静态提示', err);
+						say('这套 DIY 加载失败了，先看看别的套装吧');
+					}
+				}
+			}
+			if (seq !== syncSeq || !runtime) return;
 			runtime.setLook({ outfit: state.outfit, top: state.top, bottom: state.bottom });
 			applyDiyStatic();
 			runtime.renderFrame();
@@ -434,12 +450,12 @@ import {
 
 	/* ---------------- DIY 静态贴片（canvas 2D，不退回 DOM） ---------------- */
 
-	/** 当前选中单品里是否有 DIY（DIY 记录 shape=chibi，静态贴片只支持 Q 版）。 */
+	/** 当前选中单品里是否有 DIY 静态回退项（动态套装走 runtime，不进静态贴片）。 */
 	function activeDiyItem() {
 		for (const itemId of [state.outfit, state.top, state.bottom]) {
 			if (typeof itemId !== 'string' || !itemId.startsWith('diy-')) continue;
 			const item = findAnyItem(itemId);
-			if (item && item.diy) return item;
+			if (item && item.diy && item.diyAnimated !== true) return item;
 		}
 		return null;
 	}
@@ -730,6 +746,10 @@ import {
 		applyState();
 		popFigure();
 		const item = findItem(catId, itemId);
+		if (item && item.diyAnimated) {
+			say(`穿上「${item.name}」啦～（DIY 动态 2.5D）`);
+			return;
+		}
 		if (item && item.diy) {
 			if (state.shape !== 'chibi') {
 				say('DIY 单品只做了 Q 版，切到 Q 版就能看到啦～');
@@ -1400,6 +1420,14 @@ import {
 		} catch (err) {
 			console.warn('[衣橱] DIY 本地衣柜加载失败（不影响换装）', err);
 		}
+		// S3：宿主已安装 DIY 动态套装（默认关闭/静态托管 404 → 无 DIY，不阻塞）
+		diyPacks = createDiyPacks({ manifest });
+		try {
+			await diyPacks.prepare();
+			diyPacks.inject(manifest);
+		} catch (err) {
+			console.warn('[衣橱] 宿主 DIY 套装加载失败（不影响换装）', err);
+		}
 		state = normalizeState(manifest, { ...readSaved(), ...readUrlOverrides() });
 		document.title = `${manifest.character} · 大肥鱼衣橱`;
 		renderShapeToggle();
@@ -1434,6 +1462,40 @@ import {
 		});
 		/** QA / Playwright 自动化入口（不参与正常渲染）。 */
 		window.__feiyuDiy = diy;
+		// S3：DIY 已安装套装面板（试穿/导出导入 .dshskin/删除/刷新）
+		if (diyPacks) {
+			diyPacks.mountUi(els.stage, {
+				runtime: () => runtime,
+				select: (itemId) => {
+					state = applySelection(manifest, state, 'outfits', itemId);
+					applyState();
+				},
+				refresh: () => {
+					shelfBuiltCat = '';
+					renderShelf();
+					if (typeof state.outfit === 'string' && state.outfit.startsWith('diy-') && !diyPacks.find(state.outfit)) {
+						state = applySelection(manifest, state, 'outfits', 'maid');
+					}
+					applyState();
+				},
+			});
+			window.__feiyuDiyPacks = {
+				available: () => diyPacks.available(),
+				error: () => diyPacks.error(),
+				items: () => diyPacks.list(),
+				prepare: () => diyPacks.prepare(),
+				refresh: () => diyPacks.refresh(),
+				inject: () => diyPacks.inject(manifest),
+				select: (itemId) => {
+					state = applySelection(manifest, state, 'outfits', itemId);
+					applyState();
+				},
+				exportSkin: (itemId) => diyPacks.exportSkin(itemId),
+				importSkin: (bundle) => diyPacks.importSkin(bundle),
+				remove: (itemId) => diyPacks.remove(itemId, runtime),
+				loadedPacks: () => (runtime ? runtime.getOutfitPacks() : []),
+			};
+		}
 		/** M5 互动 E2E / 调试入口。 */
 		window.__feiyuInteraction = {
 			mode: () => interaction.mode,

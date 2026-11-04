@@ -266,3 +266,119 @@ body.embed .wardrobe { flex-basis: clamp(280px, 34vw, 380px); }
 }
 
 body.embed .interaction-hud { display: none; }
+
+/* ---------------- DIY 已安装套装面板（S3） ---------------- */
+
+.diy-fab {
+	position: absolute;
+	right: 14px;
+	bottom: 14px;
+	z-index: 30;
+	width: 38px;
+	height: 38px;
+	border-radius: 999px;
+	border: 1px solid rgba(255, 255, 255, 0.28);
+	background: rgba(24, 28, 46, 0.82);
+	color: #fff;
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+
+.diy-fab:hover {
+	background: rgba(46, 54, 88, 0.92);
+}
+
+.diy-panel {
+	position: absolute;
+	right: 14px;
+	bottom: 60px;
+	z-index: 31;
+	width: min(320px, 86vw);
+	max-height: 62vh;
+	overflow: auto;
+	padding: 10px;
+	border-radius: 14px;
+	border: 1px solid rgba(255, 255, 255, 0.18);
+	background: rgba(18, 21, 34, 0.94);
+	color: #f2f4ff;
+	font-size: 12px;
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+.diy-panel-head {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-bottom: 8px;
+}
+
+.diy-panel-head b {
+	flex: 1;
+	font-size: 13px;
+}
+
+.diy-panel button {
+	border: 1px solid rgba(255, 255, 255, 0.22);
+	background: rgba(255, 255, 255, 0.08);
+	color: inherit;
+	border-radius: 8px;
+	padding: 3px 7px;
+	cursor: pointer;
+}
+
+.diy-panel button:hover {
+	background: rgba(255, 255, 255, 0.16);
+}
+
+.diy-panel-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	padding: 5px 0;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.diy-panel-row img {
+	width: 30px;
+	height: 38px;
+	object-fit: contain;
+	flex: none;
+}
+
+.diy-panel-name {
+	flex: 1;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.diy-panel-row i {
+	font-style: normal;
+	opacity: 0.65;
+}
+
+.diy-panel-empty {
+	opacity: 0.7;
+	padding: 6px 0;
+}
+
+.diy-panel-foot {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding-top: 8px;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.diy-panel-foot label {
+	cursor: pointer;
+	text-decoration: underline;
+}
+
+.diy-panel-status {
+	flex: 1;
+	opacity: 0.75;
+	text-align: right;
+}
