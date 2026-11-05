@@ -9,7 +9,7 @@
     ├── atlas.webp         图集页（lossless WebP RGBA，逐 drawable 2px 透明 padding；多页时 atlas-2.webp …）
     └── build-report.json  构建报告（逐页图集尺寸/矩形/字节数/pixelEqual/校验结果）
 
-输入契约（M4 按 `.scratch/m3/ASSET-SPEC-2D5.md` 交付同结构）：
+输入契约（M4 阶段按同一结构交付；源素材经 `assets-src-v1.tar.zst` 冻结）：
   --rig      POC 形态 rig JSON（skeleton/deformers/physics/drawables/outfits/slots；可选多页字段）
   --texdir   纹理目录（drawable.texture 的 basename 必须能在该目录找到；尺寸 = drawable.texSize）
   --out      输出目录（<out>/<shape>/rig.json 等）
@@ -28,11 +28,12 @@
 校验：默认回读每页 atlas 与内存合成逐像素比对（lossless 必须完全相等）；UV 落在所属页图集矩形内；
       outfit 引用的 drawable 必须存在；失败退出码 1。
 
-用法：
-    python3 tools/build_2d5.py \
-        --rig /home/ubuntu/dsh/.scratch/m2-full/poc/chibi-v2-m3.feiyu.json \
-        --texdir /home/ubuntu/dsh/.scratch/m2-full/poc/assets/m3/chibi \
-        --out docs/dress-up/art/2d5 --shape chibi
+用法（由 `tools/art/build_prod.py --build-atlas` 调用；也可独立跑）：
+    python3 tools/art/build_2d5.py \
+        --rig .cache/build/assets/chibi-cutout.feiyu.json \
+        --texdir .cache/build/assets/tex/chibi \
+        --out tools/art/dist --shape chibi --trim-alpha --max-width 4096 \
+        --max-side 4096 --pad 1
 """
 
 from __future__ import annotations
@@ -47,8 +48,8 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-HERE = Path(__file__).resolve().parent          # <repo>/tools
-ROOT = HERE.parent                              # <repo>
+HERE = Path(__file__).resolve().parent          # <repo>/tools/art
+ROOT = HERE.parent.parent                       # <repo>
 DEFAULT_OUT = ROOT / 'docs' / 'dress-up' / 'art' / '2d5'
 
 # 定点精度：positions 0.01px、uvs 1e-5（≈0.006px@598px 纹理）、weights 1e-4、deform 1e-3。
@@ -58,6 +59,9 @@ MAX_WIDTH = 2048         # 单页图集最大宽度（GL ES 3.0 最低保证 204
 MAX_SIDE = 4096          # 单页图集最大边长（宽/高；SPEC 约束）
 MAX_PAGES = 2            # 每身形最多图集页数（cutout 首版）
 OUTFIT_SLOTS = ('topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar')
+# provenance string written into rig.json (`m3.generator` / `product.generator`).
+# Keep the historical path so v2.5.0 dist rebuilds are byte-identical; changing it
+# changes rig.json bytes (no runtime behaviour change).
 GENERATOR = 'tools/build_2d5.py'
 
 

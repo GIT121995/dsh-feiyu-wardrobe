@@ -1,0 +1,129 @@
+# tools/art · 2.5D 资产构建管线（W0 入仓）
+
+> 大肥鱼衣橱的 production 2.5D 资产（`docs/dress-up/art/2d5/{chibi,girl}/`）由本目录脚本
+> 从**冻结的源素材包**确定性重建。W0 之前这套管线只存在于 `.scratch/` 工作目录（M2/M4/P2/T1/T2/T3
+> 各阶段交付），仓库里只有半套 `tools/build_2d5.py`；W0-a 把 builder 参数化入仓、源素材打包走
+> GitHub Release asset，并加构建确定性测试。
+>
+> - 产出资产版本：**资产 v17 / v2.5.0 口径**（chibi 85 drawables / girl 86，65 骨，单页图集）。
+> - 源素材 **154.8MB raw / tarball 94.3MB**，**不入 git**，走 GitHub Release（tag `assets-v1`）的 `assets-src-v1.tar.zst`。
+> - 运行时零依赖；构建依赖见 `tools/requirements.txt`（python3 + numpy + opencv-python-headless + Pillow）。
+
+## 目录
+
+```
+tools/art/
+├── build_prod.py        # 主 builder：源素材 → 2 身形 cutout source rig + 纹理 → 调 build_2d5.py
+├── build_2d5.py         # 图集打包器：best-fit 图集 + UV 重映射 + 定点化 + pixelEqual 校验（M3b 多页版）
+├── vendor/
+│   └── overlay_hands.py # T2 手部精修 overlay（vendored；hands 根由参数传入）
+├── pack-sources.mjs     # 源素材树 → assets-src-v1.tar.zst + manifest.json + sources.json + VERSION + SHA256SUMS
+├── fetch-sources.mjs    # 下载/解包 assets-src-v1.tar.zst（sha256 + manifest 逐文件校验）→ .cache/assets-src/
+└── README.md
+```
+
+## 快速开始（复现 v2.5.0 资产）
+
+```bash
+# 1) 取源素材（下载 ~94MB / 解包 154.8MB → .cache/assets-src/，gitignored；或 --from <已有 tar.zst>）
+npm run fetch:sources
+
+# 2) 构建（→ tools/art/dist/{chibi,girl}/，gitignored；中间产物在 .cache/build/）
+npm run build:assets
+
+# 3) 构建契约 + 与官方 dist 逐字节比对
+npm run verify:full
+```
+
+> 源不在默认位置（CI 缓存 / 本地已解包到别处）时不需要仓库内 `.cache/`，直接传 `--src`：
+>
+> ```bash
+> npm run build:assets -- --src /path/to/assets-src --workdir /tmp/feiyu-build --outdir /tmp/feiyu-dist
+> FEIYU_ASSETS_SRC=/path/to/assets-src FEIYU_ASSET_VERIFY_DIST=1 npm test
+> ```
+
+高 DPI/真机视觉门禁见 `docs/VISUAL-QA.md` 与 `npm run visual:qa`；发版检查见 `npm run release:prepare`。
+
+## 源素材包（assets-src-v1）
+
+官方包：GitHub Release `assets-v1` 的 `assets-src-v1.tar.zst`（`https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v1/assets-src-v1.tar.zst`）。
+
+| 包内路径 | 内容 | 来源（历史工程） |
+|---|---|---|
+| `art/` | M2 cutout 分件：`MANIFEST.json` + `base/{shape}/`（parts-index/clean-body/parts）+ `garments/{shape}/{6 组合}/` | `.scratch/cutout/art` |
+| `m4/` | production 模板：`dist/{shape}/{rig.json, tex/hair-*, tex/face-*}` + `assets/art-v2/{shape}/`（body/arms/hair 层 + `layers/` 6 个服装 source） | `.scratch/m4` |
+| `prod/` | P3 冻结构建输入：`seamfill-{shape}.npz` + `ref/{shape}_{combo}_rgba.png`（rest 颜色移植参考） | `.scratch/p5/rig/assets` |
+| `hands/` | T2 手部精修：`overlay-1x/{shape}.png`、`masks/hands-mask-{shape}.png`、`refined2x/{shape}/hand-tex.png`（实验 2x） | `.scratch/p5/hands` |
+| `feet/` | P2 脚部精修：`{shape}/feet.png`、`{shape}/masks/feet.png` | `.scratch/polish2/hands-feet` |
+| `VERSION` | 源包版本：`assets-v1` | 由 pack 脚本写入 |
+| `sources.json` | 上述布局映射（审计/升级参考） | 由 pack 脚本写入 |
+| `manifest.json` | payload 文件清单（相对路径/大小/sha256），fetch 侧逐文件校验 | 由 pack 脚本写入 |
+
+- **当前 v1 包**：**245 files / 154,758,073 B（154.8MB）raw**；`tar --sort=name --mtime=@0 --pax-option=delete=atime,delete=ctime`
+  + `zstd -19` → **94,273,694 B（94.3MB，ratio 0.61）**，sha256 `d19ff537440116a1be9673d192b47a89bfefa7125fa6de3356c68d3930d26460`
+  （见 `.scratch/p7/SHA256SUMS`）。同一 staging 树重复打包 / 从已解包树回炉打包均得到相同 sha256（确定性）。
+  `fetch-sources.mjs` 内置该 sha256 固定值（发布者也可用 `FEIYU_ASSETS_SRC_SHA256` / `--sha256` 覆盖）。
+- **源包不是**历史工程全量快照：只冻结 `build_prod.py` 实际读取的文件（排除 M2 `work/qa/masks`、M4 未引用 webp/layer、
+  T2 `work/`、P3 中间 `tex/` 等可由构建再生的产物）。
+- **升级源包**（下一次资产改动）：从新的 M2/M4/交付目录重新 staging（本仓库历史的 staging 映射见
+  `.scratch/p7/pipeline/stage-sources.mjs` 与 `.scratch/p7/pipeline/REPORT.md`）→ `npm run pack:sources -- --version assets-v2`
+  → 上传新 Release asset → 更新 `fetch-sources.mjs` 的 `PINNED_SHA256`/URL → 重新基线 `docs/dress-up/art/2d5`。
+
+## `build_prod.py` 命令与 flag
+
+```bash
+python3 tools/art/build_prod.py [--shape chibi|girl|both] [--build-atlas]
+    [--src <源根>] [--workdir <中间产物>] [--outdir <dist 根>] [--tool <build_2d5 路径>]
+    [--generator-id <provenance>] [--source-note <provenance>]
+    [--skip-hair-split] [--skip-hands] [--hands-2x] [--hands-dir <T2 根>]
+```
+
+| flag | 默认 | 说明 |
+|---|---|---|
+| `--shape` | `both` | 身形选择 |
+| `--build-atlas` | off | 只写 source rig/纹理；开启后再跑 `build_2d5.py` 产出运行时 dist |
+| `--src` | `<repo>/.cache/assets-src` | 源包根（布局见上表） |
+| `--workdir` | `<repo>/.cache/build` | 中间产物根（`assets/tex/{shape}`、`assets/{shape}-cutout.feiyu.json`、`assets/build-stats.json`） |
+| `--outdir` | `<repo>/tools/art/dist` | dist 输出根（`<outdir>/{chibi,girl}/{rig.json,atlas.webp,build-report.json}`） |
+| `--tool` | `tools/art/build_2d5.py` | 图集打包器路径 |
+| `--generator-id` | `cutout/prod/tools/build_prod.py` | 写进 rig.json 的 provenance 字符串；**保持历史值**才能与 v2.5.0 官方 dist 逐字节一致 |
+| `--source-note` | `M2 cutout art（production，源工程不入库）` | 写进 rig.json `cutout.source` 的 provenance 字符串（同上） |
+| `--skip-hair-split` | off | T1 拆发关闭（v2.4.0 hair 口径，QA 归因用） |
+| `--skip-hands` | off | T2 手部 overlay 关闭（QA 归因用） |
+| `--hands-2x` | off | 实验：T2 2x 手部纹理（未进发布，A2 变体） |
+| `--hands-dir` | `<src>/hands` | T2 交付根覆盖 |
+
+`build_2d5.py` 单独使用：
+
+```bash
+python3 tools/art/build_2d5.py --rig <source rig.json> --texdir <纹理目录> \
+    --out <dist 根> --shape chibi|girl [--trim-alpha] [--max-width 4096] [--max-side 4096] [--pad 1]
+```
+
+- 单页：`rig.atlas` + `atlas.webp`；多页（≤2）：`rig.atlasPages` / `rig.atlases` + `drawables[].atlas`。
+- lossless WebP RGBA、逐 drawable 透明 padding、UV 重映射到图集空间、定点化（positions 0.01px / uvs 1e-5 / weights 1e-4）。
+- 默认 `--out docs/dress-up/art/2d5`（独立使用时；builder 会显式传 `--out`）。
+- 校验失败退出码 1；**不要手改产物**，改源/脚本后重跑。
+
+## 确定性与验收口径
+
+- 同源双跑：`rig.json` / `atlas.webp` **md5 逐字节一致**（无时间戳/随机序；图集打包与 JSON 序列化固定）。
+- 与官方 `docs/dress-up/art/2d5/{chibi,girl}` 比对：`rig.json` + `atlas.webp` **逐字节一致**；
+  `build-report.json` 允许差异（v2.5 实测三文件全一致；字段级差异说明见 `.scratch/p7/pipeline/REPORT.md`）。
+  rig.json 里两个 provenance 字符串（`generator`、`cutout.source`）是**资产契约的一部分**，默认保持历史值，
+  仅换资产口径时才用 `--generator-id/--source-note` 覆盖。
+- `tests/asset-build.test.mjs`：`npm test` 在源缺失时 skip（保持 `verify` 快速）；`verify:full` 在源就绪时做
+  manifest 契约 + 双跑确定性 + 官方 dist md5 比对。图集必须 `pixelEqual=true`。
+
+## 已知限制（诚实）
+
+- **源包体积**：94.3MB tarball / 154.8MB 解包（zstd -19 实测 ratio 0.61）→ 不入 git，走 GitHub Release；无源时无法构建。
+- **构建耗时**：两身形 `--build-atlas` ≈ 4.5–5 分钟（2 核，headless，无 GPU；本机口径）。
+- **构建环境**：python3 + numpy/opencv/Pillow；图集编码依赖 Pillow 的 lossless WebP（Pillow/libwebp 版本理论上可能影响
+  编码字节；v2.5 基线与本机 Pillow 10.2.0 对齐）。生产环境固定依赖版本（`tools/requirements.txt` 只给下限）。
+- **单页 4096 限制**：current production 单页；多页能力保留但未启用（2x 实验曾因收益≈噪声、VRAM 上升被砍）。
+- **实验开关不保证基线一致**：`--skip-hair-split/--skip-hands/--hands-2x` 产出的 A/C/A2 变体是 QA/归因产物，
+  不代表官方 dist。
+- **2x 手部**：T2 的 refined2x 数据保留在源包中（实验），默认构建不使用；收益未证实。
+- **历史 `.scratch` 工具**：T1/T2/T3 交付脚本（`.scratch/p5/*/tools`、`.scratch/cutout/prod/tools`）不再作为生产入口；
+  本目录文件是合并后的唯一事实来源。

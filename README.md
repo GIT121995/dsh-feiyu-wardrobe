@@ -98,16 +98,18 @@ dsh --profile web
 
 ![换装间（2.5D）](https://raw.githubusercontent.com/GIT121995/dsh-feiyu-wardrobe/main/docs/preview/dressup.png)
 
-素材管线（全部可复现，2.5D 资产规范见 [`.scratch/m3/ASSET-SPEC-2D5.md`](../../.scratch/m3/ASSET-SPEC-2D5.md) 的历史快照，构建脚本见 `tools/build_2d5.py`）：
+素材管线（全部可复现；详细说明见 [`tools/art/README.md`](tools/art/README.md)，运行时资产契约见 [`docs/dress-up/2.5D-RUNTIME.md`](docs/dress-up/2.5D-RUNTIME.md)）：
 
 ```sh
-# 2.5D production 资产（.scratch/m4/dist/<shape>/{rig.json,tex/}）→ 仓库 docs/dress-up/art/2d5/
-python3 tools/build_2d5.py --rig .scratch/m4/dist/chibi/rig.json \
-    --texdir .scratch/m4/dist/chibi/tex --out docs/dress-up/art/2d5 --shape chibi
-# girl 同理；构建自动做图集打包/UV 重映射/定点化/pixelEqual 校验
+npm run fetch:sources    # 下载构建源素材（GitHub Release asset `assets-v1`）→ .cache/assets-src/，sha256 + 逐文件校验
+npm run build:assets     # 确定性重建：源素材 → 拆件/绑定 → 图集打包 → tools/art/dist/{chibi,girl}/（约 5 分钟）
+npm run verify:full      # 构建契约 + 与仓库内 docs/dress-up/art/2d5 逐字节比对
 ```
 
-构建需要 `pillow + numpy`（仅构建用；游戏运行零依赖）。旧 DOM 分层素材管线（build_wardrobe/build_masks）已在 v2.0.0 删除，历史见 git。
+- 构建源素材约 150MB，**不入 git**（`.cache/` 已 gitignore），通过 GitHub Release 分发；`npm run fetch:sources -- --from <local.tar.zst>` 可离线导入。
+- 构建需要系统 `tar`/`zstd` 与 `python3`（`pip install -r tools/requirements.txt`：pillow / numpy / opencv-python-headless；仅构建用，游戏运行零依赖）。
+- 换资产时把 `tools/art/dist/{chibi,girl}/` 同步到 `docs/dress-up/art/2d5/` 并提升资产版本 `?v=`（见 [运行时说明](docs/dress-up/2.5D-RUNTIME.md)）；**不要手改产物**。
+- 旧 DOM 分层素材管线（`build_wardrobe.py` / `build_masks.py`，v0.9 时代）已在 v2.0.0 删除，历史文档归档在 [`docs/archive/`](docs/archive/README.md)。
 
 **素材版权**：
 
@@ -148,8 +150,9 @@ python3 tools/build_2d5.py --rig .scratch/m4/dist/chibi/rig.json \
       # dailyBudgetYuan: 10   # 每日金额上限（¥）
 ```
 
-完整契约（代理路由/预算/缓存/守卫/`.dshskin` schema/已知限制）见
-[`docs/dress-up/DIY-UPLOAD.md`](docs/dress-up/DIY-UPLOAD.md)。目前只支持 **Q版（chibi）** 身形。
+完整契约见 [`docs/dress-up/DIY-PIPELINE.md`](docs/dress-up/DIY-PIPELINE.md)（宿主生成管线：代理路由/预算/守卫/QA/安装）
+与 [`docs/dress-up/DIY-PACK.md`](docs/dress-up/DIY-PACK.md)（增量 pack 与 `.dshskin` 格式/runtime 消费）；
+历史 M1 契约（浏览器本地成层/IndexedDB 本地衣柜）归档在 [`docs/archive/DIY-UPLOAD.md`](docs/archive/DIY-UPLOAD.md)。目前只支持 **Q版（chibi）** 身形。
 
 ## 报告卡 CLI
 
@@ -180,7 +183,7 @@ dsh-feiyu-report --sheet            # 渲染整个衣柜目录页
     birthGiftCoins: 120         # 出生礼
     dailyRetentionDays: 120     # 每日台账保留天数
     holidays: []                # 法定节假日（峰谷价用），YYYY-MM-DD
-    diy:                        # DIY 上传（可选，默认关闭；见 docs/dress-up/DIY-UPLOAD.md）
+    diy:                        # DIY 上传（可选，默认关闭；见 docs/dress-up/DIY-PIPELINE.md）
       enabled: false            # true = 开启云端生成 + 本地衣柜（需宿主 ARK_API_KEY）
       dailyImageLimit: 40       # 每日图片张数上限
       dailyBudgetYuan: 10       # 每日金额上限（¥）
@@ -213,19 +216,27 @@ dsh-feiyu-report --sheet            # 渲染整个衣柜目录页
 
 - DSH `>= 0.1.0`（本版在 `0.2.1-rc.2` 实测）
 - Node.js `>= 22.5`，零运行时依赖
-- `npm run verify` = `tsc --checkJs` 类型检查 + **230+ 个**单元/集成测试（定价、经济、状态迁移、渲染、PNG、命令、CLI、换装间静态路由、2.5D 资产契约/图集完整性、manifest v8、无 WebGL2 纯文本提示、DIY 守卫/代理/预算/缓存/成层/IndexedDB 记录/`.dshskin`、M5 互动/经济）
+- `npm run verify` = `tsc --checkJs` 类型检查 + **260+ 个**单元/集成测试（定价、经济、状态迁移、渲染、PNG、命令、CLI、换装间静态路由、2.5D 资产契约/图集完整性、manifest v8、无 WebGL2 纯文本提示、DIY 守卫/代理/预算/缓存/成层/IndexedDB 记录/`.dshskin`、M5 互动/经济、资产构建确定性）
 
 ```sh
 npm run verify
 ```
 
+## 质量门禁（1x / 2x 视觉）
+
+- **1x 全身**：页面默认舞台尺寸（600–900px 高）下，角色无肉眼可见的接缝、双色块、白线；关节处允许 AA 过渡。
+- **2x 关键局部**：膝 / 手 / 肩 / 脚 / 腹 / 发等区域 2x 放大截图允许 ≤1px AA，不允许 ≥2px 连续白线/接缝/露底；隐藏区 ±25° 转头/歪头不得露出背景洞。
+- **视觉门禁**（随下一个版本发布生效）：`npm run visual:qa -- --mode compare` 与 `docs/qa-baseline/` 基线做像素对比，超阈值即失败；`--mode baseline` 生成/更新基线。验收清单、baseline 更新流程与缺陷联动见 [`docs/VISUAL-QA.md`](docs/VISUAL-QA.md)。
+- **已知缺陷**登记在 [`docs/QA-REGISTRY.md`](docs/QA-REGISTRY.md)（D-001 起，含 1x/2x 验收标准与回归方式）；视觉门禁通过 ≠ 已知缺陷已关闭。
+
 ## 路线图
 
-- **已完成**：v0.7 真·分层换装 → v0.8 性能修复 + 保守内容收敛 → v0.9 7 槽位纸娃娃 → v1.0.0 2.5D（opt-in）+ 养成互动
-- **v2.0.0（本轮，破坏性变更）**：删除 DOM 分层渲染，收敛为 **2.5D-only**；无 WebGL2 仅文字提示；DIY 改静态贴片
-- **下一步 · 配饰层**：头饰 / 鞋子 / 手持，复用 2.5D 槽位（drawable slot）体系
-- **DIY 上传 M1（默认关闭）**：上传衣服 → 宿主代理生成 look/flatout → 浏览器本地成层/QA → IndexedDB 本地衣柜 → `.dshskin` 导入导出（8/8 真实照片 QA 成层通过，见 `docs/dress-up/DIY-UPLOAD.md`）
-- **之后**：皮肤包社区交换码、DIY 图像分类器补强、真机性能矩阵
+- **已完成**：v0.7 真·分层换装 → v0.9 7 槽位纸娃娃 → v1.0.0 2.5D（opt-in）+ 养成互动
+- **v2.0.0（破坏性变更）**：删除 DOM 分层渲染，收敛为 **2.5D-only**；无 WebGL2 仅文字提示；DIY 改静态贴片
+- **v2.1.0 – v2.5.0**：DIY 全链路（agent 可调用宿主管线 + 可动增量 pack）、cutout 分件素体、脚部/双手精修、legBones（65 骨）、girl 后发全量拆件（资产 v17 / 页面 v21）
+- **下一步 · v2.6（规划）**：素体 B + 拆件/接缝打磨（D-001 / D-002 / D-009，见 [QA 登记表](docs/QA-REGISTRY.md)）；工程侧：资产管线入仓、1x/2x 视觉门禁、发布 checklist、真机抽样
+- **配饰层**：头饰 / 鞋子 / 手持，复用 2.5D 槽位（drawable slot）体系
+- **之后**：皮肤包社区交换码、DIY 图像分类器补强、真机性能矩阵、全资产 2x（高 DPI，需单独立项）
 - 更远：多鱼塘（多会话鱼）、每日小任务；把 `dsh-memory-gate` 的记忆做成「鱼记得你说过什么」，但依然只读聚合摘要
 
 ## 开发
@@ -244,6 +255,8 @@ node bin/feiyu-report.mjs --demo --out card.html   # 预览报告卡
 lib/webserver.js 换装间本地静态路由（/feiyu/dress-up/，离线可用）
 lib/client.js    浏览器半区：侧边栏换装间入口 + 主面板 iframe + 悬浮小鲸鱼
 docs/dress-up/   换装间前端：2.5D-only（runtime-2d5*.js + manifest v8 + art/2d5/<shape>/{rig.json,atlas.webp}）
+tools/art/       资产构建管线（build_prod.py 拆件/绑定 → build_2d5.py 图集；源素材打包/获取脚本，见 tools/art/README.md）
+docs/            运行时文档、视觉门禁（VISUAL-QA.md）、缺陷登记表（QA-REGISTRY.md）、历史文档归档（archive/）
 lib/catalog.js   21 件原创 SVG 单品 + 稀有度/价格
 lib/render.js    360×360 场景与 1080×1440 报告卡
 lib/economy.js   鱼粮币 / 亲密度 / 心情 / 连续天数

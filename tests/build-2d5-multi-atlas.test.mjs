@@ -1,5 +1,5 @@
 /**
- * B-M3b：tools/build_2d5.py 多页图集构建测试。
+ * B-M3b：tools/art/build_2d5.py 多页图集构建测试。
  * - 两页（base/cutout）输入 → 两张 atlas + rig.atlases/drawables[].atlas + 每页 pixelEqual；
  * - 旧单图集输入 → 输出形状不变（无 atlases / 无 drawable.atlas）；
  * - 产物可被 M3 runtime core 的 normalizeAtlases/resolveDrawableAtlas 消费。
@@ -78,7 +78,7 @@ function makeRig(multi) {
 
 function runBuilder(rigPath, texdir, outDir) {
 	return spawnSync(PYTHON, [
-		join(ROOT, 'tools', 'build_2d5.py'),
+		join(ROOT, 'tools', 'art', 'build_2d5.py'),
 		'--rig', rigPath, '--texdir', texdir, '--out', outDir, '--shape', 'chibi',
 	], { encoding: 'utf8' });
 }

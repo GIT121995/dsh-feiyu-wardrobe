@@ -73,7 +73,7 @@ test('DOM 人物资产与构建工具已移除，且不再被引用', () => {
 	for (const name of ['build_masks.py', 'build_wardrobe.py', 'prepare_dress.py', 'masks']) {
 		assert.equal(existsSync(join(toolsDir, name)), false, `DOM 构建工具应删除：tools/${name}`);
 	}
-	assert.ok(existsSync(join(toolsDir, 'build_2d5.py')), '2.5D 构建脚本应保留');
+	assert.ok(existsSync(join(toolsDir, 'art', 'build_2d5.py')), '2.5D 构建脚本应保留（tools/art/build_2d5.py）');
 });
 
 test('DIY 成层参考掩膜：仅 diy-ui 使用，非人物渲染资产（Lead 批准迁移）', () => {

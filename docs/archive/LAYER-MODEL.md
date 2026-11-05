@@ -1,3 +1,5 @@
+> **📦 已归档（W0，2026-11-05）**：本文为历史文档，内容反映当时版本，不再维护；归档原因与现行替代文档见 [`docs/archive/README.md`](./README.md)。
+
 > **⚠️ 已退役（v2.0.0，2026-11-04）**：DOM 分层纸娃娃（本文的 7 槽位 `drawOrder`/`layers`/B1-lite 脸部补丁）已按用户拍板删除，
 > 换装间收敛为 **2.5D-only**（`docs/dress-up/2.5D-RUNTIME.md`）。本文仅作历史契约与旧素材管线参考，不再参与构建/渲染；
 > manifest 现行版本为 **v8**（无 `drawOrder` / `shapes[].layers` / `items[].layers`）。

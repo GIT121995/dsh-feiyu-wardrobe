@@ -42,7 +42,7 @@ function webpSize(file) {
 /** @returns {any} */
 function loadRig(shape) {
 	const file = join(ASSET_ROOT, shape, 'rig.json');
-	assert.ok(existsSync(file), `缺少 ${shape}/rig.json（先跑 tools/build_2d5.py）`);
+	assert.ok(existsSync(file), `缺少 ${shape}/rig.json（先跑 npm run build:assets）`);
 	return JSON.parse(readFileSync(file, 'utf8'));
 }
 
@@ -69,7 +69,7 @@ function walkAssets() {
 	return files;
 }
 
-test('2.5D 资产全集：两身形 rig + 图集 + 构建报告（缺失时先跑 tools/build_2d5.py）', () => {
+test('2.5D 资产全集：两身形 rig + 图集 + 构建报告（缺失时先跑 npm run build:assets）', () => {
 	for (const shape of SHAPES) {
 		for (const name of ['rig.json', 'atlas.webp', 'build-report.json']) {
 			const file = join(ASSET_ROOT, shape, name);
@@ -77,7 +77,7 @@ test('2.5D 资产全集：两身形 rig + 图集 + 构建报告（缺失时先�
 			assert.ok(statSync(file).size > 1024, `art/2d5/${shape}/${name} 体积异常`);
 		}
 	}
-	assert.ok(existsSync(join(ROOT, '..', '..', 'tools', 'build_2d5.py')), '仓库应带资产构建脚本 tools/build_2d5.py');
+	assert.ok(existsSync(join(ROOT, '..', '..', 'tools', 'art', 'build_2d5.py')), '仓库应带资产构建脚本 tools/art/build_2d5.py');
 });
 
 test('2.5D rig：图集元数据与实际 WebP 尺寸一致、UV 重映射到图集空间', () => {
