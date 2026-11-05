@@ -47,7 +47,7 @@ import {
 	LEGACY_OUTFIT_SLOTS,
 	unregisterDiyPack,
 	visibleDrawables,
-} from './runtime-2d5-core.js?v=19';
+} from './runtime-2d5-core.js?v=20';
 
 /** 单个 spring 链节点相对 rest 的最大偏移（px，安全包络，POC 同值）。 */
 const CHAIN_OFFSET_LIMIT = 42;
@@ -58,7 +58,7 @@ const TAP_DURATION = 0.45;
 
 /* ---------------------------------------------------------------- shaders -- */
 
-const MAX_BONES = 64;
+const MAX_BONES = 80;
 
 const VERT = `#version 300 es
 precision highp float;
@@ -402,7 +402,11 @@ function buildApi(rt) {
 			if (!scene) throw new Error('先 setShape 再 addOutfitPack');
 			const pack = options.pack;
 			const packId = String(options.packId || (pack && pack.item) || '');
-			const normalized = normalizeDiyPack(pack, { bones: scene.skeleton.bones.length, shape: rt.shape });
+			const normalized = normalizeDiyPack(pack, {
+				bones: scene.skeleton.bones.length,
+				boneNames: scene.bones.map((bone) => bone.id),
+				shape: rt.shape,
+			});
 			if (!normalized.ok || !packId) {
 				const error = new Error(`DIY pack 校验失败：${normalized.errors.join(',') || 'packId_missing'}`);
 				error.code = 'pack_invalid';
@@ -1314,6 +1318,39 @@ function closestPointOnSegment(px, py, ax, ay, bx, by) {
 	return [ax + dx * t, ay + dy * t];
 }
 
+/** @param {any} scene @param {any} collider @param {'a'|'b'} key */
+function colliderEndpointLocal(collider, key) {
+	// m2-rig P3 约定：aBone/bBone + aLocal/bLocal（相对骨 base 的局部偏移）；
+	// 兼容 aOffset/bOffset（早期约定）与无绑骨时绝对 a/b。
+	const offset = collider[`${key}Local`] || collider[`${key}Offset`] || collider[key];
+	return Array.isArray(offset) ? offset : [0, 0];
+}
+
+/** @param {any} scene @param {any} collider @param {'a'|'b'} key */
+function colliderEndpointBind(scene, collider, key) {
+	const boneId = collider[`${key}Bone`];
+	if (boneId && scene.boneIndex && scene.boneIndex[boneId] !== undefined) {
+		const bone = scene.bones[scene.boneIndex[boneId]];
+		const local = colliderEndpointLocal(collider, key);
+		return [bone.base[0] + local[0], bone.base[1] + local[1]];
+	}
+	return colliderEndpointLocal(collider, key);
+}
+
+/** @param {any} rt @param {any} collider @param {'a'|'b'} key */
+function colliderEndpointWorld(rt, collider, key) {
+	const boneId = collider[`${key}Bone`];
+	if (boneId && rt.scene.boneIndex && rt.scene.boneIndex[boneId] !== undefined) {
+		const matrix = rt.M[rt.scene.boneIndex[boneId]];
+		const local = colliderEndpointLocal(collider, key);
+		return [
+			matrix.a * local[0] + matrix.c * local[1] + matrix.tx,
+			matrix.b * local[0] + matrix.d * local[1] + matrix.ty,
+		];
+	}
+	return colliderEndpointLocal(collider, key);
+}
+
 /** @param {any} scene @param {any} collider */
 function bindColliderCenter(scene, collider) {
 	if (collider.type !== 'sphere') return null;
@@ -1330,7 +1367,10 @@ function colliderBindDistance(scene, collider, x, y) {
 		const center = bindColliderCenter(scene, collider);
 		return Math.hypot(x - center[0], y - center[1]);
 	}
-	const point = closestPointOnSegment(x, y, collider.a[0], collider.a[1], collider.b[0], collider.b[1]);
+	// capsule：支持 aBone/bBone 端点绑骨（v2.4）；无绑骨字段时用 a/b 绝对坐标（行为不变）
+	const a = colliderEndpointBind(scene, collider, 'a');
+	const b = colliderEndpointBind(scene, collider, 'b');
+	const point = closestPointOnSegment(x, y, a[0], a[1], b[0], b[1]);
 	return Math.hypot(x - point[0], y - point[1]);
 }
 
@@ -1351,14 +1391,23 @@ function resetPhysics(rt) {
 function updateColliderWorld(rt) {
 	const scene = rt.scene;
 	for (const collider of scene.colliders || []) {
-		if (collider.type !== 'sphere') continue;
-		if (collider.bone) {
-			const matrix = rt.M[scene.boneIndex[collider.bone]];
-			collider.wx = matrix.a * collider.offset[0] + matrix.c * collider.offset[1] + matrix.tx;
-			collider.wy = matrix.b * collider.offset[0] + matrix.d * collider.offset[1] + matrix.ty;
-		} else {
-			collider.wx = collider.center[0];
-			collider.wy = collider.center[1];
+		if (collider.type === 'sphere') {
+			if (collider.bone) {
+				const matrix = rt.M[scene.boneIndex[collider.bone]];
+				collider.wx = matrix.a * collider.offset[0] + matrix.c * collider.offset[1] + matrix.tx;
+				collider.wy = matrix.b * collider.offset[0] + matrix.d * collider.offset[1] + matrix.ty;
+			} else {
+				collider.wx = collider.center[0];
+				collider.wy = collider.center[1];
+			}
+			continue;
+		}
+		// capsule：端点绑骨（aBone/bBone + aOffset/bOffset）→ 世界坐标；无绑骨则用绝对 a/b（兼容）
+		if (collider.type === 'capsule') {
+			const a = colliderEndpointWorld(rt, collider, 'a');
+			const b = colliderEndpointWorld(rt, collider, 'b');
+			collider.wa = a;
+			collider.wb = b;
 		}
 	}
 }
@@ -1366,7 +1415,9 @@ function updateColliderWorld(rt) {
 /** @param {any} collider @param {number} x @param {number} y */
 function colliderClosest(collider, x, y) {
 	if (collider.type === 'sphere') return [collider.wx, collider.wy];
-	return closestPointOnSegment(x, y, collider.a[0], collider.a[1], collider.b[0], collider.b[1]);
+	const a = collider.wa || collider.a;
+	const b = collider.wb || collider.b;
+	return closestPointOnSegment(x, y, a[0], a[1], b[0], b[1]);
 }
 
 /** @param {any} chain @returns {{nodes:number,depth:number,max:number}} */
@@ -1885,3 +1936,5 @@ function stop(rt) {
 }
 
 export { summarizeInitialPayload, TRANSITION_MS as transitionMs };
+// 供单测/工具使用（非公开 API）：collider 绑骨几何
+export const __colliderHelpers = { bindColliderCenter, colliderEndpointBind, colliderEndpointWorld, colliderBindDistance, colliderClosest, updateColliderWorld };

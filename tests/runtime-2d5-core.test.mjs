@@ -365,7 +365,7 @@ test('normalizeDiyPack：接受 v1 增量 pack（多 drawable/多纹理），拒
 	const bad = [
 		[{ format: 'nope' }, 'format_invalid'],
 		[{ formatVersion: 2 }, 'version_invalid'],
-		[{ base: { skeletonBones: 58 } }, 'skeleton_mismatch'],
+		[{ base: { skeletonBones: 60 } }, 'skeleton_mismatch'],
 		[{ shape: 'girl' }, 'shape_mismatch'],
 		[{ outfits: {} }, 'outfit_missing'],
 	];

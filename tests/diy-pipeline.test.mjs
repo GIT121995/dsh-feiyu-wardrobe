@@ -12,6 +12,7 @@ import { join, resolve } from 'node:path';
 import { test } from 'node:test';
 
 import { validateConfig } from '../lib/config.js';
+import { dressUpRoot } from '../lib/webserver.js';
 import { executeDiyCommand } from '../lib/commands.js';
 import { DiyPipelineError, createDiyPipeline, defaultPipelineConfig } from '../lib/diy-pipeline.js';
 
@@ -163,7 +164,10 @@ test('全流程（fake provider + 真实 Python split/bind）：generate→split
 		const pack = JSON.parse(readFileSync(join(packDir, 'diy-pack.json'), 'utf8'));
 		assert.equal(pack.format, 'feiyu-diy-pack');
 		assert.equal(pack.formatVersion, 1);
-		assert.equal(pack.base.skeletonBones, 59);
+		// v2.4：骨架从 base rig 动态读取（65 骨），不写死 59
+		const baseRig = JSON.parse(readFileSync(join(dressUpRoot(), 'art/2d5/chibi/rig.json'), 'utf8'));
+		assert.equal(pack.base.skeletonBones, baseRig.skeleton.bones.length);
+		assert.deepEqual(pack.base.boneNames, baseRig.skeleton.bones.map((bone) => bone.id));
 		assert.ok(pack.drawables.length >= 1);
 		assert.equal(pack.drawables[0].texture, `tex/${plan.itemId}-body.webp`);
 

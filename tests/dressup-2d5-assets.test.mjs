@@ -10,9 +10,9 @@ import { estimateTextureMemory, normalizeAtlases, resolveDrawableAtlas } from '.
 const ROOT = dressUpRoot();
 const ASSET_ROOT = join(ROOT, 'art/2d5');
 const SHAPES = ['chibi', 'girl'];
-const MAX_BONES = 64;
+const MAX_BONES = 80;   // v2.4：65 骨 rig（59+6 legBones）；runtime shader 上限提到 80
 /** M4b cutout production 资产：chibi 85 / girl 84 drawables（单页图集）。 */
-const EXPECTED_DRAWABLES = { chibi: 85, girl: 84 };
+const EXPECTED_DRAWABLES = { chibi: 85, girl: 85 };   // v2.4：girl 新增 hair-back-girl
 /** 旧四个 + cutout 新服装槽位（outfit 引用校验）。 */
 const OUTFIT_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar'];
 
@@ -103,7 +103,25 @@ test('2.5D rig：drawable/mesh 数据完整（顶点/UV/权重/索引/图集矩�
 	for (const shape of SHAPES) {
 		const rig = loadRig(shape);
 		const boneCount = rig.skeleton.bones.length;
-		assert.ok(boneCount > 0 && boneCount <= MAX_BONES, `${shape} 骨数 ${boneCount} 超出 shader 上限 ${MAX_BONES}`);
+		assert.equal(boneCount, 65, `${shape} v2.4 应为 65 骨（59 前缀 + 6 legBones）`);
+		assert.ok(boneCount <= MAX_BONES, `${shape} 骨数 ${boneCount} 超出 shader 上限 ${MAX_BONES}`);
+		// v2.4 legBones：追加 6 骨、原 59 骨索引不变（DIY 前缀兼容前提）
+		const boneIds = rig.skeleton.bones.map((bone) => bone.id);
+		for (const id of ['thighL', 'shinL', 'footL', 'thighR', 'shinR', 'footR']) assert.ok(boneIds.includes(id), `${shape} 缺少腿骨 ${id}`);
+		// collider 跟骨元数据：capsule aBone/bBone + aLocal/bLocal（与 m2-rig P3 对齐）
+		const legColliders = (rig.colliders || []).filter((collider) => collider.type === 'capsule' && collider.aBone && collider.bBone);
+		assert.ok(legColliders.length >= 2, `${shape} 应有腿部 capsule aBone/bBone 绑骨`);
+		for (const collider of legColliders) {
+			assert.ok(boneIds.includes(collider.aBone) && boneIds.includes(collider.bBone), `${shape}/${collider.id} 绑骨不存在`);
+			assert.equal(collider.aLocal.length, 2);
+			assert.equal(collider.bLocal.length, 2);
+		}
+		if (shape === 'girl') {
+			const hairBack = rig.drawables.find((drawable) => drawable.id === 'hair-back-girl');
+			assert.ok(hairBack, 'girl 缺少 hair-back-girl');
+			assert.equal(hairBack.slot, 'hairBack');
+			assert.ok(rig.slots.hairBack.includes('hair-back-girl'));
+		}
 		assert.equal(rig.drawables.length, EXPECTED_DRAWABLES[shape], `${shape} drawable 数量应为 ${EXPECTED_DRAWABLES[shape]}`);
 		assert.ok(rig.slots.body && rig.slots.legs && rig.slots.armUpper && rig.slots.armFore && rig.slots.hand,
 			`${shape} 缺少 cutout 身体部件槽位`);
