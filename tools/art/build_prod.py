@@ -79,12 +79,18 @@ GEN = {'shape': None, 'stats': {}}
 # T1/T2 deliveries are applied, so `python3 tools/build_prod.py --build-atlas`
 # reproduces the shipped dist by default.
 MASTER_CFG = {}   # v2.6: shape -> normalised art retexture contract (--master-config)
+# v2.6.1 fix: garment drawables may bake skins/palms of body parts (the M2 cutout
+# parts were cut from the full look image; hidden-fill copies of hands/legs ended up
+# inside garment textures -> maid outfit shows 2 hands per side = "four hands").
+GARMENT_SLOTS = ('topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper',
+                 'sleeveFore', 'collar')
 OPTS = {
     'skip_hair': False,     # --skip-hair-split: pin v2.4.0 hair state (T1 changes off)
     'skip_hands': False,    # --skip-hands: no T2 hand overlay (attribution run)
     'hair_patch': None,     # --hair-patch PATH: T1 hair-patch-spec.json override
     'hands_dir': os.path.join(SRC, 'hands'),   # T2 delivery root（<src>/hands）
     'hands_2x': False,      # --hands-2x: experimental 2x hand textures (T2 refined2x)
+    'clean_garment_skin': False,  # --clean-garment-skin: v2.6.1 baked skin/palm cleanup
     'outdir': OUTDIR,       # --outdir PATH: default <repo>/tools/art/dist
 }
 # ---- T1 v2.5 girl full hair split constants ----
@@ -1670,6 +1676,175 @@ def apply_master_retexture(shape, drawables, texdir, stats):
     return changed
 
 
+# ------------------------------------- v2.6.1: garment baked-skin cleanup ----
+def _canvas_tex(texdir, d):
+    """Full-canvas RGBA for a drawable (small hair/face textures placed at rect)."""
+    arr = np.array(Image.open(os.path.join(texdir, d['texture'])).convert('RGBA'))
+    if arr.shape[1] == W and arr.shape[0] == H:
+        return arr
+    full = np.zeros((H, W, 4), np.uint8)
+    x0, y0 = int(d['rect'][0]), int(d['rect'][1])
+    h, w = arr.shape[:2]
+    full[y0:y0 + h, x0:x0 + w] = arr
+    return full
+
+
+def _garment_skin_mask(rgb, alpha, skin_alpha):
+    """Mask of baked body skin (+ its dark line art) inside one garment texture.
+
+    Classifier (tuned against the maid/sweater/hoodie sleeves; measured on the
+    production textures):
+      * strong garment colours never removed: white cloth (sat<=8 & L>200, the
+        cuff/ruffle white has sat~3.5) and blue/navy cloth (B-R>20);
+      * loose warm skin: R-B>=10, R-G>=2, G-B>=1, R>170 (the strict R-B>18 form
+        misses pale baked-hand highlights) intersected with the underlying body
+        skin alpha -> only where a body part actually exists behind;
+      * dark baked-hand line art merges into the hand blob via morphological
+        close + connected components (hand-sized blobs only, area>=80 & w,h>=12);
+      * removal = blob dilated 2px (outline + 1px AA halo), fabric classes kept.
+    Returns (skin_mask, remove_mask)."""
+    R = rgb[:, :, 0].astype(int)
+    G = rgb[:, :, 1].astype(int)
+    B = rgb[:, :, 2].astype(int)
+    lum = 0.299 * R + 0.587 * G + 0.114 * B
+    sat = rgb.max(2).astype(int) - rgb.min(2).astype(int)
+    op = alpha > 8
+    white = (sat <= 8) & (lum > 200) & op
+    blue = (B - R > 20) & op
+    warm_any = ((R - B >= 10) & (R - G >= 2) & (G - B >= 1) & (R > 170) &
+                op & ~white & ~blue)
+    warm_body = warm_any & skin_alpha
+    blob = cv2.morphologyEx(warm_body.astype(np.uint8), cv2.MORPH_CLOSE,
+                            np.ones((5, 5), np.uint8))
+    n, lab, st, _ = cv2.connectedComponentsWithStats(blob, 8)
+    keep = np.zeros_like(blob)
+    for i in range(1, n):
+        x, y, w, h, area = st[i]
+        if area < 80 or w < 12 or h < 12:
+            continue
+        if not warm_body[lab == i].any():
+            continue
+        keep[lab == i] = 1
+    # expand to the whole warm fragment (hand pieces that stick out over the
+    # background have no body alpha behind -> skin_alpha would have kept them)
+    n2, lab2, st2, _ = cv2.connectedComponentsWithStats(warm_any.astype(np.uint8), 8)
+    ids = set(np.unique(lab2[keep])) - {0}
+    expand = np.isin(lab2, list(ids)) if ids else keep.astype(bool)
+    remove = (cv2.dilate(expand.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0) \
+        & op & ~white & ~blue
+    return warm_body, remove
+
+
+def clean_garment_skin(shape, drawables, texdir, stats):
+    """v2.6.1: remove baked body skin (duplicated hands/legs) from garment textures.
+
+    Root cause: the M2 garment parts were cut out of the full look image, so hidden
+    fill / overlap regions inside e.g. `maid-sleeve-fore-L/R` contain copies of the
+    hands (and `*-skirt*` copies of the legs). The topmost copy renders over the real
+    hand (sleeveFore z=62 vs hand z=65 -> visible second hand per side, historical
+    bug present since v2.5). The copies are duplicated across several garment layers,
+    so **all** garment slots must be cleaned (cleaning sleeves only just reveals the
+    copy stored in the skirt underneath).
+
+    Contract: only texture alpha is changed; **meshes are NOT rebuilt** -> rig.json
+    stays byte-identical (transparent quads render nothing, see REPORT-fix).
+    The no-hole guard drops any removal whose pixel would no longer be covered by a
+    drawable that is not itself removing it -> rest magenta holes stay 0.
+    """
+    if not OPTS['clean_garment_skin']:
+        return 0
+    # union of body-skin alphas ('tail'/'seam-fill' are not skin)
+    skin_alpha = np.zeros((H, W), bool)
+    for d in drawables:
+        if d['slot'] in BASE_DRAW_SLOTS and d['id'] not in ('tail', 'seam-fill'):
+            skin_alpha |= _canvas_tex(texdir, d)[:, :, 3] > 8
+    cover_cnt = np.zeros((H, W), np.int16)
+    alphas = {}
+    for d in drawables:
+        a = _canvas_tex(texdir, d)[:, :, 3] > 8
+        alphas[d['id']] = a
+        cover_cnt += a.astype(np.int16)
+    # pass 1: per-garment masks
+    plans = {}
+    for d in drawables:
+        if d['slot'] not in GARMENT_SLOTS:
+            continue
+        tex = _canvas_tex(texdir, d)
+        skin, remove = _garment_skin_mask(tex[:, :, :3], tex[:, :, 3], skin_alpha)
+        del tex
+        if remove.any():
+            plans[d['id']] = (skin, remove)
+    # pass 2: no transparent holes -- per outfit combo (a pixel may be covered by
+    # another outfit's garment which is not rendered in this combo!), keep a removal
+    # only if the pixel stays covered by an active drawable that does not remove it.
+    ALWAYS_SLOTS_SET = {'body', 'legs', 'armUpper', 'armFore', 'hand', 'hairBack',
+                        'strands', 'hairFront', 'face', 'hair-backfill'}
+    combo_of = {}   # garment id -> [combo] (each garment belongs to exactly one combo)
+    for combo, outfit in rig['outfits'].items():
+        for slot, ids in outfit.items():
+            if slot in GARMENT_SLOTS and isinstance(ids, list):
+                for pid in ids:
+                    combo_of.setdefault(pid, []).append(combo)
+    cover_kept_by_combo = {}
+    for combo in ['base'] + [c for c in rig['outfits'] if c != 'base']:
+        if not any(combo in combo_of.get(pid, []) for pid in plans):
+            continue
+        outfit = rig['outfits'].get(combo) or {}
+        outfit_ids = set()
+        for slot, ids in outfit.items():
+            if slot in GARMENT_SLOTS and isinstance(ids, list):
+                outfit_ids.update(ids)
+        cover = np.zeros((H, W), bool)
+        for d in drawables:
+            if d['slot'] not in ALWAYS_SLOTS_SET and d['id'] not in outfit_ids:
+                continue
+            rm = plans.get(d['id'])
+            if rm is not None and d['id'] in outfit_ids:
+                continue    # this drawable also removes pixels in this combo
+            cover |= alphas[d['id']]
+        cover_kept_by_combo[combo] = cover
+    changed = 0
+    per = {}
+    id_of = {d['id']: d for d in drawables}
+    for pid, (skin, remove) in plans.items():
+        tex = _canvas_tex(texdir, id_of[pid])
+        safe = np.ones((H, W), bool)
+        for combo in combo_of.get(pid) or ['base']:
+            if combo in cover_kept_by_combo:
+                safe &= cover_kept_by_combo[combo]
+        final = remove & safe
+        dropped = int(remove.sum() - final.sum())
+        if not final.any():
+            continue
+        # original alpha bbox (before removal): build_2d5 --trim-alpha crops by the
+        # alpha bbox, so a removal at the bbox edge would shrink texSize/atlasRect and
+        # change mesh UVs -> rig.json would no longer be byte-identical. Keep an
+        # alpha=1/255 (visually invisible) pixel on the removed pixels that sit on the
+        # old bbox border so the trim rect (and therefore rig.json) stays identical.
+        orig = tex[:, :, 3] > 0
+        oy, ox = np.where(orig)
+        bx0, by0, bx1, by1 = int(ox.min()), int(oy.min()), int(ox.max()), int(oy.max())
+        cols = np.arange(W)[None, :]
+        rows = np.arange(H)[:, None]
+        bbox_keep = final & ((cols == bx0) | (cols == bx1) | (rows == by0) | (rows == by1))
+        ring = (cv2.dilate(final.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0) \
+            & ~final & (tex[:, :, 3] > 8)
+        tex[final, 3] = 0
+        tex[ring, 3] = (tex[ring, 3].astype(np.float32) * 0.5).astype(np.uint8)
+        tex[bbox_keep, 3] = 1
+        Image.fromarray(tex, 'RGBA').save(os.path.join(texdir, pid + '.png'))
+        per[pid] = {'skinPx': int(skin.sum()), 'removedPx': int(final.sum()),
+                    'droppedNoCoverPx': dropped, 'featherPx': int(ring.sum()),
+                    'bboxPinnedPx': int(bbox_keep.sum())}
+        changed += int(final.sum())
+    stats['garmentSkinClean'] = {'removedPx': changed,
+                                 'droppedNoCoverPx': sum(v['droppedNoCoverPx'] for v in per.values()),
+                                 'perDrawable': per}
+    log(f'[{shape}] garment baked-skin cleanup: {changed}px on {len(per)} drawables '
+        f'(dropped {stats["garmentSkinClean"]["droppedNoCoverPx"]}px no-cover)')
+    return changed
+
+
 def build_shape(shape, page_split='base'):
     rig = Rig(shape)
     LEG_BONES = rig.add_leg_bones()
@@ -1897,6 +2072,10 @@ def build_shape(shape, page_split='base'):
     # M4b: single-page atlas (content ~5.1M px, fits <=4096x4096) -> 1 request,
     # no second-page whitespace. build_2d5 legacy single-page path.
     port_rest_colors(shape, drawables, outfits, texdir)
+    # v2.6.1 fix: garment textures may bake duplicated body parts (4-hand maid) ->
+    # remove them AFTER all garment RGB writes and BEFORE build_2d5; alpha-only, no
+    # mesh rebuild so rig.json stays byte-identical.
+    clean_garment_skin(shape, drawables, texdir, stats)
     stats['colorBleed'] = {'px': COLOR_BLEED_COUNT['px'], 'pxPerPart': round(COLOR_BLEED_PX, 1)}
     rig.add_leg_collider_meta(rig_json)
     out_rig = os.path.join(WORK, 'assets', f'{shape}-cutout.feiyu.json')
@@ -1957,6 +2136,9 @@ def main():
                     help='dist output root (default <repo>/tools/art/dist); use for A/B builds')
     ap.add_argument('--tool', default=None,
                     help='build_2d5.py path (default tools/art/build_2d5.py)')
+    ap.add_argument('--clean-garment-skin', action='store_true',
+                    help='v2.6.1: remove baked body-skin (duplicated hands/legs) from '
+                         'garment textures (alpha-only; rig.json unchanged)')
     ap.add_argument('--master-config', action='append', default=[], metavar='JSON',
                     help='v2.6 body master retexture contract (repeatable; shape from config)')
     ap.add_argument('--generator-id', default='cutout/prod/tools/build_prod.py',
@@ -1990,6 +2172,7 @@ def main():
     OPTS['skip_hands'] = args.skip_hands
     OPTS['hair_patch'] = args.hair_patch
     OPTS['hands_2x'] = args.hands_2x
+    OPTS['clean_garment_skin'] = args.clean_garment_skin
     os.makedirs(os.path.join(WORK, 'assets'), exist_ok=True)
     shapes = ['chibi', 'girl'] if args.shape == 'both' else [args.shape]
     all_stats = {}

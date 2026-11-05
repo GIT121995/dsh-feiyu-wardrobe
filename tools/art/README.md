@@ -87,6 +87,7 @@ python3 tools/art/build_prod.py [--shape chibi|girl|both] [--build-atlas]
 | `--outdir` | `<repo>/tools/art/dist` | dist 输出根（`<outdir>/{chibi,girl}/{rig.json,atlas.webp,build-report.json}`） |
 | `--tool` | `tools/art/build_2d5.py` | 图集打包器路径 |
 | `--master-config` | 无 | v2.6 素体母版重贴图契约（可重复；身形取自 config 的 `shape`）。见下文「v2.6 母版重贴图」 |
+| `--clean-garment-skin` | off | v2.6.1：删除服装纹理里**烘焙的素体皮肤**（女仆装"四只手"根因）。alpha-only、不重建 mesh（rig.json 逐字节不变）。见下文「服装修复」 |
 | `--generator-id` | `cutout/prod/tools/build_prod.py` | 写进 rig.json 的 provenance 字符串；**保持历史值**才能与 v2.5.0 官方 dist 逐字节一致 |
 | `--source-note` | `M2 cutout art（production，源工程不入库）` | 写进 rig.json `cutout.source` 的 provenance 字符串（同上） |
 | `--skip-hair-split` | off | T1 拆发关闭（v2.4.0 hair 口径，QA 归因用） |
@@ -132,6 +133,34 @@ python3 tools/art/build_prod.py --build-atlas \
   发/脸遮住的隐藏区保留 v2.5 值（±25° 姿态行为不回归）；chibi 无 mask → 全量重写
   （chibi 母版在 allowed-change 之外 = v2.5 基像素，rest 等价）。
 - build-stats 记录 `stats['master']`（config 路径/母版尺寸/visibleOnly/changedPx/perDrawable），便于 QA 对账。
+
+## v2.6.1 服装烘焙皮肤清理（`--clean-garment-skin`）
+
+**Bug**：M2 的服装件是从整图切出来的，`maid-sleeve-fore-L/R` 等纹理的隐藏填充区里烘焙了**手的副本**
+（`*-skirt*`/`apron` 等同理会烘焙腿/身体皮肤副本）。运行时 hand(z65) + sleeveFore(z62) 叠加 → 每侧 2 只手
+（"四只手"，v2.5 起历史 bug；副本分散在多个服装层，只清袖子会从裙子里透出来）。
+
+**修复**：`--clean-garment-skin` 对服装 drawable（slot ∈ topUnder/bottom/topBody/sleeve/sleeveUpper/
+sleeveFore/collar）删除烘焙皮肤 alpha：
+
+- 分类器：暖肤色 `R-B>=10, R-G>=2, G-B>=1, R>170` ∩ 底层 body 皮肤 alpha（`tail`/`seam-fill` 不算）；
+  白布（`sat<=8 & L>200`，袖口白边 sat≈3.5）与蓝/藏青布（`B-R>20`）**永不删除**；
+- 深色轮廓线：手部的暗线稿通过形态学 close + 连通域并入 hand blob（面积≥80、宽高≥12），
+  删除时 blob 外扩 2px 捕获轮廓/AA 晕；只作用于服装 alpha>0；
+- **防洞**：两遍计算，删除后该像素必须仍被至少一个「自己不在该处删除」的 drawable 覆盖，否则放弃删除
+  → 静置洋红洞保持 0；
+- 删除区 alpha 边缘 1px 羽化（ring alpha×0.5）；
+- **不重建 mesh**：只改纹理 alpha，rig.json/骨架/顶点/UV 全部逐字节不变；build-stats 记录
+  `stats['garmentSkinClean']`（removedPx/droppedNoCoverPx/perDrawable）。
+
+v2.6.1 重建（两身形 + 母版 v3.1 + 服装清理）：
+
+```bash
+python3 tools/art/build_prod.py --build-atlas --clean-garment-skin \
+    --src .cache/assets-src \
+    --master-config <src>/master/girl/config.json \
+    --master-config <src>/master/chibi/config.json
+```
 
 ## 确定性与验收口径
 
