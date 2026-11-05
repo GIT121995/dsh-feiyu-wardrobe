@@ -1,7 +1,7 @@
 {
  "shape": "chibi",
  "sourceRig": "chibi-cutout.feiyu.json",
- "sourceRigBytes": 2154704,
+ "sourceRigBytes": 2154717,
  "generator": "tools/build_2d5.py",
  "padding": 1,
  "trimAlpha": true,
@@ -9,14 +9,14 @@
  "atlas": {
   "width": 4090,
   "height": 1739,
-  "bytes": 2001358,
+  "bytes": 1976980,
   "pixelEqual": true,
   "rects": 85
  },
  "rig": {
-  "bytes": 2023789,
-  "gzipBytes": 365615,
-  "sha256": "2b1cc9f23499f5dac58d04fa58900c304871c6395a28400bce8fd0a74f1b907e"
+  "bytes": 2023775,
+  "gzipBytes": 365620,
+  "sha256": "5a63813b0b075e6c4a73261031e19351fabf750cfb51b5cf90982caf25bc4cfe"
  },
  "drawables": [
   {
@@ -1551,7 +1551,7 @@
   }
  ],
  "textureTotal": {
-  "atlasBytes": 2001358,
+  "atlasBytes": 1976980,
   "pages": 1,
   "bytesPerPixel": 4,
   "texMiB": 27.13,

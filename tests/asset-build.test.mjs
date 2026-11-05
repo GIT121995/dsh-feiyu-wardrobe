@@ -14,6 +14,9 @@
  *   FEIYU_ASSETS_SRC              源根覆盖（默认 <repo>/.cache/assets-src）
  *   FEIYU_ASSET_TEST_SHAPE        确定性测试身形（默认 chibi）
  *   FEIYU_ASSET_VERIFY_DIST=1     额外校验官方 dist md5
+ *   FEIYU_ASSET_MASTER_CONFIGS    可选：v2.6 母版重贴图 config 路径（冒号分隔的 retexture.json 列表）；
+ *                                 v2.6 官方 dist 由 `--master-config` 构建，不带该变量重建会与官方 dist 不一致
+ *                                 （母版素材在 art 阶段产物中，未入仓；见 docs/dress-up/2.5D-RUNTIME.md）
  *   DSH_FEIYU_PYTHON              python 解释器（默认 python3）
  *
  * 运行：`npm test`（源缺失自动 skip）/ `npm run verify:full`（源在时做完整校验）。
@@ -31,6 +34,8 @@ const PYTHON = process.env.DSH_FEIYU_PYTHON || 'python3';
 const SRC = process.env.FEIYU_ASSETS_SRC ? resolve(process.env.FEIYU_ASSETS_SRC) : join(ROOT, '.cache', 'assets-src');
 const SHAPE = process.env.FEIYU_ASSET_TEST_SHAPE || 'chibi';
 const VERIFY_DIST = process.env.FEIYU_ASSET_VERIFY_DIST === '1';
+/** v2.6：母版重贴图 config（可重复 --master-config；路径来自 art 阶段产物，未入仓）。 */
+const MASTER_CONFIGS = (process.env.FEIYU_ASSET_MASTER_CONFIGS || '').split(':').filter(Boolean);
 const PAYLOAD_PREFIXES = ['art/', 'm4/', 'feet/', 'hands/', 'prod/'];
 const sha256 = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
@@ -123,6 +128,7 @@ test(`build_prod 确定性：${SHAPE} 双跑 rig.json + atlas.webp md5 一致（
 			const r = spawnSync(PYTHON, [
 				builder, '--shape', SHAPE, '--build-atlas',
 				'--src', SRC, '--outdir', run.out, '--workdir', run.work,
+				...MASTER_CONFIGS.flatMap((config) => ['--master-config', config]),
 			], { encoding: 'utf8', timeout: 30 * 60 * 1000, maxBuffer: 1 << 26 });
 			assert.equal(r.status, 0, `build_prod 失败（${SHAPE}）：\n${(r.stderr || '').slice(-4000)}\n${(r.stdout || '').slice(-4000)}`);
 		}
@@ -146,10 +152,12 @@ test(`build_prod 确定性：${SHAPE} 双跑 rig.json + atlas.webp md5 一致（
 				assert.equal(
 					sha256(join(runs[0].out, SHAPE, f)),
 					sha256(join(official, f)),
-					`重建 ${SHAPE}/${f} 与官方 dist md5 不一致（源包或 builder 漂移）`,
+					`重建 ${SHAPE}/${f} 与官方 dist md5 不一致（源包或 builder 漂移）` +
+					(MASTER_CONFIGS.length ? '' : '；v2.6 官方 dist 由母版重贴图（--master-config）构建，' +
+						'如需逐字节校验请设置 FEIYU_ASSET_MASTER_CONFIGS=<retexture.json 冒号分隔> 后重跑'),
 				);
 			}
-			t.diagnostic(`${SHAPE}: 重建产物与 docs/dress-up/art/2d5 逐字节一致（rig+atlas）`);
+			t.diagnostic(`${SHAPE}: 重建产物与 docs/dress-up/art/2d5 逐字节一致（rig+atlas）${MASTER_CONFIGS.length ? `（master-config ×${MASTER_CONFIGS.length}）` : ''}`);
 		}
 	} finally {
 		rmSync(scratch, { recursive: true, force: true });

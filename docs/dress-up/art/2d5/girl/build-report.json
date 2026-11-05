@@ -1,7 +1,7 @@
 {
  "shape": "girl",
  "sourceRig": "girl-cutout.feiyu.json",
- "sourceRigBytes": 2030511,
+ "sourceRigBytes": 2030524,
  "generator": "tools/build_2d5.py",
  "padding": 1,
  "trimAlpha": true,
@@ -9,14 +9,14 @@
  "atlas": {
   "width": 4064,
   "height": 1779,
-  "bytes": 1694132,
+  "bytes": 1700746,
   "pixelEqual": true,
   "rects": 86
  },
  "rig": {
-  "bytes": 1948917,
-  "gzipBytes": 350236,
-  "sha256": "65115cf9d6aae0638612c4eb2a7a1a71dfc9470b383d7f936d82077d47cf2322"
+  "bytes": 1948903,
+  "gzipBytes": 350243,
+  "sha256": "7ac6c49639a4278087f3d6e444fd33ac357eb109272f1ceb95a66effaeee64cd"
  },
  "drawables": [
   {
@@ -1569,7 +1569,7 @@
   }
  ],
  "textureTotal": {
-  "atlasBytes": 1694132,
+  "atlasBytes": 1700746,
   "pages": 1,
   "bytesPerPixel": 4,
   "texMiB": 27.58,
