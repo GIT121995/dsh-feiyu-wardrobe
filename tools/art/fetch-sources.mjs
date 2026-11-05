@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 /**
- * 大肥鱼衣橱 · 构建源素材获取器（assets-src-v1）
+ * 大肥鱼衣橱 · 构建源素材获取器（assets-src-v2）
  *
- * 从 GitHub Release asset（tag `assets-v1`）下载 `assets-src-v1.tar.zst`，
+ * 从 GitHub Release asset（tag `assets-v2`）下载 `assets-src-v2.tar.zst`，
  * 校验 sha256 后解到 `<repo>/.cache/assets-src/`（gitignored），并按包内
  * `manifest.json` 逐文件校验 size/sha256。也支持 `--from <local tar.zst>`（离线/CI）。
  *
@@ -22,11 +22,11 @@ import {
 import { dirname, join, resolve } from 'node:path';
 
 const REPO = resolve(import.meta.dirname, '..', '..');
-const DEFAULT_URL = 'https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v1/assets-src-v1.tar.zst';
-// 官方 assets-v1 包固定 sha256（pack-sources.mjs 打印）；发布者可用 --sha256/env 覆盖。
+const DEFAULT_URL = 'https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v2/assets-src-v2.tar.zst';
+// 官方 assets-v2 包固定 sha256（pack-sources.mjs 打印）；发布者可用 --sha256/env 覆盖。
 // 留 placeholder 时仍会执行 manifest 逐文件校验，并打印警告。
-const PINNED_SHA256 = 'd19ff537440116a1be9673d192b47a89bfefa7125fa6de3356c68d3930d26460';
-const ARCHIVE_ROOT = 'assets-src-v1';
+const PINNED_SHA256 = '9e73e83d6a649360922c7480a83a89cf479068f852017b70213157fc19982cd8';
+const ARCHIVE_ROOT = 'assets-src-v2';
 
 function parseArgs(argv) {
   const out = {

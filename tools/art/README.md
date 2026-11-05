@@ -6,7 +6,7 @@
 > GitHub Release asset，并加构建确定性测试。
 >
 > - 产出资产版本：**资产 v17 / v2.5.0 口径**（chibi 85 drawables / girl 86，65 骨，单页图集）。
-> - 源素材 **154.8MB raw / tarball 94.3MB**，**不入 git**，走 GitHub Release（tag `assets-v1`）的 `assets-src-v1.tar.zst`。
+> - 源素材 **154.8MB raw / tarball 94.3MB**，**不入 git**，走 GitHub Release（tag `assets-v2`）的 `assets-src-v2.tar.zst`。
 > - 运行时零依赖；构建依赖见 `tools/requirements.txt`（python3 + numpy + opencv-python-headless + Pillow）。
 
 ## 目录
@@ -17,8 +17,8 @@ tools/art/
 ├── build_2d5.py         # 图集打包器：best-fit 图集 + UV 重映射 + 定点化 + pixelEqual 校验（M3b 多页版）
 ├── vendor/
 │   └── overlay_hands.py # T2 手部精修 overlay（vendored；hands 根由参数传入）
-├── pack-sources.mjs     # 源素材树 → assets-src-v1.tar.zst + manifest.json + sources.json + VERSION + SHA256SUMS
-├── fetch-sources.mjs    # 下载/解包 assets-src-v1.tar.zst（sha256 + manifest 逐文件校验）→ .cache/assets-src/
+├── pack-sources.mjs     # 源素材树 → assets-src-v2.tar.zst + manifest.json + sources.json + VERSION + SHA256SUMS
+├── fetch-sources.mjs    # 下载/解包 assets-src-v2.tar.zst（sha256 + manifest 逐文件校验）→ .cache/assets-src/
 └── README.md
 ```
 
@@ -46,7 +46,7 @@ npm run verify:full
 
 ## 源素材包（assets-src-v1）
 
-官方包：GitHub Release `assets-v1` 的 `assets-src-v1.tar.zst`（`https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v1/assets-src-v1.tar.zst`）。
+官方包：GitHub Release `assets-v2` 的 `assets-src-v2.tar.zst`（`https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v1/assets-src-v2.tar.zst`）。
 
 | 包内路径 | 内容 | 来源（历史工程） |
 |---|---|---|
@@ -55,7 +55,7 @@ npm run verify:full
 | `prod/` | P3 冻结构建输入：`seamfill-{shape}.npz` + `ref/{shape}_{combo}_rgba.png`（rest 颜色移植参考） | `.scratch/p5/rig/assets` |
 | `hands/` | T2 手部精修：`overlay-1x/{shape}.png`、`masks/hands-mask-{shape}.png`、`refined2x/{shape}/hand-tex.png`（实验 2x） | `.scratch/p5/hands` |
 | `feet/` | P2 脚部精修：`{shape}/feet.png`、`{shape}/masks/feet.png` | `.scratch/polish2/hands-feet` |
-| `VERSION` | 源包版本：`assets-v1` | 由 pack 脚本写入 |
+| `VERSION` | 源包版本：`assets-v2` | 由 pack 脚本写入 |
 | `sources.json` | 上述布局映射（审计/升级参考） | 由 pack 脚本写入 |
 | `manifest.json` | payload 文件清单（相对路径/大小/sha256），fetch 侧逐文件校验 | 由 pack 脚本写入 |
 
@@ -155,3 +155,22 @@ python3 tools/art/build_prod.py --build-atlas \
 - **2x 手部**：T2 的 refined2x 数据保留在源包中（实验），默认构建不使用；收益未证实。
 - **历史 `.scratch` 工具**：T1/T2/T3 交付脚本（`.scratch/p5/*/tools`、`.scratch/cutout/prod/tools`）不再作为生产入口；
   本目录文件是合并后的唯一事实来源。
+
+
+## v2.6 素体母版重贴图（`--master-config`）
+
+v2.6 的 body RGB 来自「素体母版」而非历史部件纹理。源包 v2 起新增 `master/` 目录
+（`master/{shape}/config.json` + 母版 + girl 可见掩膜）。重建 v2.6 dist：
+
+```bash
+npm run fetch:sources        # assets-src-v2
+npm run build:assets:v26     # = build_prod.py --build-atlas + 两个 --master-config
+# 或手动：
+python3 tools/art/build_prod.py --build-atlas --src .cache/assets-src \
+  --master-config .cache/assets-src/master/girl/config.json \
+  --master-config .cache/assets-src/master/chibi/config.json
+```
+
+验收：重建 `atlas.webp` 的 md5 应与仓库 `docs/dress-up/art/2d5/{shape}/atlas.webp` 一致
+（`rig.json` 在 v2.6 与 v2.5 逐字节相同）；双跑确定性由 `npm run verify:full` 校验。
+v2.5 及以前的重建 = 不传 `--master-config`（历史源包 assets-v1 亦可）。
