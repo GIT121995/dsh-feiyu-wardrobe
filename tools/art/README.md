@@ -86,6 +86,7 @@ python3 tools/art/build_prod.py [--shape chibi|girl|both] [--build-atlas]
 | `--workdir` | `<repo>/.cache/build` | 中间产物根（`assets/tex/{shape}`、`assets/{shape}-cutout.feiyu.json`、`assets/build-stats.json`） |
 | `--outdir` | `<repo>/tools/art/dist` | dist 输出根（`<outdir>/{chibi,girl}/{rig.json,atlas.webp,build-report.json}`） |
 | `--tool` | `tools/art/build_2d5.py` | 图集打包器路径 |
+| `--master-config` | 无 | v2.6 素体母版重贴图契约（可重复；身形取自 config 的 `shape`）。见下文「v2.6 母版重贴图」 |
 | `--generator-id` | `cutout/prod/tools/build_prod.py` | 写进 rig.json 的 provenance 字符串；**保持历史值**才能与 v2.5.0 官方 dist 逐字节一致 |
 | `--source-note` | `M2 cutout art（production，源工程不入库）` | 写进 rig.json `cutout.source` 的 provenance 字符串（同上） |
 | `--skip-hair-split` | off | T1 拆发关闭（v2.4.0 hair 口径，QA 归因用） |
@@ -104,6 +105,33 @@ python3 tools/art/build_2d5.py --rig <source rig.json> --texdir <纹理目录> \
 - lossless WebP RGBA、逐 drawable 透明 padding、UV 重映射到图集空间、定点化（positions 0.01px / uvs 1e-5 / weights 1e-4）。
 - 默认 `--out docs/dress-up/art/2d5`（独立使用时；builder 会显式传 `--out`）。
 - 校验失败退出码 1；**不要手改产物**，改源/脚本后重跑。
+
+## v2.6 母版重贴图（`--master-config`）
+
+v2.6.0「素体 B」= 用 art 阶段产出的单一素体母版（`master-1x.png`，675×1200，与画布 identity 对齐）
+重写 **body 部件纹理的 RGB**，alpha/几何/骨骼/槽位/drawable 数全部不变：
+
+```bash
+python3 tools/art/build_prod.py --build-atlas \
+    --master-config <art-girl>/retexture.json --master-config <art-chibi>/retexture.json
+```
+
+- 契约来源：`v26-art-{girl,chibi}/retexture.json`（两种格式都支持：girl `feiyu-master-retexture-v1`
+  的 `master.1x` + `drawables[].id` + `retextureRule.visibleMask`；chibi 的 `master.file`(2x) + `draws[]`）。
+- 重贴范围：仅 body-slot drawables：`body-head / body-torso / leg-L / leg-R / arm-upper-L/R /
+  arm-fore-L/R / hand-L/R`；tail、seam-fill、hair-*、face-*、服装 drawable **不重贴**。
+- 取色：1x 母版 → 纹理同坐标 identity；2x 母版 → 1x 纹理用双线性半像素采样
+  `((x+0.5)*2-0.5)`（与 art POC 一致）；2x 纹理（`--hands-2x` 实验）按半分辨率采样。
+  重贴后对每张纹理重做 `color_bleed`（母版只有 8px 外扩），保持边缘/mipmap 行为。
+- **顺序（关键）**：在 T1 拆发（`finalize_girl_hair`）**之后**、服装 seam-extend / rest 颜色移植**之前**执行。
+  T1 的 `split_girl_back_hair` 用 RGB 蓝色判据找烘焙发、`finalize_girl_hair` 把手臂发岛 RGB 复制进
+  `hair-arm-girl`；先重贴会破坏这些源色（发岛变肤色/丢失）。重贴前所有 body RGB 后处理
+  （feet/hands overlay、T1 补画）都已完成，母版 RGB 最终覆盖，保证 rest 合成与母版一致；
+  之后只剩服装/网格步骤，不写 body RGB。
+- **可见像素策略**：girl 配置带 `visibleMask`（`body-visible-rest-1x.png`）→ 只重写静置可见像素，
+  发/脸遮住的隐藏区保留 v2.5 值（±25° 姿态行为不回归）；chibi 无 mask → 全量重写
+  （chibi 母版在 allowed-change 之外 = v2.5 基像素，rest 等价）。
+- build-stats 记录 `stats['master']`（config 路径/母版尺寸/visibleOnly/changedPx/perDrawable），便于 QA 对账。
 
 ## 确定性与验收口径
 

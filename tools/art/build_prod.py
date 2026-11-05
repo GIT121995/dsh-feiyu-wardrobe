@@ -78,6 +78,7 @@ GEN = {'shape': None, 'stats': {}}
 # The merged builder is the single source of truth; the flags only decide which
 # T1/T2 deliveries are applied, so `python3 tools/build_prod.py --build-atlas`
 # reproduces the shipped dist by default.
+MASTER_CFG = {}   # v2.6: shape -> normalised art retexture contract (--master-config)
 OPTS = {
     'skip_hair': False,     # --skip-hair-split: pin v2.4.0 hair state (T1 changes off)
     'skip_hands': False,    # --skip-hands: no T2 hand overlay (attribution run)
@@ -1541,6 +1542,134 @@ def cell_for(pid, slot):
     return 14
 
 
+# ------------------------------------------------- v2.6: body master retexture ---
+BODY_MASTER_IDS = ['body-head', 'body-torso', 'leg-L', 'leg-R',
+                   'arm-upper-L', 'arm-upper-R', 'arm-fore-L', 'arm-fore-R',
+                   'hand-L', 'hand-R']
+
+
+def load_master_config(path):
+    """Normalise an art-stage retexture contract (--master-config) for the builder.
+
+    Supported art deliverables:
+      * girl `feiyu-master-retexture-v1`: master{1x}, drawables[].id,
+        retextureRule.visibleOnlyRecommended + retextureRule.visibleMask
+        (string may carry a Chinese description suffix after the path).
+      * chibi v1: master.file (2x working master), draws[].
+    Returns a dict consumed by apply_master_retexture()."""
+    cfg = json.load(open(path))
+    base = os.path.dirname(os.path.abspath(path))
+    shape = cfg.get('shape')
+    if shape not in ('chibi', 'girl'):
+        raise SystemExit(f'master config {path}: missing/invalid shape {shape!r}')
+    mref = cfg.get('master')
+    if not isinstance(mref, str):
+        mref = (mref or {}).get('1x') or (mref or {}).get('file')
+    if not mref:
+        raise SystemExit(f'master config {path}: no master image (master.1x / master.file)')
+    master_path = mref if os.path.isabs(mref) else os.path.normpath(os.path.join(base, mref))
+    if not os.path.exists(master_path):
+        raise SystemExit(f'master config {path}: master image missing: {master_path}')
+    ids = [d.get('id') for d in (cfg.get('drawables') or [])]
+    if not ids:
+        ids = list(cfg.get('draws') or [])
+    ids = [i for i in ids if i]
+    if not ids:
+        raise SystemExit(f'master config {path}: no body drawables listed')
+    unknown = [i for i in ids if i not in BODY_MASTER_IDS]
+    if unknown:
+        raise SystemExit(f'master config {path}: only body drawables may be retextured, got {unknown}')
+    rule = cfg.get('retextureRule') or {}
+    visible_mask = None
+    if rule.get('visibleOnlyRecommended') and rule.get('visibleMask'):
+        ref = str(rule['visibleMask']).split('（')[0].split('(')[0].strip()
+        p = ref if os.path.isabs(ref) else os.path.normpath(os.path.join(base, ref))
+        if not os.path.exists(p):
+            raise SystemExit(f'master config {path}: visibleMask missing: {p}')
+        visible_mask = p
+    return {'shape': shape, 'config': os.path.abspath(path), 'master': master_path,
+            'ids': ids, 'visible_mask': visible_mask}
+
+
+def apply_master_retexture(shape, drawables, texdir, stats):
+    """v2.6 body retexture: body drawables' RGB := art master at the same canvas
+    coordinate; **alpha / rect / texSize unchanged** (silhouette + mesh contract).
+
+    Ordering (critical): must run AFTER the T1 hair split.
+      * `split_girl_back_hair` detects the baked hair by an RGB blue criterion and
+        `finalize_girl_hair` copies the baked arm-island RGB into `hair-arm-girl`;
+        retexturing earlier would destroy those source colours (islands would be
+        extracted skin-coloured, or not at all).
+      * It also runs after feet/hands overlays and T1 under-layer repaints, so the
+        master RGB wins over the v2.5 body post-processing (the art master was
+        built from the v2.5 final body anyway).
+      * Garment-only steps after it (seam_extend / port_rest_colors) never touch
+        body RGB; mesh rebuild only reads alpha.
+    Visible-only mode (girl) keeps hidden (hair/face-covered) pixels at their v2.5
+    values -> ±25° hidden-area behaviour does not regress.
+    """
+    cfg = MASTER_CFG.get(shape)
+    if not cfg:
+        return 0
+    master = load_rgba(cfg['master'])
+    mh, mw = master.shape[:2]
+    if (mw, mh) == (W, H):
+        master1 = master
+        master_canvas = master
+    elif (mw, mh) == (W * 2, H * 2):
+        master1 = cv2.resize(master, (W, H), interpolation=cv2.INTER_LINEAR)
+        master_canvas = master
+    else:
+        raise SystemExit(f'master image size {mw}x{mh} unsupported '
+                         f'(expect {W}x{H} or {W * 2}x{H * 2})')
+    vis = None
+    if cfg.get('visible_mask'):
+        vis = np.array(Image.open(cfg['visible_mask']).convert('L')) > 128
+        if vis.shape != (H, W):
+            raise SystemExit(f'visible mask {cfg["visible_mask"]} is '
+                             f'{vis.shape[1]}x{vis.shape[0]}, expected {W}x{H}')
+    if (mw, mh) != (W, H):
+        # per-drawable 1x target is the bilinear 2x->1x sample (half-pixel centres)
+        pass
+    by_id = {d['id']: d for d in drawables}
+    changed, per = 0, {}
+    for pid in cfg['ids']:
+        d = by_id.get(pid)
+        if d is None:
+            raise SystemExit(f'master retexture: drawable {pid} was not built')
+        fp = os.path.join(texdir, d['texture'])
+        tex = np.array(Image.open(fp).convert('RGBA'))
+        th, tw = tex.shape[:2]
+        if (tw, th) == (W, H):
+            rgb = master1[:, :, :3]
+            sel = np.ones((H, W), bool) if vis is None else vis.copy()
+        elif (tw, th) == (W * 2, H * 2):
+            rgb = master_canvas[:, :, :3] if (mw, mh) == (W * 2, H * 2) else \
+                cv2.resize(master1[:, :, :3], (W * 2, H * 2), interpolation=cv2.INTER_LINEAR)
+            sel = np.ones((H * 2, W * 2), bool) if vis is None else \
+                cv2.resize(vis.astype(np.uint8), (W * 2, H * 2),
+                           interpolation=cv2.INTER_NEAREST) > 0
+        else:
+            raise SystemExit(f'master retexture: {pid} texture {tw}x{th} unsupported '
+                             f'(expect {W}x{H} or {W * 2}x{H * 2})')
+        before = tex[:, :, :3].copy()
+        tex[sel, :3] = rgb[sel]
+        n = int((np.abs(tex[:, :, :3].astype(int) - before.astype(int)).max(-1) > 0).sum())
+        # re-extend RGB into transparent pixels (the master only carries an 8px
+        # color-bleed) so bilinear/mipmap sampling keeps the v2.5 fringe behaviour
+        tex = color_bleed(tex, COLOR_BLEED_PX)
+        Image.fromarray(tex, 'RGBA').save(fp)
+        per[pid] = {'selPx': int(sel.sum()), 'changedPx': n}
+        changed += n
+    stats['master'] = {'config': cfg['config'], 'masterFile': cfg['master'],
+                       'masterSize': [int(mw), int(mh)],
+                       'visibleOnly': bool(cfg.get('visible_mask')),
+                       'changedPx': changed, 'perDrawable': per}
+    log(f'[{shape}] body master retexture: {changed}px on {len(cfg["ids"])} drawables '
+        f'(visibleOnly={bool(cfg.get("visible_mask"))})')
+    return changed
+
+
 def build_shape(shape, page_split='base'):
     rig = Rig(shape)
     LEG_BONES = rig.add_leg_bones()
@@ -1704,6 +1833,8 @@ def build_shape(shape, page_split='base'):
         drawables.append(dd)
     # ---------------- T1 v2.5: full girl hair split (no new bones) ----------------
     finalize_girl_hair_hook(shape, drawables, texdir, rig, stats)
+    # ---------------- v2.6 body master retexture (MUST be after T1, see fn) --------
+    apply_master_retexture(shape, drawables, texdir, stats)
     # ---------------- seam extension + mesh rebuild ----------------
     seam_px = seam_extend(drawables, texdir,
                           [d['id'] for d in drawables if d['slot'] in BASE_DRAW_SLOTS])
@@ -1826,6 +1957,8 @@ def main():
                     help='dist output root (default <repo>/tools/art/dist); use for A/B builds')
     ap.add_argument('--tool', default=None,
                     help='build_2d5.py path (default tools/art/build_2d5.py)')
+    ap.add_argument('--master-config', action='append', default=[], metavar='JSON',
+                    help='v2.6 body master retexture contract (repeatable; shape from config)')
     ap.add_argument('--generator-id', default='cutout/prod/tools/build_prod.py',
                     help='rig.json generator provenance string (keep historical value '
                          'for byte-identical v2.5.0 rebuilds)')
@@ -1843,6 +1976,16 @@ def main():
                     help='experimental: T2 refined2x -> 2x hand source textures')
     args = ap.parse_args()
     configure_paths(args)
+    global MASTER_CFG
+    for path in args.master_config:
+        cfg = load_master_config(path)
+        if cfg['shape'] in MASTER_CFG:
+            raise SystemExit(f'duplicate --master-config for shape {cfg["shape"]}: {path}')
+        MASTER_CFG[cfg['shape']] = cfg
+    for shape in sorted(MASTER_CFG):
+        log(f'master config [{shape}]: {MASTER_CFG[shape]["config"]} '
+            f'(ids={len(MASTER_CFG[shape]["ids"])}, '
+            f'visibleOnly={bool(MASTER_CFG[shape]["visible_mask"])})')
     OPTS['skip_hair'] = args.skip_hair_split
     OPTS['skip_hands'] = args.skip_hands
     OPTS['hair_patch'] = args.hair_patch
