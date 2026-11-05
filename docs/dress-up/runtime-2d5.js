@@ -117,10 +117,13 @@ void main() {
   if (uUseMask == 1) {
     vec2 muv = gl_FragCoord.xy / uViewport;
     float m = texture(uMask, muv).a;
-    c.a *= smoothstep(0.05, 0.55, m);
+    c *= smoothstep(0.05, 0.55, m);
     if (c.a < 0.004) discard;
   }
-  outColor = vec4(c.rgb * c.a, c.a);
+  // 纹理由 UNPACK_PREMULTIPLY_ALPHA_WEBGL 预乘上传（见 textureFromImage），
+  // 采样结果已是预乘 alpha（premultiplied），直接输出；不要再乘一次 a，
+  // 否则图集 tile 边界/半透明边缘会出现「双重衰减」暗线（v2.6 hip 1px 线根因）。
+  outColor = c;
 }`;
 
 /* ----------------------------------------------------------------- utils --- */
@@ -868,7 +871,7 @@ function textureFromImage(rt, img) {
 	const tex = gl.createTexture();
 	rt.glRes.textures += 1;
 	gl.bindTexture(gl.TEXTURE_2D, tex);
-	gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+	gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
 	gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
 	gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
