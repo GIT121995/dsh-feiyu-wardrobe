@@ -155,6 +155,11 @@ test('bind_layers.py：pairing 从 v2.2 base rig 动态取（top 配裙、bottom
 		assert.ok(outfit.bottom.length > 0, 'top 分类应对齐 v2.2 裙装（避免光腿）');
 		for (const bottomId of outfit.bottom) assert.ok(bottomId.startsWith('sweater-plaid-skirt'));
 		assert.equal(pack.pairingSource.startsWith('base-rig:'), true, `pairingSource=${pack.pairingSource}`);
+		// P3：base 骨架从 base rig 动态读取（含骨名/版本），不写死 59
+		const baseBoneNames = BASE_RIG.skeleton.bones.map((bone) => bone.id);
+		assert.equal(pack.base.skeletonBones, baseBoneNames.length);
+		assert.deepEqual(pack.base.boneNames, baseBoneNames);
+		assert.equal(pack.base.skeletonVersion, BASE_RIG.version);
 		// 不应再出现 v2.1 写死 id
 		for (const legacyId of ['bottom-plaid', 'bottom-pleated', 'sweater-body', 'sweater-sleeve']) {
 			assert.ok(!refs.includes(legacyId), `不应写死 v2.1 id：${legacyId}`);

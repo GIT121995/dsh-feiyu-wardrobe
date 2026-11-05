@@ -35,7 +35,9 @@
   "name": "白衬衫",
   "shape": "chibi",
   "category": "top",                      // top|bottom|dress|coat|outfit
-  "base": { "skeletonBones": 59 },        // 必须与当前 base rig 骨数一致
+  "base": { "skeletonBones": 59,          // v2.4 起允许 ≤ base rig 骨数（前缀骨架兼容）；旧 59 骨 pack 可用于 65 骨场景
+             "boneNames": ["root", "..."],     // 可选：与 base rig 骨架前缀逐名校验（binder 自动写）
+             "skeletonVersion": 3 },          // 可选：base rig 版本（诊断用）
   "drawables": [{
     "id": "diy-top-...-body",
     "slot": "topBody", "z": 40, "role": "topBody",
@@ -60,7 +62,8 @@
 }
 ```
 
-约束：**不新增骨骼/物理链**（bones 索引指向 base 59 骨；裙摆权重复用 base `skirtP/M` 链）；
+约束：**不新增骨骼/物理链**（bones 索引指向 base rig 骨架前缀；v2.4 起旧 59 骨 pack 在 65 骨场景按前缀兼容、
+运行时标记 `legacyBones`，超出场景骨数/骨名不匹配仍拒绝；裙摆权重复用 base `skirtP/M` 链）；
 纹理独立（不并入 base 图集）；`item` 与 registry/outfit id 一致；单 pack 1–2 个 drawable。
 
 ## 3. runtime API（`runtime-2d5.js`）
@@ -138,6 +141,10 @@ v2.2 起 base rig 为 cutout 分部件（`sweater-plaid-torso/-skirt` 等），�
   旧 dress/outfit pack 本来没有下装 → 按品类自动补 v2.2 裙对（避免光腿）；bottom pack 可自动补上衣；
   目标均缺失则安全置空并记 `unmapped`（不抛错、不改 pack 原对象），`getState().look.slots` 语义不变。
 - 迁移只在运行时内存中生效，不写回 pack/registry，也不退回 v2.1 资产（v2.1 人物资产已删除）。
+- **v2.4 骨架前缀兼容**：`normalizeDiyPack(pack, { bones, boneNames })` 允许 `packBones ≤ sceneBones`（旧 59 骨 pack
+  可在新增腿弯/girl 转头骨的 65/68 骨场景使用，返回 `legacyBones=true`）；`packBones > sceneBones`/缺失/骨名前缀不一致
+  仍拒绝；`lib/diy-pipeline.js` 的 qa 从 base rig 动态读骨架（不再写死 59），registry 条目记录
+  `skeleton:{packBones,baseBones,legacy}`；binder 输出 `base.boneNames/skeletonVersion`。
 - E2E 断言（v2.2.1 起）：选中任一 DIY pack 后 `look.slots.bottom` 非空且 bottom drawable 在 active；
   旧 pack ×3 + 新 pack ×1 均验证（`.scratch/cutout/diy-v22/`）。
 

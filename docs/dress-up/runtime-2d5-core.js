@@ -578,21 +578,43 @@ export const DIY_PACK_FORMAT_VERSION = 1;
  * 校验并规范化增量 DIY pack（不修改输入）。
  *
  * @param {any} pack
- * @param {{ bones?: number, shape?: string }} [options]
- * @returns {{ ok: boolean, errors: string[], packId: string, drawables: any[], outfits: Record<string, any>, textures: string[] }}
+ * @param {{ bones?: number, shape?: string, boneNames?: string[] }} [options]
+ * @returns {{ ok: boolean, errors: string[], packId: string, drawables: any[], outfits: Record<string, any>, textures: string[], packBones: number, sceneBones: number, legacyBones: boolean }}
  */
 export function normalizeDiyPack(pack, options = {}) {
 	const errors = [];
 	const bones = Number(options.bones) || 0;
+	const boneNames = Array.isArray(options.boneNames) ? options.boneNames : null;
 	const shape = String(options.shape || '');
-	const empty = { ok: false, errors, packId: '', drawables: [], outfits: {}, textures: [] };
+	const empty = { ok: false, errors, packId: '', drawables: [], outfits: {}, textures: [], packBones: 0, sceneBones: bones, legacyBones: false };
 	if (!pack || typeof pack !== 'object') return { ...empty, errors: ['pack_invalid'] };
 	if (pack.format !== DIY_PACK_FORMAT) errors.push('format_invalid');
 	if (Number(pack.formatVersion) !== DIY_PACK_FORMAT_VERSION) errors.push('version_invalid');
 	if (!pack.item || typeof pack.item !== 'string') errors.push('item_missing');
 	if (shape && pack.shape && pack.shape !== shape) errors.push('shape_mismatch');
 	const packBones = Number(pack.base && pack.base.skeletonBones) || 0;
-	if (bones && packBones && packBones !== bones) errors.push('skeleton_mismatch');
+	// 骨架版本兼容（v2.4）：允许 packBones ≤ sceneBones 的「前缀骨架」（旧 59 骨 pack 可用于 65/68 骨场景）；
+	// packBones 缺失/超出场景骨数仍拒绝；pack 若带 boneNames 则要求与场景骨架前缀逐名一致。
+	let legacyBones = false;
+	if (bones > 0) {
+		if (!packBones || packBones > bones) {
+			errors.push('skeleton_mismatch');
+		} else {
+			legacyBones = packBones < bones;
+			const packBoneNames = pack.base && Array.isArray(pack.base.boneNames) ? pack.base.boneNames : null;
+			if (packBoneNames && packBoneNames.length !== packBones) {
+				errors.push('skeleton_names_invalid');
+			} else if (packBoneNames && boneNames) {
+				for (let i = 0; i < packBoneNames.length; i += 1) {
+					if (String(packBoneNames[i]) !== String(boneNames[i])) {
+						errors.push('skeleton_name_mismatch');
+						break;
+					}
+				}
+			}
+		}
+	}
+	const boneLimit = packBones > 0 ? Math.min(packBones, bones || packBones) : bones;
 	const rawDrawables = Array.isArray(pack.drawables) ? pack.drawables : [];
 	/** @type {any[]} */
 	const drawables = rawDrawables.map((drawable) => {
@@ -650,7 +672,7 @@ export function normalizeDiyPack(pack, options = {}) {
 				errors.push(`four_influence:${id}`);
 				break;
 			}
-			if (bones && rowBones.some((bone) => !Number.isInteger(bone) || bone < 0 || bone >= bones)) {
+			if (boneLimit && rowBones.some((bone) => !Number.isInteger(bone) || bone < 0 || bone >= boneLimit)) {
 				errors.push(`bone_out_of_range:${id}`);
 				break;
 			}
@@ -677,6 +699,9 @@ export function normalizeDiyPack(pack, options = {}) {
 		drawables,
 		outfits,
 		textures,
+		packBones,
+		sceneBones: bones,
+		legacyBones,
 	};
 }
 
