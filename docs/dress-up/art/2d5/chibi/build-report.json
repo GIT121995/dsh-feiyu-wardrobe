@@ -1,7 +1,7 @@
 {
  "shape": "chibi",
  "sourceRig": "chibi-cutout.feiyu.json",
- "sourceRigBytes": 2152326,
+ "sourceRigBytes": 2154704,
  "generator": "tools/build_2d5.py",
  "padding": 1,
  "trimAlpha": true,
@@ -14,9 +14,9 @@
   "rects": 85
  },
  "rig": {
-  "bytes": 2021411,
-  "gzipBytes": 365025,
-  "sha256": "dd49402714357168ee17e4178d0f9e8acefb457fc63f745c02be0c6c44c30c61"
+  "bytes": 2023789,
+  "gzipBytes": 365615,
+  "sha256": "2b1cc9f23499f5dac58d04fa58900c304871c6395a28400bce8fd0a74f1b907e"
  },
  "drawables": [
   {

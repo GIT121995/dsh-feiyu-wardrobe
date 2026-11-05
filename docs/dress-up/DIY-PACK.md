@@ -142,7 +142,7 @@ v2.2 起 base rig 为 cutout 分部件（`sweater-plaid-torso/-skirt` 等），�
   目标均缺失则安全置空并记 `unmapped`（不抛错、不改 pack 原对象），`getState().look.slots` 语义不变。
 - 迁移只在运行时内存中生效，不写回 pack/registry，也不退回 v2.1 资产（v2.1 人物资产已删除）。
 - **v2.4 骨架前缀兼容**：`normalizeDiyPack(pack, { bones, boneNames })` 允许 `packBones ≤ sceneBones`（旧 59 骨 pack
-  可在新增腿弯/girl 转头骨的 65/68 骨场景使用，返回 `legacyBones=true`）；`packBones > sceneBones`/缺失/骨名前缀不一致
+  可在 v2.4 的 65 骨场景使用，返回 `legacyBones=true`；v2.4 binder 新 pack 为 65 骨并写入 `base.boneNames`）；`packBones > sceneBones`/缺失/骨名前缀不一致
   仍拒绝；`lib/diy-pipeline.js` 的 qa 从 base rig 动态读骨架（不再写死 59），registry 条目记录
   `skeleton:{packBones,baseBones,legacy}`；binder 输出 `base.boneNames/skeletonVersion`。
 - E2E 断言（v2.2.1 起）：选中任一 DIY pack 后 `look.slots.bottom` 非空且 bottom drawable 在 active；

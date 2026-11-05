@@ -47,7 +47,7 @@ import {
 	LEGACY_OUTFIT_SLOTS,
 	unregisterDiyPack,
 	visibleDrawables,
-} from './runtime-2d5-core.js?v=19';
+} from './runtime-2d5-core.js?v=20';
 
 /** 单个 spring 链节点相对 rest 的最大偏移（px，安全包络，POC 同值）。 */
 const CHAIN_OFFSET_LIMIT = 42;
@@ -58,7 +58,7 @@ const TAP_DURATION = 0.45;
 
 /* ---------------------------------------------------------------- shaders -- */
 
-const MAX_BONES = 64;
+const MAX_BONES = 80;
 
 const VERT = `#version 300 es
 precision highp float;
@@ -1320,7 +1320,9 @@ function closestPointOnSegment(px, py, ax, ay, bx, by) {
 
 /** @param {any} scene @param {any} collider @param {'a'|'b'} key */
 function colliderEndpointLocal(collider, key) {
-	const offset = collider[`${key}Offset`] || collider[key];
+	// m2-rig P3 约定：aBone/bBone + aLocal/bLocal（相对骨 base 的局部偏移）；
+	// 兼容 aOffset/bOffset（早期约定）与无绑骨时绝对 a/b。
+	const offset = collider[`${key}Local`] || collider[`${key}Offset`] || collider[key];
 	return Array.isArray(offset) ? offset : [0, 0];
 }
 
