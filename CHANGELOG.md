@@ -1,5 +1,27 @@
 # Changelog
 
+## 2.4.0 — 2026-11-05
+
+「骨架升级：legBones（59→65 骨）+ girl 后发拆件（部分）+ 旧 DIY pack 前缀兼容」
+
+### 新特性 / 改进
+- **legBones（两身形）**：追加 `thighL/shinL/footL/thighR/shinR/footR`（索引 59–64，共 **65 骨**，原索引不变）；leg-L/R 按 y smoothstep 重权（hips→thigh→shin→foot）；腿 collider 增加 `aBone/bBone` 端点绑骨元数据；**当前无用户可见腿部动画**（静置与 v2.3 一致，chibi atlas 逐字节相同），为后续走路/抬腿打基础。
+- **girl 后发拆件（部分）**：新增 `hair-back-girl`（hairBack z=10.5），从 body 提取 **5,117px** 发色像素独立成层（跟头/混合权重），body 被遮区 nearest-fill 补画；**仅部分拆分**：其余 ~19k px 在 tail/前发/衣下，未全量独立（诚实记录）。
+- **兼容**：骨架版本化——runtime 允许 `packBones ≤ sceneBones` 前缀骨架（旧 59 骨 DIY pack 在 65 骨场景可用，`legacyBones` 标记）；`lib/diy-pipeline.js`/`bind_layers.py` 不再硬编码 59；collider capsule 端点绑骨向后兼容；`MAX_BONES 80`。
+- 资产版本 **15→16**、页面模块 **v19→v20**；girl 显存 23.86→**26.88MiB**（新发层 +3.02），chibi 27.13 不变；rig gzip ≈356/337KiB。
+
+### 验证
+- `npm run verify` **268/268**（+5 骨架兼容测试）；v2.4 E2E **18/18**（0 retry/crash/pageerror，首屏 4 请求/2.28MiB）；DIY E2E 旧 4 个 59 骨 pack 在 65 骨场景 normalize/register/select/remove 全过、配对渲染、`.dshskin` 导入导出正常、0 pageerror；
+- 静置洋红洞 6×2=0；腿弯 ±20/±30 0 洞；girl yaw/roll ±25 无背景洞；换装状态保留；npm pack 8.6MB。
+
+### 已知限制
+- girl 后发仅部分拆分（5.1k/27.5k px）；全量需 M2 重新分层（tail/前发/衣下区域）。
+- legBones 暂无动画使用；裙 collider 跟骨未做（>±30° 腿/裙可能穿帮，未启用腿部动画）。
+- 膝部细线为 M4b 腿件拼合缝（±30° 更明显）；rest girl 差 106–110px（AA 边）；双手未精修（v2.3 说明）；真机未测（headless SwANGLE）。
+
+### 升级
+- 升级 profile/npm 后重启 DSH；资产版本 v16/页面 v20 保证不吃旧缓存；旧 v2.1 `.dshskin` 仍走运行时迁移兜底。
+
 ## 2.3.0 — 2026-11-04
 
 「细节精修：双脚 AI 精修（chibi + girl）——脚趾/趾甲/脚背更清晰，轮廓零漂移」
