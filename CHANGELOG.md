@@ -1,5 +1,30 @@
 # Changelog
 
+## 2.5.0 — 2026-11-05
+
+「观感打磨：girl 肩侧烘焙后发全量拆件 + 双手细节精修（资产 v17/页面 v21）」
+
+### 改进
+- **girl 全量拆发（补全 v2.4 的「部分拆分」）**：新增 `hair-arm-girl` 发层（slot `strands`、z=66、65 骨不变、girl drawables 85→**86**），把 production `arm-upper-L` 纹理里被烘焙的 **3,207px 侧发碎片**（13 个 alpha 岛，含发丝+阴影/描边）拆成独立发层，权重/deform 取最近 production 发束顶点（含 shader head-yaw warp）。头转/歪头 ±25° 时与相邻发束的位移差 **46.51px → 0.47px（ratio 0.010）**，肩侧发丝不再「粘」在手臂上。手臂原像素 alpha 保留、RGB 按「拿掉发层后的 rest 合成色」重绘 → 头转不产生背景洞（浏览器 4x + 洋红洞 QA 通过）。
+- **修复 v2.4（P3）被遮区补画 bug**：旧 BFS 源缓冲从不更新 → 抽出的 5,117px 发像素底层仍是蓝污染（torso 均值 RGB [114,129,156]）；改为收敛 nearest-fill + Telea fallback，只重绘「全 outfit 都被遮住」的像素（~4.9k px）；yaw/roll 暴露的蓝紫块 blueness>25 从 **2,688→618px**（剩余在尾鳍/深蓝影区，邻域本就深蓝）。顺带修正 `hair-back-girl` 的 mesh deform（P3 留 0 → yaw 时 7–15px 不连续）。
+- **双手精修（chibi/girl × L/R 共 4 只手）**：interior-only 高频细节迁移（12 张 Seedream / ¥3.6，0 失败、0 安全过滤拒绝）；**alpha 逐像素不变** → 结构上不可能出现双描边/轮廓漂移；RGB 改善 chibi 446px/纹理、girl 714px/纹理（>6/255，chibi R 因配准最弱降权 0.45）。**收益温和**（1x 几乎无感，如实）；AI 整块重绘因轮廓 IoU 0.927–0.956（<0.98 门禁）被拒绝，只作内部细节源。
+- **tail 审计纠正**：v2.4 交接里的「tail 19k 发色 px」实为**蓝色鲸尾鳍本体**（单连通域 18,806px，应随尾链物理解算）；tail 纹理内真发仅 527px old-white-hair 垫层（静置 521/527 被静态层盖住），**本轮保留**（删除需尾摆洋红门禁，未做）。
+- **2x 手部纹理实验变体未发布**：本地可单页打包（girl/chibi 85 drawables、pixelEqual、VRAM +0.88/+1.10MiB），但 headless DPR1/DPR2 对比锐度差仅 +0.5–2.7%/+0.6–1.2%（噪声级）、契约有轻微偏离 → **不进发布**（如实记录）。
+- 资产版本 **16→17**、页面模块 **v20→v21**（cache-bust）；chibi 契约不变（drawables/图集尺寸/显存不变，仅手部 RGB）；girl 图集 4094×1721→**4064×1779**（单页）、纹理显存 26.88→**27.58MiB**（+0.70）、rig +18,553B（gzip +3,955B）；65 骨/槽位/物理/旧 DIY pack 前缀兼容全部不变。
+
+### 验证
+- `npm run verify` **268/268**；v2.5 E2E **18/18**（4 组、0 retry/crash/pageerror，首屏 4 请求/2.29MiB、资产 v17/页面 v21、girl 显存 27.58MiB、active 37）；DIY E2E **4/4**（旧 59 骨 pack 配对渲染、`.dshskin` 导入导出）；4x 抓帧 9 张 0 pageerror。
+- rest vs v2.4.0：未解释 chibi **0px** / girl **0–2px**（≤0.0002% 画布，门禁 0.1%）；静置洋红洞 6×2=**0**；girl yaw/roll ±25 new-hole=**0**（洞比 v2.4.0 更少）；构建确定性：A 变体双跑 atlas+rig md5 一致；npm pack **8.6MB / 12.5MB unpacked / 87 files**。
+- **真机未测**：所有浏览器数字来自 headless Chrome + SwANGLE（无 GPU），FPS/显存不可代表真机。
+
+### 已知限制
+- 双手精修收益温和（alpha 不变、1x 几乎无感；4x 细节改善有限）；手部 2x 实验变体未发布。
+- tail 白须 527px 保留（删需尾摆洞 QA）；arm 碎片权重为最近发束顶点拷贝，真实物理摆动下亚像素滑移未测。
+- 真机（高 DPR/低端 GPU）未测；无 60fps 承诺。
+
+### 升级
+- 升级 profile/npm 后重启 DSH；rig/atlas `?v=17`、页面模块 `?v=21` 保证不吃旧缓存；65 骨不变 → 旧 DIY pack/`.dshskin` 继续兼容。
+
 ## 2.4.0 — 2026-11-05
 
 「骨架升级：legBones（59→65 骨）+ girl 后发拆件（部分）+ 旧 DIY pack 前缀兼容」

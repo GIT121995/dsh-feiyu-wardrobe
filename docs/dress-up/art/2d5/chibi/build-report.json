@@ -9,7 +9,7 @@
  "atlas": {
   "width": 4090,
   "height": 1739,
-  "bytes": 1997898,
+  "bytes": 2001358,
   "pixelEqual": true,
   "rects": 85
  },
@@ -1551,7 +1551,7 @@
   }
  ],
  "textureTotal": {
-  "atlasBytes": 1997898,
+  "atlasBytes": 2001358,
   "pages": 1,
   "bytesPerPixel": 4,
   "texMiB": 27.13,
