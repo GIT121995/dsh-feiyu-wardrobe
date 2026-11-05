@@ -1,0 +1,1202 @@
+{
+ "format": "feiyu-visual-qa-baseline",
+ "version": 1,
+ "createdAt": "2026-11-05T04:18:18.300Z",
+ "generatedBy": "scripts/visual-qa.mjs --mode baseline",
+ "note": "headless Chrome + SwANGLE（无 GPU）；仅像素回归基线，不代表真机 FPS/显存。",
+ "repoPathHint": "dsh-feiyu-wardrobe",
+ "versions": {
+  "asset": 17,
+  "page": 21,
+  "pageFiles": [
+   "docs/dress-up/app.js",
+   "docs/dress-up/index.html",
+   "docs/dress-up/runtime-2d5.js"
+  ],
+  "pageOccurrences": 8
+ },
+ "assets": {
+  "chibi": {
+   "rig.json": "5a63813b0b075e6c4a73261031e19351fabf750cfb51b5cf90982caf25bc4cfe",
+   "atlas.webp": "9dbfd30cb916ac776a1a1db6e187d92ab9a3f639f7e9e69bc08f573a767a00ee"
+  },
+  "girl": {
+   "rig.json": "7ac6c49639a4278087f3d6e444fd33ac357eb109272f1ceb95a66effaeee64cd",
+   "atlas.webp": "860797569bd9d13ad85ab659f82233b7259b02bf90566c65996f1a1bb3c0ff7f"
+  }
+ },
+ "capture": {
+  "shape": [
+   "chibi",
+   "girl"
+  ],
+  "outfits": [
+   "base",
+   "maid",
+   "sweater-plaid",
+   "hoodie-pleated",
+   "sailor-plaid"
+  ],
+  "regions": [
+   "knee",
+   "hand",
+   "shoulder",
+   "foot",
+   "abdomen",
+   "hair"
+  ],
+  "viewport": {
+   "width": 900,
+   "height": 1320
+  },
+  "design": {
+   "width": 675,
+   "height": 1200
+  },
+  "background": "#808a99",
+  "jpeg": {
+   "full": 0.82,
+   "crop": 0.85
+  },
+  "canvasDpr": {
+   "full": 1,
+   "crop": 2
+  }
+ },
+ "regions": {
+  "chibi": {
+   "knee": [
+    214,
+    920,
+    247,
+    150
+   ],
+   "hand": [
+    150,
+    802,
+    375,
+    131
+   ],
+   "shoulder": [
+    175,
+    510,
+    325,
+    170
+   ],
+   "foot": [
+    208,
+    1065,
+    258,
+    135
+   ],
+   "abdomen": [
+    239,
+    700,
+    230,
+    170
+   ],
+   "hair": [
+    157,
+    43,
+    361,
+    300
+   ]
+  },
+  "girl": {
+   "knee": [
+    216,
+    830,
+    250,
+    150
+   ],
+   "hand": [
+    155,
+    647,
+    366,
+    152
+   ],
+   "shoulder": [
+    220,
+    365,
+    235,
+    170
+   ],
+   "foot": [
+    210,
+    1058,
+    262,
+    142
+   ],
+   "abdomen": [
+    227,
+    580,
+    231,
+    170
+   ],
+   "hair": [
+    157,
+    27,
+    361,
+    300
+   ]
+  }
+ },
+ "thresholds": {
+  "full": {
+   "kind": "1x",
+   "pixelTolerance": 10,
+   "maxChangedRatio": 0.0002
+  },
+  "crop": {
+   "kind": "2x",
+   "pixelTolerance": 10,
+   "maxChangedRatio": 0.001
+  }
+ },
+ "images": [
+  {
+   "id": "chibi/base/full-1x",
+   "file": "docs/qa-baseline/chibi/base/full-1x.jpg",
+   "shape": "chibi",
+   "outfit": "base",
+   "kind": "full",
+   "scale": 1,
+   "size": [
+    675,
+    1200
+   ],
+   "bytes": 91627,
+   "sha256": "0dbdcf130ad4c8487ba00ba6ab01b169b1c7b397c8064698260a5b89a301d55b"
+  },
+  {
+   "id": "chibi/maid/full-1x",
+   "file": "docs/qa-baseline/chibi/maid/full-1x.jpg",
+   "shape": "chibi",
+   "outfit": "maid",
+   "kind": "full",
+   "scale": 1,
+   "size": [
+    675,
+    1200
+   ],
+   "bytes": 116349,
+   "sha256": "bf7364617dcfb8f475d912dace06cc9de5ea6cfea3852238d7f868ec0a6e0d3d"
+  },
+  {
+   "id": "chibi/sweater-plaid/full-1x",
+   "file": "docs/qa-baseline/chibi/sweater-plaid/full-1x.jpg",
+   "shape": "chibi",
+   "outfit": "sweater-plaid",
+   "kind": "full",
+   "scale": 1,
+   "size": [
+    675,
+    1200
+   ],
+   "bytes": 98469,
+   "sha256": "667bf8fc41fef926571327b6081105a6c01495938b02fdc6c7e617d3de67f9cf"
+  },
+  {
+   "id": "chibi/hoodie-pleated/full-1x",
+   "file": "docs/qa-baseline/chibi/hoodie-pleated/full-1x.jpg",
+   "shape": "chibi",
+   "outfit": "hoodie-pleated",
+   "kind": "full",
+   "scale": 1,
+   "size": [
+    675,
+    1200
+   ],
+   "bytes": 99588,
+   "sha256": "54f5e2f8d0d92a0cfbd9be615a403730e888c6eea403cc74e503e7c98f711ae6"
+  },
+  {
+   "id": "chibi/sailor-plaid/full-1x",
+   "file": "docs/qa-baseline/chibi/sailor-plaid/full-1x.jpg",
+   "shape": "chibi",
+   "outfit": "sailor-plaid",
+   "kind": "full",
+   "scale": 1,
+   "size": [
+    675,
+    1200
+   ],
+   "bytes": 110982,
+   "sha256": "ee37210b570385542662c3faf89f5a0d55f0e22de43530ec7fe80ec4b59bb3ef"
+  },
+  {
+   "id": "chibi/base/knee-2x",
+   "file": "docs/qa-baseline/chibi/base/knee-2x.jpg",
+   "shape": "chibi",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "knee",
+   "size": [
+    494,
+    300
+   ],
+   "bytes": 13284,
+   "sha256": "4c1ca8e249ed22baeb1493a6a75c53df669e31abeeddce264c5fe133b4cf6be0"
+  },
+  {
+   "id": "chibi/base/hand-2x",
+   "file": "docs/qa-baseline/chibi/base/hand-2x.jpg",
+   "shape": "chibi",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hand",
+   "size": [
+    750,
+    262
+   ],
+   "bytes": 22203,
+   "sha256": "9e828db6bfabd65f4ab4e8000ce092c276d1dc4f1439bf660e5ef60cebe148cd"
+  },
+  {
+   "id": "chibi/base/shoulder-2x",
+   "file": "docs/qa-baseline/chibi/base/shoulder-2x.jpg",
+   "shape": "chibi",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "shoulder",
+   "size": [
+    650,
+    340
+   ],
+   "bytes": 28123,
+   "sha256": "309716468d623be40e0595c6dc2de67776918dd8ebfaac81fd0b713d41cb595e"
+  },
+  {
+   "id": "chibi/base/foot-2x",
+   "file": "docs/qa-baseline/chibi/base/foot-2x.jpg",
+   "shape": "chibi",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "foot",
+   "size": [
+    516,
+    270
+   ],
+   "bytes": 11209,
+   "sha256": "fd82cfdcea0b65e21f3daa74031b53aa07d3b5352946c2e18446caac1af9758e"
+  },
+  {
+   "id": "chibi/base/abdomen-2x",
+   "file": "docs/qa-baseline/chibi/base/abdomen-2x.jpg",
+   "shape": "chibi",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "abdomen",
+   "size": [
+    460,
+    340
+   ],
+   "bytes": 13541,
+   "sha256": "b7bd35df3632936560df117e7c3c7fbff0bfe103c19c8e2e693d14520403053f"
+  },
+  {
+   "id": "chibi/base/hair-2x",
+   "file": "docs/qa-baseline/chibi/base/hair-2x.jpg",
+   "shape": "chibi",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hair",
+   "size": [
+    722,
+    600
+   ],
+   "bytes": 34510,
+   "sha256": "9b668a032244f6045569ab4c6e9eccad1f8f12220dbca13868226164a3de8e2a"
+  },
+  {
+   "id": "chibi/maid/knee-2x",
+   "file": "docs/qa-baseline/chibi/maid/knee-2x.jpg",
+   "shape": "chibi",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "knee",
+   "size": [
+    494,
+    300
+   ],
+   "bytes": 24674,
+   "sha256": "89bbfb74d9d067b94d5696e0b29528c5009deb43a4d96bcb57eadddb05537c9d"
+  },
+  {
+   "id": "chibi/maid/hand-2x",
+   "file": "docs/qa-baseline/chibi/maid/hand-2x.jpg",
+   "shape": "chibi",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hand",
+   "size": [
+    750,
+    262
+   ],
+   "bytes": 35615,
+   "sha256": "0c61fdde2d72ef9ac618ea0b96d6d73306042cf38ea98edab6786b582f09da16"
+  },
+  {
+   "id": "chibi/maid/shoulder-2x",
+   "file": "docs/qa-baseline/chibi/maid/shoulder-2x.jpg",
+   "shape": "chibi",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "shoulder",
+   "size": [
+    650,
+    340
+   ],
+   "bytes": 36819,
+   "sha256": "1362168921c2e7dd6b78b4d50c2a2da931c5c43e3d8682d6479878779de3d231"
+  },
+  {
+   "id": "chibi/maid/foot-2x",
+   "file": "docs/qa-baseline/chibi/maid/foot-2x.jpg",
+   "shape": "chibi",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "foot",
+   "size": [
+    516,
+    270
+   ],
+   "bytes": 11209,
+   "sha256": "fd82cfdcea0b65e21f3daa74031b53aa07d3b5352946c2e18446caac1af9758e"
+  },
+  {
+   "id": "chibi/maid/abdomen-2x",
+   "file": "docs/qa-baseline/chibi/maid/abdomen-2x.jpg",
+   "shape": "chibi",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "abdomen",
+   "size": [
+    460,
+    340
+   ],
+   "bytes": 22459,
+   "sha256": "857c773f51072669c6aadfac51b595bc3dbda3cbe2f3f95a6a7acb8095fee6a6"
+  },
+  {
+   "id": "chibi/maid/hair-2x",
+   "file": "docs/qa-baseline/chibi/maid/hair-2x.jpg",
+   "shape": "chibi",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hair",
+   "size": [
+    722,
+    600
+   ],
+   "bytes": 34510,
+   "sha256": "9b668a032244f6045569ab4c6e9eccad1f8f12220dbca13868226164a3de8e2a"
+  },
+  {
+   "id": "chibi/sweater-plaid/knee-2x",
+   "file": "docs/qa-baseline/chibi/sweater-plaid/knee-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sweater-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "knee",
+   "size": [
+    494,
+    300
+   ],
+   "bytes": 19801,
+   "sha256": "737c9f9d55181e27d61f6c6316b1e990bafc97bb32edd60c0b4f7bf7b597c986"
+  },
+  {
+   "id": "chibi/sweater-plaid/hand-2x",
+   "file": "docs/qa-baseline/chibi/sweater-plaid/hand-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sweater-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hand",
+   "size": [
+    750,
+    262
+   ],
+   "bytes": 38816,
+   "sha256": "a2b9398f4d080266fb965817bd931ec885631b4ec11c487d267e0175007303d2"
+  },
+  {
+   "id": "chibi/sweater-plaid/shoulder-2x",
+   "file": "docs/qa-baseline/chibi/sweater-plaid/shoulder-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sweater-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "shoulder",
+   "size": [
+    650,
+    340
+   ],
+   "bytes": 24334,
+   "sha256": "e4df507b34fa4592d9d0d9f0423503a96bfaaef057638ca9d09f2fb0f6f7302a"
+  },
+  {
+   "id": "chibi/sweater-plaid/foot-2x",
+   "file": "docs/qa-baseline/chibi/sweater-plaid/foot-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sweater-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "foot",
+   "size": [
+    516,
+    270
+   ],
+   "bytes": 11209,
+   "sha256": "fd82cfdcea0b65e21f3daa74031b53aa07d3b5352946c2e18446caac1af9758e"
+  },
+  {
+   "id": "chibi/sweater-plaid/abdomen-2x",
+   "file": "docs/qa-baseline/chibi/sweater-plaid/abdomen-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sweater-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "abdomen",
+   "size": [
+    460,
+    340
+   ],
+   "bytes": 20226,
+   "sha256": "337910fe1925cd34b9b9c5018c35e96d514219058f179408bb930e208c926615"
+  },
+  {
+   "id": "chibi/sweater-plaid/hair-2x",
+   "file": "docs/qa-baseline/chibi/sweater-plaid/hair-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sweater-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hair",
+   "size": [
+    722,
+    600
+   ],
+   "bytes": 34510,
+   "sha256": "9b668a032244f6045569ab4c6e9eccad1f8f12220dbca13868226164a3de8e2a"
+  },
+  {
+   "id": "chibi/hoodie-pleated/knee-2x",
+   "file": "docs/qa-baseline/chibi/hoodie-pleated/knee-2x.jpg",
+   "shape": "chibi",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "knee",
+   "size": [
+    494,
+    300
+   ],
+   "bytes": 17297,
+   "sha256": "2ac1da03cd5eba89d16666fd51d8c8bec672032d2093e02b51e966b23abd50c3"
+  },
+  {
+   "id": "chibi/hoodie-pleated/hand-2x",
+   "file": "docs/qa-baseline/chibi/hoodie-pleated/hand-2x.jpg",
+   "shape": "chibi",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hand",
+   "size": [
+    750,
+    262
+   ],
+   "bytes": 28891,
+   "sha256": "d46f8ebe397fc739abb8943c54971d7c7b3192117fb2bd7cfcb54a2448428fc9"
+  },
+  {
+   "id": "chibi/hoodie-pleated/shoulder-2x",
+   "file": "docs/qa-baseline/chibi/hoodie-pleated/shoulder-2x.jpg",
+   "shape": "chibi",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "shoulder",
+   "size": [
+    650,
+    340
+   ],
+   "bytes": 29813,
+   "sha256": "d847300f7310b71ac73ba40191ecbd7b72a31c444b00c05ff794cd0a24f52507"
+  },
+  {
+   "id": "chibi/hoodie-pleated/foot-2x",
+   "file": "docs/qa-baseline/chibi/hoodie-pleated/foot-2x.jpg",
+   "shape": "chibi",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "foot",
+   "size": [
+    516,
+    270
+   ],
+   "bytes": 11209,
+   "sha256": "fd82cfdcea0b65e21f3daa74031b53aa07d3b5352946c2e18446caac1af9758e"
+  },
+  {
+   "id": "chibi/hoodie-pleated/abdomen-2x",
+   "file": "docs/qa-baseline/chibi/hoodie-pleated/abdomen-2x.jpg",
+   "shape": "chibi",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "abdomen",
+   "size": [
+    460,
+    340
+   ],
+   "bytes": 19511,
+   "sha256": "e9181f061eb3d2be92b4fb7c27926bbd5e8ddb74f8bb52772ca40b5e4e065b78"
+  },
+  {
+   "id": "chibi/hoodie-pleated/hair-2x",
+   "file": "docs/qa-baseline/chibi/hoodie-pleated/hair-2x.jpg",
+   "shape": "chibi",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hair",
+   "size": [
+    722,
+    600
+   ],
+   "bytes": 34510,
+   "sha256": "9b668a032244f6045569ab4c6e9eccad1f8f12220dbca13868226164a3de8e2a"
+  },
+  {
+   "id": "chibi/sailor-plaid/knee-2x",
+   "file": "docs/qa-baseline/chibi/sailor-plaid/knee-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "knee",
+   "size": [
+    494,
+    300
+   ],
+   "bytes": 19800,
+   "sha256": "781fc82de1aa8fea7722195636ce034e277a1e9e8af7dfd5fd88926350eaf982"
+  },
+  {
+   "id": "chibi/sailor-plaid/hand-2x",
+   "file": "docs/qa-baseline/chibi/sailor-plaid/hand-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hand",
+   "size": [
+    750,
+    262
+   ],
+   "bytes": 39199,
+   "sha256": "d755f68306153ce5147c111059e5fe1fb0db4a04e4245728734d87beca89e993"
+  },
+  {
+   "id": "chibi/sailor-plaid/shoulder-2x",
+   "file": "docs/qa-baseline/chibi/sailor-plaid/shoulder-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "shoulder",
+   "size": [
+    650,
+    340
+   ],
+   "bytes": 39732,
+   "sha256": "543e9fb841bc70aaf44532614f58e329ad0aeb7706ab8753d9548ab8dd763df1"
+  },
+  {
+   "id": "chibi/sailor-plaid/foot-2x",
+   "file": "docs/qa-baseline/chibi/sailor-plaid/foot-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "foot",
+   "size": [
+    516,
+    270
+   ],
+   "bytes": 11209,
+   "sha256": "fd82cfdcea0b65e21f3daa74031b53aa07d3b5352946c2e18446caac1af9758e"
+  },
+  {
+   "id": "chibi/sailor-plaid/abdomen-2x",
+   "file": "docs/qa-baseline/chibi/sailor-plaid/abdomen-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "abdomen",
+   "size": [
+    460,
+    340
+   ],
+   "bytes": 32809,
+   "sha256": "c49b7e8074bc6db64c8ad0e0161ade5201ce468be227b3914317358436f6c307"
+  },
+  {
+   "id": "chibi/sailor-plaid/hair-2x",
+   "file": "docs/qa-baseline/chibi/sailor-plaid/hair-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hair",
+   "size": [
+    722,
+    600
+   ],
+   "bytes": 34510,
+   "sha256": "9b668a032244f6045569ab4c6e9eccad1f8f12220dbca13868226164a3de8e2a"
+  },
+  {
+   "id": "girl/base/full-1x",
+   "file": "docs/qa-baseline/girl/base/full-1x.jpg",
+   "shape": "girl",
+   "outfit": "base",
+   "kind": "full",
+   "scale": 1,
+   "size": [
+    675,
+    1200
+   ],
+   "bytes": 80775,
+   "sha256": "7cb5a4e102643e026acabb480ac3297b750d112447d753ccf061bae46a80d172"
+  },
+  {
+   "id": "girl/maid/full-1x",
+   "file": "docs/qa-baseline/girl/maid/full-1x.jpg",
+   "shape": "girl",
+   "outfit": "maid",
+   "kind": "full",
+   "scale": 1,
+   "size": [
+    675,
+    1200
+   ],
+   "bytes": 91850,
+   "sha256": "ce3cb763faaa23fc5e7b5e5a24dde8efc8463e2bad0b2bfa2ac9827c7b47e92a"
+  },
+  {
+   "id": "girl/sweater-plaid/full-1x",
+   "file": "docs/qa-baseline/girl/sweater-plaid/full-1x.jpg",
+   "shape": "girl",
+   "outfit": "sweater-plaid",
+   "kind": "full",
+   "scale": 1,
+   "size": [
+    675,
+    1200
+   ],
+   "bytes": 88163,
+   "sha256": "2c682822d9efe5d77371f3cf066e760f189d3a101c66186c5f351d24b5956c43"
+  },
+  {
+   "id": "girl/hoodie-pleated/full-1x",
+   "file": "docs/qa-baseline/girl/hoodie-pleated/full-1x.jpg",
+   "shape": "girl",
+   "outfit": "hoodie-pleated",
+   "kind": "full",
+   "scale": 1,
+   "size": [
+    675,
+    1200
+   ],
+   "bytes": 86401,
+   "sha256": "d35908ed2fe4317c61cc9e34e8e990416decadac53e5358418258a50dc387ebe"
+  },
+  {
+   "id": "girl/sailor-plaid/full-1x",
+   "file": "docs/qa-baseline/girl/sailor-plaid/full-1x.jpg",
+   "shape": "girl",
+   "outfit": "sailor-plaid",
+   "kind": "full",
+   "scale": 1,
+   "size": [
+    675,
+    1200
+   ],
+   "bytes": 99692,
+   "sha256": "704c062c466e39f0e6170f57fdd9672b58f6f8fe3d48c76cbd0b993ea8e75e07"
+  },
+  {
+   "id": "girl/base/knee-2x",
+   "file": "docs/qa-baseline/girl/base/knee-2x.jpg",
+   "shape": "girl",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "knee",
+   "size": [
+    500,
+    300
+   ],
+   "bytes": 12081,
+   "sha256": "9221154f8b24426153d904073969aac84b9b5689b8917aec2df042e260dcf372"
+  },
+  {
+   "id": "girl/base/hand-2x",
+   "file": "docs/qa-baseline/girl/base/hand-2x.jpg",
+   "shape": "girl",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hand",
+   "size": [
+    732,
+    304
+   ],
+   "bytes": 27305,
+   "sha256": "f1676441d63640c4c40e369e73d773282873aa41cbb8a1d62ca6467e1ea52e07"
+  },
+  {
+   "id": "girl/base/shoulder-2x",
+   "file": "docs/qa-baseline/girl/base/shoulder-2x.jpg",
+   "shape": "girl",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "shoulder",
+   "size": [
+    470,
+    340
+   ],
+   "bytes": 20715,
+   "sha256": "5813a026303dcd0e0af8570a4ac123afcc0acfa864cc25a516afbe2cca9cd5f0"
+  },
+  {
+   "id": "girl/base/foot-2x",
+   "file": "docs/qa-baseline/girl/base/foot-2x.jpg",
+   "shape": "girl",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "foot",
+   "size": [
+    524,
+    284
+   ],
+   "bytes": 10591,
+   "sha256": "8676f092fc02a87be2bc8fa1eb571086d2aa50d1addee687af109439dfcb05ee"
+  },
+  {
+   "id": "girl/base/abdomen-2x",
+   "file": "docs/qa-baseline/girl/base/abdomen-2x.jpg",
+   "shape": "girl",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "abdomen",
+   "size": [
+    462,
+    340
+   ],
+   "bytes": 15437,
+   "sha256": "8936e206eefdff1553fb8843c25814cf9493b8b7b6b0f3c05ea7d70066f8b518"
+  },
+  {
+   "id": "girl/base/hair-2x",
+   "file": "docs/qa-baseline/girl/base/hair-2x.jpg",
+   "shape": "girl",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hair",
+   "size": [
+    722,
+    600
+   ],
+   "bytes": 44778,
+   "sha256": "6484481b3c2813006af96cf81d3e2ee3bb8241199e87f6c70c79c6922af3f112"
+  },
+  {
+   "id": "girl/maid/knee-2x",
+   "file": "docs/qa-baseline/girl/maid/knee-2x.jpg",
+   "shape": "girl",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "knee",
+   "size": [
+    500,
+    300
+   ],
+   "bytes": 15229,
+   "sha256": "b83099701f283f1c939b018a1b3d55282337a07e6b188042643210f3c76e29df"
+  },
+  {
+   "id": "girl/maid/hand-2x",
+   "file": "docs/qa-baseline/girl/maid/hand-2x.jpg",
+   "shape": "girl",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hand",
+   "size": [
+    732,
+    304
+   ],
+   "bytes": 31306,
+   "sha256": "646458bd0c2bbc0cb8b9c8d513f4bcb2c550dc8b9d4c3b129185b69d99aa0f55"
+  },
+  {
+   "id": "girl/maid/shoulder-2x",
+   "file": "docs/qa-baseline/girl/maid/shoulder-2x.jpg",
+   "shape": "girl",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "shoulder",
+   "size": [
+    470,
+    340
+   ],
+   "bytes": 26790,
+   "sha256": "7f42652326bb22e9620145070a740154a0f52a388ed954087bece8ecfd39abcf"
+  },
+  {
+   "id": "girl/maid/foot-2x",
+   "file": "docs/qa-baseline/girl/maid/foot-2x.jpg",
+   "shape": "girl",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "foot",
+   "size": [
+    524,
+    284
+   ],
+   "bytes": 10591,
+   "sha256": "8676f092fc02a87be2bc8fa1eb571086d2aa50d1addee687af109439dfcb05ee"
+  },
+  {
+   "id": "girl/maid/abdomen-2x",
+   "file": "docs/qa-baseline/girl/maid/abdomen-2x.jpg",
+   "shape": "girl",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "abdomen",
+   "size": [
+    462,
+    340
+   ],
+   "bytes": 17947,
+   "sha256": "c5d222b9e8328f2cc94530f58b3a883d76821ff4ba48e0d0e95d2d05158f9422"
+  },
+  {
+   "id": "girl/maid/hair-2x",
+   "file": "docs/qa-baseline/girl/maid/hair-2x.jpg",
+   "shape": "girl",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hair",
+   "size": [
+    722,
+    600
+   ],
+   "bytes": 44778,
+   "sha256": "6484481b3c2813006af96cf81d3e2ee3bb8241199e87f6c70c79c6922af3f112"
+  },
+  {
+   "id": "girl/sweater-plaid/knee-2x",
+   "file": "docs/qa-baseline/girl/sweater-plaid/knee-2x.jpg",
+   "shape": "girl",
+   "outfit": "sweater-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "knee",
+   "size": [
+    500,
+    300
+   ],
+   "bytes": 16373,
+   "sha256": "4534f9ead441530c8e55c030a65c6eb08ad92507257d30dffab6df5671014584"
+  },
+  {
+   "id": "girl/sweater-plaid/hand-2x",
+   "file": "docs/qa-baseline/girl/sweater-plaid/hand-2x.jpg",
+   "shape": "girl",
+   "outfit": "sweater-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hand",
+   "size": [
+    732,
+    304
+   ],
+   "bytes": 41593,
+   "sha256": "f2119ef1f33f33ff28fb20fcbb2bff4451d429a33a3c643cb32b53f59d4f02a4"
+  },
+  {
+   "id": "girl/sweater-plaid/shoulder-2x",
+   "file": "docs/qa-baseline/girl/sweater-plaid/shoulder-2x.jpg",
+   "shape": "girl",
+   "outfit": "sweater-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "shoulder",
+   "size": [
+    470,
+    340
+   ],
+   "bytes": 16926,
+   "sha256": "48dcf21eaad86a495dd0349808ad94fc6a5e41225b4a02e83e09b21a0fc1f1a7"
+  },
+  {
+   "id": "girl/sweater-plaid/foot-2x",
+   "file": "docs/qa-baseline/girl/sweater-plaid/foot-2x.jpg",
+   "shape": "girl",
+   "outfit": "sweater-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "foot",
+   "size": [
+    524,
+    284
+   ],
+   "bytes": 10591,
+   "sha256": "8676f092fc02a87be2bc8fa1eb571086d2aa50d1addee687af109439dfcb05ee"
+  },
+  {
+   "id": "girl/sweater-plaid/abdomen-2x",
+   "file": "docs/qa-baseline/girl/sweater-plaid/abdomen-2x.jpg",
+   "shape": "girl",
+   "outfit": "sweater-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "abdomen",
+   "size": [
+    462,
+    340
+   ],
+   "bytes": 24361,
+   "sha256": "e3dc5ed2f7b9cb2a94443e697400a3542a2aa2b354113069c988a1985228979a"
+  },
+  {
+   "id": "girl/sweater-plaid/hair-2x",
+   "file": "docs/qa-baseline/girl/sweater-plaid/hair-2x.jpg",
+   "shape": "girl",
+   "outfit": "sweater-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hair",
+   "size": [
+    722,
+    600
+   ],
+   "bytes": 44778,
+   "sha256": "6484481b3c2813006af96cf81d3e2ee3bb8241199e87f6c70c79c6922af3f112"
+  },
+  {
+   "id": "girl/hoodie-pleated/knee-2x",
+   "file": "docs/qa-baseline/girl/hoodie-pleated/knee-2x.jpg",
+   "shape": "girl",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "knee",
+   "size": [
+    500,
+    300
+   ],
+   "bytes": 15489,
+   "sha256": "2df3bfa87dcc582a65d68c6953ffd6abce0581089f6cda9c09949146d62dec7a"
+  },
+  {
+   "id": "girl/hoodie-pleated/hand-2x",
+   "file": "docs/qa-baseline/girl/hoodie-pleated/hand-2x.jpg",
+   "shape": "girl",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hand",
+   "size": [
+    732,
+    304
+   ],
+   "bytes": 33435,
+   "sha256": "dadfb9f2c1d433c8f5bf5e249013eaa6ebd72f64ce00b552fce32e6157b4c6fa"
+  },
+  {
+   "id": "girl/hoodie-pleated/shoulder-2x",
+   "file": "docs/qa-baseline/girl/hoodie-pleated/shoulder-2x.jpg",
+   "shape": "girl",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "shoulder",
+   "size": [
+    470,
+    340
+   ],
+   "bytes": 20457,
+   "sha256": "3bd4b7c8b47c0a0f1c13b67a039bf7875d3278672712b692f3e0de30d622f93d"
+  },
+  {
+   "id": "girl/hoodie-pleated/foot-2x",
+   "file": "docs/qa-baseline/girl/hoodie-pleated/foot-2x.jpg",
+   "shape": "girl",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "foot",
+   "size": [
+    524,
+    284
+   ],
+   "bytes": 10591,
+   "sha256": "8676f092fc02a87be2bc8fa1eb571086d2aa50d1addee687af109439dfcb05ee"
+  },
+  {
+   "id": "girl/hoodie-pleated/abdomen-2x",
+   "file": "docs/qa-baseline/girl/hoodie-pleated/abdomen-2x.jpg",
+   "shape": "girl",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "abdomen",
+   "size": [
+    462,
+    340
+   ],
+   "bytes": 19995,
+   "sha256": "dc4f1a3d0955f22adfaa018a792ab06bb708312e1ff65b4de39ea093e8a915e8"
+  },
+  {
+   "id": "girl/hoodie-pleated/hair-2x",
+   "file": "docs/qa-baseline/girl/hoodie-pleated/hair-2x.jpg",
+   "shape": "girl",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hair",
+   "size": [
+    722,
+    600
+   ],
+   "bytes": 44778,
+   "sha256": "6484481b3c2813006af96cf81d3e2ee3bb8241199e87f6c70c79c6922af3f112"
+  },
+  {
+   "id": "girl/sailor-plaid/knee-2x",
+   "file": "docs/qa-baseline/girl/sailor-plaid/knee-2x.jpg",
+   "shape": "girl",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "knee",
+   "size": [
+    500,
+    300
+   ],
+   "bytes": 16394,
+   "sha256": "d850880b54b6584610ea05caf9b59f580983af02ccd1eadd95dd9d641bf2cc36"
+  },
+  {
+   "id": "girl/sailor-plaid/hand-2x",
+   "file": "docs/qa-baseline/girl/sailor-plaid/hand-2x.jpg",
+   "shape": "girl",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hand",
+   "size": [
+    732,
+    304
+   ],
+   "bytes": 43622,
+   "sha256": "3c8e3901102664c96289f6f14b44a60c921f505dc21a28693cdab4fa75c025ad"
+  },
+  {
+   "id": "girl/sailor-plaid/shoulder-2x",
+   "file": "docs/qa-baseline/girl/sailor-plaid/shoulder-2x.jpg",
+   "shape": "girl",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "shoulder",
+   "size": [
+    470,
+    340
+   ],
+   "bytes": 30158,
+   "sha256": "535c1cb230cb357835d2233fa385c2bd190b6635487094eaae9bcdf9957f1271"
+  },
+  {
+   "id": "girl/sailor-plaid/foot-2x",
+   "file": "docs/qa-baseline/girl/sailor-plaid/foot-2x.jpg",
+   "shape": "girl",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "foot",
+   "size": [
+    524,
+    284
+   ],
+   "bytes": 10591,
+   "sha256": "8676f092fc02a87be2bc8fa1eb571086d2aa50d1addee687af109439dfcb05ee"
+  },
+  {
+   "id": "girl/sailor-plaid/abdomen-2x",
+   "file": "docs/qa-baseline/girl/sailor-plaid/abdomen-2x.jpg",
+   "shape": "girl",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "abdomen",
+   "size": [
+    462,
+    340
+   ],
+   "bytes": 33789,
+   "sha256": "291eefc04f3678fda3165b1081f80909bb986e04f9f6b3f9f1ff446997fae092"
+  },
+  {
+   "id": "girl/sailor-plaid/hair-2x",
+   "file": "docs/qa-baseline/girl/sailor-plaid/hair-2x.jpg",
+   "shape": "girl",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "hair",
+   "size": [
+    722,
+    600
+   ],
+   "bytes": 44778,
+   "sha256": "6484481b3c2813006af96cf81d3e2ee3bb8241199e87f6c70c79c6922af3f112"
+  }
+ ],
+ "totals": {
+  "images": 70,
+  "bytes": 2475685
+ }
+}

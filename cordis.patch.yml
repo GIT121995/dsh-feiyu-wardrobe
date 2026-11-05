@@ -29,7 +29,8 @@
         # 开启后换装间会出现「✨ DIY 上传」：把用户上传的衣服图 + 素体发给云端图像 API
         # （火山方舟 Seedream）生成 look/flat-color-out，再在浏览器本地自动成层进本地衣柜。
         # 隐私/费用：key 只从宿主环境读（ARK_API_KEY，或 ~/.config/seedream/env）；每日有图片/金额上限；
-        # 详细契约见 docs/dress-up/DIY-UPLOAD.md。默认 false = 完全离线、零网络调用。
+        # 详细契约见 docs/dress-up/DIY-PIPELINE.md 与 docs/dress-up/DIY-PACK.md
+        # （历史 M1 契约见 docs/archive/DIY-UPLOAD.md）。默认 false = 完全离线、零网络调用。
         diy:
           enabled: false
           # model: doubao-seedream-5-0-flash-260915   # 默认值；pro 未开通

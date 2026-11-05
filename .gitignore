@@ -8,5 +8,12 @@ docs/preview/*.html
 __pycache__/
 *.pyc
 
+# W0-a: 构建源素材缓存（fetch:sources 下载 ~94MB / 解包 155MB，不入 git）
+.cache/
+# W0-a: 本地资产构建产物（build:assets 输出，与 docs/dress-up/art/2d5 同构）
+tools/art/dist/
+# W0-c: 视觉门禁报告/截图输出（w0-visual scripts/visual-qa.mjs）
+.visual-qa/
+
 # worktree local deps symlink
 node_modules

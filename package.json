@@ -1,7 +1,7 @@
 {
   "name": "dsh-feiyu-wardrobe",
   "version": "2.5.0",
-  "description": "大肥鱼衣橱 — DSH 插件：token 花销变鱼粮，侧边栏内置「换装间」换装小游戏（养女儿向、内容保守：自研 WebGL2 2.5D 动态角色 = 59 骨绑定/蒙皮/发丝裙摆物理/眨眼口型/双身形，上衣×下装任意混搭 + 背景特效 + 悬浮小鲸鱼；需浏览器支持 WebGL2，不支持时仅文字提示），纯本地离线可用；另含 21 件原创 SVG 单品与报告卡出图",
+  "description": "大肥鱼衣橱 — DSH 插件：token 花销变鱼粮，侧边栏内置「换装间」换装小游戏（养女儿向、内容保守：自研 WebGL2 2.5D 动态角色 = 65 骨绑定/蒙皮/发丝裙摆物理/眨眼口型/双身形，上衣×下装任意混搭 + 背景特效 + 悬浮小鲸鱼；需浏览器支持 WebGL2，不支持时仅文字提示），纯本地离线可用；另含 21 件原创 SVG 单品与报告卡出图",
   "license": "MIT",
   "type": "module",
   "main": "./lib/index.js",
@@ -26,15 +26,19 @@
     "README.md",
     "CHANGELOG.md",
     "LICENSE",
-    "docs/preview",
-    "screenshots.json",
-    "docs/preview/fish-demo.png",
+    "docs/preview/*.png",
     "tools/diy"
   ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
     "test": "node --test tests/*.test.mjs",
     "verify": "npm run typecheck && npm test",
+    "fetch:sources": "node tools/art/fetch-sources.mjs",
+    "pack:sources": "node tools/art/pack-sources.mjs",
+    "build:assets": "python3 tools/art/build_prod.py --build-atlas",
+    "verify:full": "npm run typecheck && FEIYU_ASSET_VERIFY_DIST=1 npm test",
+    "visual:qa": "node scripts/visual-qa.mjs",
+    "release:prepare": "node scripts/release.mjs",
     "prepublishOnly": "npm run verify",
     "preview": "node scripts/preview.mjs"
   },

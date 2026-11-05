@@ -1,5 +1,7 @@
 # Changelog
 
+> 文档路径说明（W0，2026-11-05）：下文历史条目中的 `docs/dress-up/LAYER-ARCHITECTURE.md`、`LAYER-MODEL.md`、`PROMPTS.md`、`PLAN-2.5D-RIG.md`、`RENDERING-EFFECT-EVALUATION.md`、`DIY-UPLOAD.md` 均已归档到 [`docs/archive/`](docs/archive/README.md)（原因与现行替代见该索引）。历史条目原文保留不改，仅作当时发布记录。
+
 ## 2.5.0 — 2026-11-05
 
 「观感打磨：girl 肩侧烘焙后发全量拆件 + 双手细节精修（资产 v17/页面 v21）」

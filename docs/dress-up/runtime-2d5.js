@@ -5,7 +5,7 @@
  * 产品化改动（相对 POC）：
  *   - ES 模块 + 工厂函数 `createRuntime2D5()`，无全局状态、无 URL 解析、无 DOM id 依赖；
  *   - 资产按需加载：`setShape(shape)` 才 fetch `art/2d5/<shape>/rig.json` + 图集（未开启零请求）；
- *   - 每身形 1–2 张 lossless WebP 图集（`tools/build_2d5.py` 构建；v2.2 cutout 支持多图集，
+ *   - 每身形 1–2 张 lossless WebP 图集（`tools/art/build_2d5.py` 构建；v2.2 cutout 支持多图集，
  *     每 drawable 用 `atlas` 指定归属；旧单图集 rig 向后兼容）；
  *   - 全部纯逻辑（换装组合/可视列表/参数/固定步长/face 状态机）走 runtime-2d5-core.js（node 单测覆盖）；
  *   - 对外 API：setShape / setLook / addOutfitPack / removeOutfitPack / getOutfitPacks / setParams /
