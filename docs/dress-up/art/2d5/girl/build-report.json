@@ -1,22 +1,22 @@
 {
  "shape": "girl",
  "sourceRig": "girl-cutout.feiyu.json",
- "sourceRigBytes": 2000216,
+ "sourceRigBytes": 2030511,
  "generator": "tools/build_2d5.py",
  "padding": 1,
  "trimAlpha": true,
  "pages": 1,
  "atlas": {
-  "width": 4094,
-  "height": 1721,
-  "bytes": 1680230,
+  "width": 4064,
+  "height": 1779,
+  "bytes": 1694132,
   "pixelEqual": true,
-  "rects": 85
+  "rects": 86
  },
  "rig": {
-  "bytes": 1930364,
-  "gzipBytes": 346202,
-  "sha256": "f7a70df36c53295cd5854d6c72e11af41c811b14f10bc405636400b26e90e74b"
+  "bytes": 1948917,
+  "gzipBytes": 350236,
+  "sha256": "65115cf9d6aae0638612c4eb2a7a1a71dfc9470b383d7f936d82077d47cf2322"
  },
  "drawables": [
   {
@@ -151,7 +151,7 @@
    "z": 65.0,
    "atlas": null,
    "atlasRect": [
-    3023,
+    3439,
     1520,
     311,
     112
@@ -169,7 +169,7 @@
    "z": 65.0,
    "atlas": null,
    "atlasRect": [
-    3336,
+    3752,
     1520,
     311,
     112
@@ -259,8 +259,8 @@
    "z": 40.0,
    "atlas": null,
    "atlasRect": [
-    3649,
-    1520,
+    1,
+    1672,
     273,
     106
    ],
@@ -1195,7 +1195,7 @@
    "z": 15.0,
    "atlas": null,
    "atlasRect": [
-    117,
+    702,
     1672,
     62,
     45
@@ -1213,7 +1213,7 @@
    "z": 15.1,
    "atlas": null,
    "atlasRect": [
-    287,
+    872,
     1672,
     34,
     35
@@ -1231,7 +1231,7 @@
    "z": 15.2,
    "atlas": null,
    "atlasRect": [
-    57,
+    642,
     1672,
     58,
     47
@@ -1249,7 +1249,7 @@
    "z": 15.0,
    "atlas": null,
    "atlasRect": [
-    181,
+    766,
     1672,
     50,
     45
@@ -1267,7 +1267,7 @@
    "z": 15.1,
    "atlas": null,
    "atlasRect": [
-    323,
+    908,
     1672,
     34,
     34
@@ -1285,7 +1285,7 @@
    "z": 15.2,
    "atlas": null,
    "atlasRect": [
-    233,
+    818,
     1672,
     52,
     36
@@ -1303,8 +1303,8 @@
    "z": 15.3,
    "atlas": null,
    "atlasRect": [
-    3924,
-    1520,
+    276,
+    1672,
     64,
     49
    ],
@@ -1321,8 +1321,8 @@
    "z": 15.3,
    "atlas": null,
    "atlasRect": [
-    3983,
-    1,
+    474,
+    1672,
     54,
     48
    ],
@@ -1339,8 +1339,8 @@
    "z": 15.3,
    "atlas": null,
    "atlasRect": [
-    3990,
-    1520,
+    342,
+    1672,
     64,
     49
    ],
@@ -1357,8 +1357,8 @@
    "z": 15.3,
    "atlas": null,
    "atlasRect": [
-    4039,
-    1,
+    530,
+    1672,
     54,
     48
    ],
@@ -1375,8 +1375,8 @@
    "z": 15.3,
    "atlas": null,
    "atlasRect": [
-    3984,
-    853,
+    408,
+    1672,
     64,
     49
    ],
@@ -1393,7 +1393,7 @@
    "z": 15.3,
    "atlas": null,
    "atlasRect": [
-    1,
+    586,
     1672,
     54,
     48
@@ -1411,7 +1411,7 @@
    "z": 15.5,
    "atlas": null,
    "atlasRect": [
-    487,
+    1072,
     1672,
     18,
     8
@@ -1429,7 +1429,7 @@
    "z": 15.5,
    "atlas": null,
    "atlasRect": [
-    418,
+    1003,
     1672,
     27,
     12
@@ -1447,7 +1447,7 @@
    "z": 15.6,
    "atlas": null,
    "atlasRect": [
-    523,
+    1108,
     1672,
     12,
     7
@@ -1465,7 +1465,7 @@
    "z": 15.6,
    "atlas": null,
    "atlasRect": [
-    507,
+    1092,
     1672,
     14,
     7
@@ -1483,7 +1483,7 @@
    "z": 15.6,
    "atlas": null,
    "atlasRect": [
-    390,
+    975,
     1672,
     26,
     25
@@ -1501,7 +1501,7 @@
    "z": 15.6,
    "atlas": null,
    "atlasRect": [
-    359,
+    944,
     1672,
     29,
     29
@@ -1519,7 +1519,7 @@
    "z": 15.6,
    "atlas": null,
    "atlasRect": [
-    447,
+    1032,
     1672,
     38,
     11
@@ -1548,13 +1548,31 @@
    ],
    "verts": 1334,
    "tris": 2194
+  },
+  {
+   "id": "hair-arm-girl",
+   "slot": "strands",
+   "z": 66.0,
+   "atlas": null,
+   "atlasRect": [
+    3023,
+    1520,
+    414,
+    116
+   ],
+   "texSize": [
+    414,
+    116
+   ],
+   "verts": 190,
+   "tris": 242
   }
  ],
  "textureTotal": {
-  "atlasBytes": 1680230,
+  "atlasBytes": 1694132,
   "pages": 1,
   "bytesPerPixel": 4,
-  "texMiB": 26.88,
-  "texMiBwithMipmap": 35.84
+  "texMiB": 27.58,
+  "texMiBwithMipmap": 36.77
  }
 }

@@ -11,8 +11,8 @@ const ROOT = dressUpRoot();
 const ASSET_ROOT = join(ROOT, 'art/2d5');
 const SHAPES = ['chibi', 'girl'];
 const MAX_BONES = 80;   // v2.4：65 骨 rig（59+6 legBones）；runtime shader 上限提到 80
-/** M4b cutout production 资产：chibi 85 / girl 84 drawables（单页图集）。 */
-const EXPECTED_DRAWABLES = { chibi: 85, girl: 85 };   // v2.4：girl 新增 hair-back-girl
+/** cutout production 资产：chibi 85 / girl 86 drawables（单页图集；v2.5 girl 新增 hair-arm-girl）。 */
+const EXPECTED_DRAWABLES = { chibi: 85, girl: 86 };
 /** 旧四个 + cutout 新服装槽位（outfit 引用校验）。 */
 const OUTFIT_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar'];
 
@@ -121,6 +121,14 @@ test('2.5D rig：drawable/mesh 数据完整（顶点/UV/权重/索引/图集矩�
 			assert.ok(hairBack, 'girl 缺少 hair-back-girl');
 			assert.equal(hairBack.slot, 'hairBack');
 			assert.ok(rig.slots.hairBack.includes('hair-back-girl'));
+			// v2.5 全量拆发：手臂上的发丝独立成层（slot strands、z=66 在 hand z=65 之上、hairFront z=70 之下）
+			const hairArm = rig.drawables.find((drawable) => drawable.id === 'hair-arm-girl');
+			assert.ok(hairArm, 'girl 缺少 hair-arm-girl（v2.5 全量拆发）');
+			assert.equal(hairArm.slot, 'strands');
+			assert.equal(hairArm.z, 66);
+			assert.equal(hairArm.role, 'strand');
+			assert.ok(rig.slots.strands.includes('hair-arm-girl'), 'girl slots.strands 应包含 hair-arm-girl');
+			assert.deepEqual(hairArm.texSize, [hairArm.atlasRect[2], hairArm.atlasRect[3]], 'hair-arm-girl texSize 应与裁剪尺寸一致');
 		}
 		assert.equal(rig.drawables.length, EXPECTED_DRAWABLES[shape], `${shape} drawable 数量应为 ${EXPECTED_DRAWABLES[shape]}`);
 		assert.ok(rig.slots.body && rig.slots.legs && rig.slots.armUpper && rig.slots.armFore && rig.slots.hand,

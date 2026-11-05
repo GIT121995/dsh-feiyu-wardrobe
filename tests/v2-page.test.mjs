@@ -39,19 +39,19 @@ test('index.html：删除 DOM 人物容器/脸部层/渲染开关，保留舞台
 	assert.match(INDEX, /开启硬件加速/, '提示文案应建议开启硬件加速');
 	assert.ok(INDEX.includes('id="diyNote"'), '应有 DIY 静态贴片提示');
 	assert.match(INDEX, /不支持骨骼动画/, 'DIY 提示应说明不支持骨骼动画');
-	// 版本号（v2 页面模块升 v14）
-	assert.match(INDEX, /app\.js\?v=20/);
-	assert.match(INDEX, /style\.css\?v=20/);
+	// 版本号（v2.5 页面模块升 v21）
+	assert.match(INDEX, /app\.js\?v=21/);
+	assert.match(INDEX, /style\.css\?v=21/);
 	assert.ok(INDEX.includes('type="module"'));
 });
 
 test('app.js：唯一渲染路径是 2.5D runtime，DOM 渲染/双模式代码全部移除', () => {
 	// 必须保留：runtime 懒加载（boot 即唯一路径）+ 资产版本 + 文本提示 + DIY 静态
-	assert.ok(APP.includes("const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=20'"));
+	assert.ok(APP.includes("const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=21'"));
 	assert.ok(APP.includes('import(RUNTIME_2D5_MODULE)'), '应动态 import 2.5D runtime');
 	assert.ok(APP.includes('bootRuntime()'), 'boot 应启动 2.5D runtime（唯一路径）');
 	assert.ok(APP.includes('RUNTIME_2D5_ASSET_VERSION'), 'rig/atlas 应带资产版本');
-	assert.ok(APP.includes("RUNTIME_2D5_ASSET_VERSION = '16'"), 'v2.3 资产版本应为 15（rig/atlas ?v=15）');
+	assert.ok(APP.includes("RUNTIME_2D5_ASSET_VERSION = '17'"), 'v2.5 资产版本应为 17（rig/atlas ?v=17）');
 	assert.ok(APP.includes('client-config.json'), '页面应读宿主 client-config（仅互动）');
 	assert.ok(APP.includes('diyLayerUrls'), 'DIY 应改 canvas 静态贴片');
 	assert.ok(APP.includes('不支持骨骼动画'), 'DIY 静态提示文案');
@@ -93,7 +93,7 @@ test('wardrobe-core / runtime core：不再提供 DOM 渲染或渲染模式决�
 	}
 	assert.ok(CORE.includes('export function resolveLook'));
 	assert.ok(CORE.includes('export function visibleDrawables'));
-	assert.ok(RUNTIME.includes("from './runtime-2d5-core.js?v=20'"), 'runtime 模块应按 v14 复用 core');
+	assert.ok(RUNTIME.includes("from './runtime-2d5-core.js?v=21'"), 'runtime 模块应按 v21 复用 core');
 	assert.ok(RUNTIME.includes('assetVersion'), 'runtime 应支持资产版本查询串');
 });
 
