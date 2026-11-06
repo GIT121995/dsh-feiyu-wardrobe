@@ -106,6 +106,83 @@ export function pickQualityTier(device = {}) {
 	return 'medium';
 }
 
+/* ------------------------------------------------ 资产 tier（v2.6.1 2x） -- */
+
+/**
+ * 资产档位：`lo` = 现有 1x 资产（`art/2d5/{shape}/`）；`hi` = 2x 高 DPI 资产
+ * （`art/2d5/{shape}-hi/`，body/hair/face/tail 2x + 服装 1x，两页图集）。
+ * 页面向 runtime 传 tierOverride（URL ?feiyuTier= / localStorage）用于调试强制。
+ */
+export const ASSET_TIERS = ['lo', 'hi'];
+/** hi tier 要求设备 DPR ≥ 2（按 `window.devicePixelRatio`，与画质档 dpr 无关）。 */
+export const HI_MIN_DPR = 2;
+/** hi tier 要求 navigator.deviceMemory ≥ 4（GiB）或 hardwareConcurrency ≥ 4。 */
+export const HI_MIN_DEVICE_MEMORY = 4;
+/** hi tier 要求 navigator.hardwareConcurrency ≥ 4（deviceMemory 缺失时的弱机判据）。 */
+export const HI_MIN_HARDWARE_CONCURRENCY = 4;
+/** hi tier 要求 WebGL MAX_TEXTURE_SIZE ≥ 4096（两页图集每页 ≤4096）。 */
+export const HI_MIN_TEXTURE_SIZE = 4096;
+
+/**
+ * 资产目录名：lo → `{shape}`；hi → `{shape}-hi`（图集/rig 同目录，运行时只换前缀）。
+ * @param {string} shape
+ * @param {string} [tier]
+ * @returns {string}
+ */
+export function assetDirForTier(shape, tier = 'lo') {
+	const base = typeof shape === 'string' && shape ? shape : 'chibi';
+	return tier === 'hi' ? `${base}-hi` : base;
+}
+
+/**
+ * 资产 tier 决策（纯函数，node 单测覆盖）：
+ *   hi = DPR≥2 且（deviceMemory≥4 或 hardwareConcurrency≥4）且 MAX_TEXTURE_SIZE≥4096；
+ *   否则 lo。显式 override（URL/localStorage/API 调试）优先，值非法时忽略。
+ * 真机未测：弱机/DPR1 一律 lo，hi 加载失败由 runtime 自动回退 lo（见 runtime-2d5.js）。
+ *
+ * @param {{
+ *   device?: { deviceMemory?: number|null, hardwareConcurrency?: number|null },
+ *   dpr?: unknown,
+ *   maxTextureSize?: unknown,
+ *   override?: unknown,
+ *   overrideSource?: string,
+ * }} [options]
+ * @returns {{
+ *   tier: 'lo'|'hi',
+ *   reason: string,
+ *   override: { tier: 'lo'|'hi', source: string }|null,
+ *   signals: { dpr: number, deviceMemory: number|null, hardwareConcurrency: number|null, maxTextureSize: number|null },
+ * }}
+ */
+export function resolveAssetTier(options = {}) {
+	const device = options.device || {};
+	const positive = (value) => {
+		const number = Number(value);
+		return Number.isFinite(number) && number > 0 ? number : null;
+	};
+	const signals = {
+		dpr: positive(options.dpr) || 1,
+		deviceMemory: positive(device.deviceMemory),
+		hardwareConcurrency: positive(device.hardwareConcurrency),
+		maxTextureSize: positive(options.maxTextureSize),
+	};
+	const rawOverride = typeof options.override === 'string' ? options.override.trim().toLowerCase() : '';
+	if (ASSET_TIERS.includes(rawOverride)) {
+		const source = typeof options.overrideSource === 'string' && options.overrideSource ? options.overrideSource : 'explicit';
+		const tier = /** @type {'lo'|'hi'} */ (rawOverride);
+		return { tier, reason: `override:${source}`, override: { tier, source }, signals };
+	}
+	const failures = [];
+	if (!(signals.dpr >= HI_MIN_DPR)) failures.push(`dpr<${HI_MIN_DPR}`);
+	const memoryOk = signals.deviceMemory !== null && signals.deviceMemory >= HI_MIN_DEVICE_MEMORY;
+	const coresOk = signals.hardwareConcurrency !== null && signals.hardwareConcurrency >= HI_MIN_HARDWARE_CONCURRENCY;
+	// 任一为强（内存或核数）即可；两者都未知时才判弱机（iPadOS/Safari 无 deviceMemory 时看核数）。
+	if (!memoryOk && !coresOk) failures.push('device-weak');
+	if (!(signals.maxTextureSize !== null && signals.maxTextureSize >= HI_MIN_TEXTURE_SIZE)) failures.push(`max-texture<${HI_MIN_TEXTURE_SIZE}`);
+	if (failures.length > 0) return { tier: 'lo', reason: `auto:${failures.join(',')}`, override: null, signals };
+	return { tier: 'hi', reason: 'auto:capable', override: null, signals };
+}
+
 /** @param {unknown} value @param {number} min @param {number} max @returns {number} */
 function clampNumber(value, min, max) {
 	const number = Number(value);

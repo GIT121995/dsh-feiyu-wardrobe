@@ -19,9 +19,9 @@ import {
 	normalizeState,
 	randomOutfit,
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；加版本号让浏览器绕过旧缓存
-} from './wardrobe-core.js?v=22';
-import { createDiy } from './diy-ui.js?v=22';
-import { createDiyPacks } from './diy-packs.js?v=22';
+} from './wardrobe-core.js?v=23';
+import { createDiy } from './diy-ui.js?v=23';
+import { createDiyPacks } from './diy-packs.js?v=23';
 import {
 	ACTION_SPECS,
 	actionParams,
@@ -29,7 +29,7 @@ import {
 	hitZone,
 	moodFacePlan,
 	pickLine,
-} from './interaction-model.js?v=22';
+} from './interaction-model.js?v=23';
 
 (() => {
 	'use strict';
@@ -37,11 +37,26 @@ import {
 	const $ = (sel) => document.querySelector(sel);
 	const STORAGE_KEY = 'feiyu:outfit';
 	/** 2.5D runtime 模块（v2 唯一渲染路径；页面模块版本 v15）。 */
-	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=22';
+	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=23';
 	const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/';
-	/** 2.5D 资产版本（v1.0.0 起资产未变，保持 v13；页面模块升 v15）。 */
-	const RUNTIME_2D5_ASSET_VERSION = '18';
+	/** 2.5D 资产版本（v2.6.1 = 19：hi 2x tier 新增两页图集；页面模块 v23）。 */
+	const RUNTIME_2D5_ASSET_VERSION = '19';
 	const params = new URLSearchParams(location.search);
+	/**
+	 * v2.6.1 资产 tier 调试覆盖：URL `?feiyuTier=lo|hi` 优先，其次 localStorage `feiyu:tier`。
+	 * 无覆盖时 runtime 按 DPR/内存/核数/纹理上限自动决策（弱机/DPR1 → lo）。
+	 */
+	function resolveTierOverride() {
+		const fromUrl = String(params.get('feiyuTier') || '').trim().toLowerCase();
+		if (fromUrl === 'lo' || fromUrl === 'hi') return { tier: fromUrl, source: 'url' };
+		try {
+			const stored = String(localStorage.getItem('feiyu:tier') || '').trim().toLowerCase();
+			if (stored === 'lo' || stored === 'hi') return { tier: stored, source: 'storage' };
+		} catch {
+			/* 隐私模式/存储被禁用时忽略 */
+		}
+		return null;
+	}
 	/** 悬浮小鲸鱼用的小图尺寸（9:16，与整张立绘画布同构）。 */
 	const PET_IMAGE_W = 184;
 	const PET_IMAGE_H = 328;
@@ -359,6 +374,7 @@ import {
 		if (runtime) return Promise.resolve(runtime);
 		if (runtimeStarting) return runtimeStarting;
 		runtimeStarting = (async () => {
+			const tierOverride = resolveTierOverride();
 			const module = await import(RUNTIME_2D5_MODULE);
 			if (!runtimeCanvas) {
 				runtimeCanvas = document.createElement('canvas');
@@ -372,6 +388,9 @@ import {
 				assetVersion: RUNTIME_2D5_ASSET_VERSION,
 				quality: 'auto',
 				device: renderDeviceInfo(),
+				devicePixelRatio: window.devicePixelRatio || 1,
+				tierOverride: tierOverride ? tierOverride.tier : null,
+				tierOverrideSource: tierOverride ? tierOverride.source : null,
 				onContextLost: () => {
 					if (runtime !== rt) return; // 启动失败主动 destroy 触发的 lost 不重复处理
 					showRuntimeUnavailable('webglcontextlost');
@@ -1520,6 +1539,7 @@ import {
 			getState: () => (runtime ? runtime.getState() : null),
 			getMemory: () => (runtime ? runtime.getMemory() : null),
 			getAssetInfo: () => (runtime ? runtime.getAssetInfo() : null),
+			getTier: () => (runtime ? runtime.getTier() : null),
 			diyMode: () => diyStatic,
 			diyOverlayVisible: () => !!(diyOverlay && diyOverlay.classList.contains('on')),
 			/** E2E 预置：模拟选中一个 DIY 贴片（url 为 675×1200 透明到底图）。 */

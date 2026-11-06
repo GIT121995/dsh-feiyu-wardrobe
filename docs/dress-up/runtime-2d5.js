@@ -32,6 +32,7 @@ import {
 	desiredEyeKey,
 	desiredMouthKey,
 	DIY_PACK_FORMAT,
+	assetDirForTier,
 	DIY_PACK_FORMAT_VERSION,
 	faceStateKeys,
 	headFollowParams,
@@ -39,6 +40,7 @@ import {
 	migrateDiyPackOutfits,
 	normalizeDiyPack,
 	registerDiyPack,
+	resolveAssetTier,
 	resolveDrawableAtlas,
 	resolveLook,
 	resolveQuality,
@@ -47,7 +49,7 @@ import {
 	LEGACY_OUTFIT_SLOTS,
 	unregisterDiyPack,
 	visibleDrawables,
-} from './runtime-2d5-core.js?v=22';
+} from './runtime-2d5-core.js?v=23';
 
 /** 单个 spring 链节点相对 rest 的最大偏移（px，安全包络，POC 同值）。 */
 const CHAIN_OFFSET_LIMIT = 42;
@@ -194,6 +196,9 @@ function makeMaskFBO(gl, width, height) {
  *   maskPass?: boolean,
  *   mipmaps?: boolean,
  *   device?: { deviceMemory?: number|null, hardwareConcurrency?: number|null },
+ *   devicePixelRatio?: number,
+ *   tierOverride?: 'lo'|'hi'|string|null,
+ *   tierOverrideSource?: 'url'|'storage'|'api'|string,
  *   maxDpr?: number,
  *   onContextLost?: (info: { reason: string }) => void,
  * }} options
@@ -218,6 +223,21 @@ export async function createRuntime2D5(options) {
 		mipmaps: options.mipmaps,
 	}, options.device || {});
 	const maxDpr = Number.isFinite(options.maxDpr) ? Number(options.maxDpr) : DPR_LIMITS.max;
+	// v2.6.1 资产 tier：设备 DPR/内存/核数 + WebGL 纹理上限 + URL/localStorage 调试覆盖。
+	// 传 devicePixelRatio 而不是画质档 dpr：DPR2 设备即使渲染档 1.5 也受益于 2x 纹理。
+	/** @type {number|null} */
+	let maxTextureSize = null;
+	try { maxTextureSize = Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)) || null; } catch { maxTextureSize = null; }
+	const screenDpr = Number.isFinite(options.devicePixelRatio) && Number(options.devicePixelRatio) > 0
+		? Number(options.devicePixelRatio)
+		: (typeof globalThis !== 'undefined' && Number.isFinite(globalThis.devicePixelRatio) ? Number(globalThis.devicePixelRatio) : 1);
+	const tierResolution = resolveAssetTier({
+		device: options.device || {},
+		dpr: screenDpr,
+		maxTextureSize,
+		override: options.tierOverride,
+		overrideSource: options.tierOverrideSource,
+	});
 
 	/** @type {any} */
 	const rt = {
@@ -228,6 +248,10 @@ export async function createRuntime2D5(options) {
 		assetRoot: typeof options.assetRoot === 'string' && options.assetRoot ? options.assetRoot.replace(/\/?$/, '/') : 'art/2d5/',
 		assetVersion: typeof options.assetVersion === 'string' && options.assetVersion ? options.assetVersion : '',
 		device: options.device || {},
+		/** 当前会话实际使用的资产 tier（hi 加载失败回退后变 lo）。 */
+		assetTier: tierResolution.tier,
+		/** tier 决策/覆盖/回退信息（getTier()/getAssetInfo() 暴露）。 */
+		tierInfo: { ...tierResolution, fallback: null },
 		baseW: BASE_CANVAS.width,
 		baseH: BASE_CANVAS.height,
 		camera: { x: 0, y: 0, w: BASE_CANVAS.width, h: BASE_CANVAS.height },
@@ -339,6 +363,7 @@ function buildApi(rt) {
 				canvas: { width: rt.baseW, height: rt.baseH },
 				quality: rt.quality,
 				assetRoot: rt.assetRoot,
+				assetTier: rt.assetTier,
 			};
 		},
 
@@ -802,9 +827,29 @@ function buildApi(rt) {
 			};
 		},
 
-		/** 首屏资产信息（rig 字节数 / 图集 URL / 图集约字节数）。 */
+		/** 首屏资产信息（rig 字节数 / 图集 URL / 图集约字节数；含当前 tier 与回退原因）。 */
 		getAssetInfo() {
-			return { ...rt.assetInfo };
+			return { ...rt.assetInfo, tier: api.getTier() };
+		},
+
+		/** 资产 tier 决策/加载状态（E2E/调试用）：tier、原因、设备信号、覆盖与回退。 */
+		getTier() {
+			const scenes = {};
+			for (const [shape, scene] of rt.scenes.entries()) {
+				scenes[shape] = {
+					tier: scene.assetTier || rt.assetTier,
+					assetDir: scene.assetDir || shape,
+					pages: (scene.atlases || []).length,
+				};
+			}
+			return {
+				tier: rt.assetTier,
+				reason: rt.tierInfo.reason,
+				signals: { ...rt.tierInfo.signals },
+				override: rt.tierInfo.override ? { ...rt.tierInfo.override } : null,
+				fallback: rt.tierInfo.fallback ? { ...rt.tierInfo.fallback } : null,
+				scenes,
+			};
 		},
 
 		/** 运行状态快照（QA/E2E 断言用）。 */
@@ -826,6 +871,9 @@ function buildApi(rt) {
 				draws: rt.stats.draws,
 				tris: rt.stats.tris,
 				quality: getQuality(rt),
+				assetTier: rt.assetTier,
+				tierReason: rt.tierInfo.reason,
+				tierFallback: rt.tierInfo.fallback ? { ...rt.tierInfo.fallback } : null,
 				tick: api.getTickInfo(),
 				memory: memoryInfo(rt),
 				art: rt.art,
@@ -941,7 +989,8 @@ function uploadDrawable(rt, drawable) {
 /* ------------------------------------------------------------ scene loading -- */
 
 /**
- * 加载身形资产：rig JSON（按需 fetch）+ 单张图集纹理解码上传。
+ * 资产加载：按当前 tier 载入 rig + 1–2 页图集；hi 失败自动回退 lo（不白屏/不卡死）。
+ * 回退会切换 rt.assetTier=lo，并把原因记进 rt.tierInfo.fallback（getTier() 可查）。
  * @param {any} rt
  * @param {string} shape
  */
@@ -949,22 +998,57 @@ async function loadScene(rt, shape) {
 	if (rt.scenes.has(shape)) return rt.scenes.get(shape);
 	if (rt.loading.has(shape)) return rt.loading.get(shape);
 	const task = (async () => {
-		const loadT0 = performance.now();
-		const assetQuery = rt.assetVersion ? `?v=${encodeURIComponent(rt.assetVersion)}` : '';
-		const rigUrl = `${rt.assetRoot}${shape}/rig.json${assetQuery}`;
-		const response = await fetch(rigUrl);
-		if (!response.ok) throw new Error(`rig 加载失败 HTTP ${response.status}：${rigUrl}`);
-		const text = await response.text();
-		const rig = JSON.parse(text);
-		if (!rig || !Array.isArray(rig.drawables)) throw new Error(`rig 格式非法：${rigUrl}`);
+		const tier = rt.assetTier;
+		try {
+			return await loadSceneAtTier(rt, shape, tier);
+		} catch (error) {
+			if (tier !== 'hi') throw error;
+			const reason = error instanceof Error ? error.message : String(error);
+			console.warn(`[2.5D] hi 资产加载失败，回退 lo：${shape}（${reason}）`);
+			rt.tierInfo.fallback = { from: 'hi', to: 'lo', shape, reason, atMs: Math.round(performance.now()) };
+			rt.assetTier = 'lo';
+			try {
+				return await loadSceneAtTier(rt, shape, 'lo');
+			} catch (fallbackError) {
+				const message = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+				throw new Error(`hi 资产加载失败且 lo 回退也失败（${shape}）：${reason} → ${message}`);
+			}
+		}
+	})();
+	rt.loading.set(shape, task);
+	try {
+		return await task;
+	} finally {
+		rt.loading.delete(shape);
+	}
+}
+
+/**
+ * 按指定 tier 加载单个身形：rig JSON + 1–2 页图集 + 场景运行时结构。
+ * 失败时回滚半成品 GL 资源（hi→lo 回退不留纹理/VBO 泄漏）。
+ * @param {any} rt
+ * @param {string} shape
+ * @param {'lo'|'hi'} tier
+ */
+async function loadSceneAtTier(rt, shape, tier) {
+	const assetDir = assetDirForTier(shape, tier);
+	const loadT0 = performance.now();
+	const assetQuery = rt.assetVersion ? `?v=${encodeURIComponent(rt.assetVersion)}` : '';
+	const rigUrl = `${rt.assetRoot}${assetDir}/rig.json${assetQuery}`;
+	const response = await fetch(rigUrl);
+	if (!response.ok) throw new Error(`rig 加载失败 HTTP ${response.status}：${rigUrl}`);
+	const text = await response.text();
+	const rig = JSON.parse(text);
+	if (!rig || !Array.isArray(rig.drawables)) throw new Error(`rig 格式非法：${rigUrl}`);
+	// 多图集（v2.2 cutout / v2.6.1 hi 两页）：rig.atlases 1–2 张；旧 rig.atlas 单张向后兼容。
+	const atlasSet = normalizeAtlases(rig);
+	if (!atlasSet.ok) throw new Error(`图集配置非法：${atlasSet.errors.join(',')}`);
+	/** @type {Array<{ id: string, file: string, width: number, height: number, index: number, url: string, image: HTMLImageElement, texture: WebGLTexture, bytes: number }>} */
+	const atlases = [];
+	try {
 		for (const drawable of rig.drawables) uploadDrawable(rt, drawable);
-		// 多图集（v2.2 cutout）：rig.atlases 1–2 张；旧 rig.atlas 单张向后兼容。
-		const atlasSet = normalizeAtlases(rig);
-		if (!atlasSet.ok) throw new Error(`图集配置非法：${atlasSet.errors.join(',')}`);
-		/** @type {Array<{ id: string, file: string, width: number, height: number, index: number, url: string, image: HTMLImageElement, texture: WebGLTexture, bytes: number }>} */
-		const atlases = [];
 		for (const def of atlasSet.atlases) {
-			const atlasUrl = `${rt.assetRoot}${shape}/${def.file}${assetQuery}`;
+			const atlasUrl = `${rt.assetRoot}${assetDir}/${def.file}${assetQuery}`;
 			const image = await loadImage(atlasUrl);
 			const width = def.width || image.naturalWidth;
 			const height = def.height || image.naturalHeight;
@@ -992,9 +1076,11 @@ async function loadScene(rt, shape) {
 
 		// 场景运行时结构（与 POC 同口径）
 		rig.shape = shape;
+		rig.assetTier = tier;
+		rig.assetDir = assetDir;
 		rig.drawableById = Object.fromEntries(rig.drawables.map((drawable) => [drawable.id, drawable]));
 		rig.diyPacks = new Map();
-		rig.file = `${shape}/rig.json`;
+		rig.file = `${assetDir}/rig.json`;
 		rig.stats = {
 			texBytes: rig.texBytes,
 			verts: rig.drawables.reduce((sum, drawable) => sum + drawable.verts, 0),
@@ -1046,7 +1132,10 @@ async function loadScene(rt, shape) {
 		rt.assetInfo[shape] = {
 			rigUrl,
 			rigBytes: text.length,
-			// 兼容旧字段（第一张图集）+ 多图集明细（cutout）
+			assetTier: tier,
+			assetDir,
+			pages: atlases.length,
+			// 兼容旧字段（第一张图集）+ 多图集明细（cutout / hi 两页）
 			atlasUrl: atlases[0].url,
 			atlasWidth: atlases[0].width,
 			atlasHeight: atlases[0].height,
@@ -1060,12 +1149,17 @@ async function loadScene(rt, shape) {
 			loadMs: Math.round(rt.loadMs[shape]),
 		};
 		return rig;
-	})();
-	rt.loading.set(shape, task);
-	try {
-		return await task;
-	} finally {
-		rt.loading.delete(shape);
+	} catch (error) {
+		// 回滚本次尝试已创建的 GL 资源（hi 失败回退 lo 或最终失败都不留泄漏）
+		let releasedVbos = 0;
+		for (const drawable of rig.drawables) {
+			if (drawable.vao) { rt.gl.deleteVertexArray(drawable.vao); drawable.vao = null; }
+			if (drawable.vbo) { rt.gl.deleteBuffer(drawable.vbo); drawable.vbo = null; releasedVbos += 1; }
+			if (drawable.ibo) { rt.gl.deleteBuffer(drawable.ibo); drawable.ibo = null; releasedVbos += 1; }
+		}
+		rt.glRes.vbos = Math.max(0, rt.glRes.vbos - releasedVbos);
+		for (const atlas of atlases) if (atlas.texture) deleteTexture(rt, atlas.texture);
+		throw error;
 	}
 }
 

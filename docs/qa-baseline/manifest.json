@@ -1,13 +1,13 @@
 {
  "format": "feiyu-visual-qa-baseline",
  "version": 1,
- "createdAt": "2026-11-06T04:37:17.591Z",
+ "createdAt": "2026-11-06T07:36:29.892Z",
  "generatedBy": "scripts/visual-qa.mjs --mode baseline",
  "note": "headless Chrome + SwANGLE（无 GPU）；仅像素回归基线，不代表真机 FPS/显存。",
  "repoPathHint": "dsh-feiyu-wardrobe",
  "versions": {
-  "asset": 18,
-  "page": 22,
+  "asset": 19,
+  "page": 23,
   "pageFiles": [
    "docs/dress-up/app.js",
    "docs/dress-up/index.html",

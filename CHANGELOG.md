@@ -2,6 +2,33 @@
 
 > 文档路径说明（W0，2026-11-05）：下文历史条目中的 `docs/dress-up/LAYER-ARCHITECTURE.md`、`LAYER-MODEL.md`、`PROMPTS.md`、`PLAN-2.5D-RIG.md`、`RENDERING-EFFECT-EVALUATION.md`、`DIY-UPLOAD.md` 均已归档到 [`docs/archive/`](docs/archive/README.md)（原因与现行替代见该索引）。历史条目原文保留不改，仅作当时发布记录。
 
+## 2.6.1 — 2026-11-06
+
+「高 DPI 2x 资产（hi tier）：DPR≥2 自动启用 2x 素体/发/脸/尾纹理，弱机保持 1x（资产 v19 / 页面 v23）」
+
+### 改进
+- **hi（2x）资产档位**：新增 `art/2d5/{shape}-hi/` —— body 10 drawable + 发层 + 脸部 19 件 + 尾鳍改用 **AI 增强重绘的 2x RGB 纹理**（画布 1350×2400、纹理 2x 分辨率；alpha 由 lo alpha 确定性 Lanczos-2x 生成，轮廓/网格/骨骼不变），服装保持 1x。图集打包为 **2 页**（hi 页 2x 大件 + lo 页 1x 服装，每页 ≤4096、pixelEqual）。
+  - girl-hi：2 页 4073×3138 + 4080×1050（atlas 2.62MB + 1.03MB），rig 1.91MB，纹理 65.1MiB；chibi-hi：2 页 4016×3214 + 4083×975（3.05MB + 1.02MB），rig 1.98MB，纹理 64.42MiB。结构仍为 65 骨 / 85·86 drawables，rect/mesh 与 lo 逐 drawable 一致。
+  - AI 用量：Seedream 共 10 张 ≈¥3（每身形 2 个 seed 全图增强，按轮廓 IoU/chamfer 选优；girl seed 6604 IoU 0.913、chibi seed 8806 IoU 0.913）。AI 只提供「可见 + 不透明 + 距轮廓 ≥1.5px」像素的 RGB，隐藏区/边缘保留确定性基座，轮廓不随 AI 变化。
+- **运行时 tier 自适应**：`assetTier()` = DPR≥2 且（deviceMemory≥4 或 hardwareConcurrency≥4）且 MAX_TEXTURE_SIZE≥4096 → hi，否则 lo；hi 加载失败自动回退 lo（不白屏/不卡死，回退原因可查）；调试覆盖 `?feiyuTier=lo|hi` 与 localStorage `feiyu:tier`。资产 **v19**、页面模块 **v23**。
+- **lo tier 零变化**：`art/2d5/{shape}/` 资产未改动；DPR1/弱机仍走 1x（首屏 2 请求、纹理 ≈26MiB 不变），hi 只在 DPR≥2 且设备达标时启用。
+
+### 量化（headless Chrome + SwANGLE，DPR2 真实 canvas 像素，lo vs hi）
+- 锐度（Laplacian 方差 ×，同姿态同画布、轮廓内膨胀 5px 掩码）：脸 ×2.28、发 ×2.83、膝 ×5.09、手 ×4.70、腹 ×5.88；Sobel 梯度 ×1.26–1.66。
+- 几何：全身轮廓 IoU **0.9973–0.9998**（girl bare/maid/sailor 与 chibi maid DPR2），边界最大偏差 ≤1.80px（95 分位 ≤1.00px）；静置 alpha/洋红孔洞 **0**。
+- 首屏 payload 增量：+1 请求（rig + 2 页图集）、传输 +1.88MiB（girl）/ +2.03MiB（chibi）、纹理显存 25.7→65.1MiB（girl）/ 26.7→64.4MiB（chibi）；首次 loadMs 约 640→1170ms（headless，不代表真机）。
+- E2E：lo tier 与 hi tier（`?feiyuTier=hi`）各 **18/18 PASS**、0 pageerror、0 crash；hi 轮实测 2 页图集 / 3 请求 / 身形切换正常。
+
+### 可复现
+- 源包 `assets-src-v2` 更新（新增 `hi/` 63 files；313 files / 164.7MB；sha256 `834e2485…8af5`，GitHub Release assets-v2 已重新上传）；构建：`npm run build:assets`（lo）与新增 `npm run build:assets:hi`（hi）；`verify:full` 含 hi 构建双跑 md5 确定性校验。
+- 视觉门禁 lo baseline 更新到页面 v23 / 资产 v19（像素仍与 v2.6.0 一致）；hi DPR2 对比报告与截图见 `.scratch/p8/2x/runtime/review/`（不入 git）。
+
+### 已知限制
+- **服装仍为 1x**：hi tier 只覆盖 body/hair/face/tail，衣服仍按 1x 采样（P3 全量 2x 另行立项）。
+- **真机未测**（D-008）：全部数字来自 headless SwANGLE；实际设备是否启用 hi 由 DPR/内存/核数/纹理上限自动决定，弱机/DPR1 回退 lo。
+- AI 增强存在轻微风格/肤色差异（已做低频色调匹配，DPR1 下肉眼差异小）；D-011 袖口 inpaint 白雾在 2x 下仍可能轻微可见；D-010 皮肤亮度待用户确认。
+- **npm 包体积增加**：hi dist 两身形图集+rig ≈11.6MB（未压缩），npm 包由 8.5MB 增至约 20MB（插件离线可用所需，lo 资产不变）。
+
 ## 2.6.0 — 2026-11-05
 
 「素体 art v3：统一母版重贴图 + 两件式露脐 + 接缝/双色修复（资产 v18/页面 v22）」

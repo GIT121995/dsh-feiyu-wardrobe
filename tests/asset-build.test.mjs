@@ -46,7 +46,7 @@ function discoverMasterConfigs() {
 		.sort()
 		.map((name) => join(dir, name, 'config.json'));
 }
-const PAYLOAD_PREFIXES = ['art/', 'm4/', 'feet/', 'hands/', 'prod/', 'master/'];
+const PAYLOAD_PREFIXES = ['art/', 'm4/', 'feet/', 'hands/', 'prod/', 'master/', 'hi/'];
 const sha256 = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
 /** python3 + 构建依赖可用？（numpy/cv2/Pillow；缺失时跳过构建类测试） */
@@ -98,7 +98,7 @@ test('assets-src manifest：schema + 逐文件 size/sha256 契约（源缺失 sk
 	const seen = new Set();
 	let bytes = 0;
 	for (const f of manifest.files) {
-		assert.match(f.path, /^(art|m4|feet|hands|prod|master)\//, `非法 payload 路径：${f.path}`);
+		assert.match(f.path, /^(art|m4|feet|hands|prod|master|hi)\//, `非法 payload 路径：${f.path}`);
 		assert.ok(!seen.has(f.path), `manifest 路径重复：${f.path}`);
 		seen.add(f.path);
 		const p = join(SRC, f.path);
@@ -113,7 +113,7 @@ test('assets-src manifest：schema + 逐文件 size/sha256 契约（源缺失 sk
 	assert.equal(version, manifest.assetVersion, 'VERSION 与 manifest.assetVersion 不一致');
 	const sources = JSON.parse(readFileSync(join(SRC, 'sources.json'), 'utf8'));
 	assert.equal(sources.assetVersion, manifest.assetVersion);
-	for (const dir of ['art/', 'm4/', 'feet/', 'hands/', 'prod/', 'master/']) {
+	for (const dir of ['art/', 'm4/', 'feet/', 'hands/', 'prod/', 'master/', 'hi/']) {
 		assert.ok(sources.layout?.[dir], `sources.json 缺少 ${dir} 布局映射`);
 	}
 	for (const prefix of PAYLOAD_PREFIXES) {
@@ -168,6 +168,116 @@ test(`build_prod 确定性：${SHAPE} 双跑 rig.json + atlas.webp md5 一致（
 			}
 			t.diagnostic(`${SHAPE}: 重建产物与 docs/dress-up/art/2d5 逐字节一致（rig+atlas）${discoverMasterConfigs().length ? `（master-config ×${discoverMasterConfigs().length}）` : ''}`);
 		}
+	} finally {
+		rmSync(scratch, { recursive: true, force: true });
+	}
+});
+
+// ------------------------------------------------- v2.6.1 hi (2x) tier ----
+/** hi tier 静态契约：docs/dress-up/art/2d5/{shape}-hi 存在时校验（不依赖源包）。 */
+const HI_ROOT = join(ROOT, 'docs', 'dress-up', 'art', '2d5');
+const LO_ROOT = HI_ROOT;
+const HI_2X_IDS = new Set(['body-head', 'body-torso', 'leg-L', 'leg-R',
+	'arm-upper-L', 'arm-upper-R', 'arm-fore-L', 'arm-fore-R', 'hand-L', 'hand-R',
+	'tail']);
+const HI_2X_SLOTS = new Set(['hairBack', 'strands', 'hairFront', 'face']);
+
+test('v2.6.1 hi tier：两页图集/像素相等/2x 纹理尺寸/结构与 lo 一致（缺产物 skip）', (t) => {
+	const shapes = ['chibi', 'girl'].filter((s) => existsSync(join(HI_ROOT, `${s}-hi`, 'rig.json')));
+	if (!shapes.length) return t.skip('hi tier 产物未生成（先跑 npm run build:assets:hi）');
+	for (const shape of shapes) {
+		const dir = join(HI_ROOT, `${shape}-hi`);
+		const rig = JSON.parse(readFileSync(join(dir, 'rig.json'), 'utf8'));
+		const rep = JSON.parse(readFileSync(join(dir, 'build-report.json'), 'utf8'));
+		const pages = rep.atlases ?? (rep.atlas ? [rep.atlas] : []);
+		assert.equal(pages.length, 2, `${shape}-hi 应为 2 页图集`);
+		for (const p of pages) {
+			assert.equal(p.pixelEqual, true, `${shape}-hi 图集 pixelEqual != true`);
+			assert.ok(p.width <= 4096 && p.height <= 4096, `${shape}-hi 图集页超 4096：${p.width}x${p.height}`);
+			assert.ok(existsSync(join(dir, p.file ?? 'atlas.webp')), `${shape}-hi 缺少图集文件`);
+		}
+		assert.equal(rig.skeleton.bones.length, 65, `${shape}-hi 骨数应为 65`);
+		// 与 lo 对比：drawable 集合/rect/mesh 相同，仅纹理与 atlas 字段变化
+		const lo = JSON.parse(readFileSync(join(LO_ROOT, shape, 'rig.json'), 'utf8'));
+		assert.equal(rig.drawables.length, lo.drawables.length, `${shape}-hi drawables 数应与 lo 相同`);
+		const loById = new Map(lo.drawables.map((d) => [d.id, d]));
+		const pageIds = new Map(pages.map((p, i) => [p.id ?? `page${i}`, p.drawables ?? null]));
+		for (const d of rig.drawables) {
+			const l = loById.get(d.id);
+			assert.ok(l, `${shape}-hi 多出 drawable ${d.id}`);
+			assert.deepEqual(d.rect, l.rect, `${shape}-hi ${d.id} rect 应保持 1x 画布坐标`);
+			assert.ok(d.atlas, `${shape}-hi ${d.id} 缺少 atlas 页字段`);
+			assert.ok(Array.isArray(rig.atlases) && rig.atlases.some((p) => p.id === d.atlas),
+				`${shape}-hi ${d.id} atlas 页 ${d.atlas} 未在 atlases 声明`);
+			for (const key of ['positions', 'bones', 'weights', 'indices']) {
+				assert.deepEqual(d.mesh[key], l.mesh[key], `${shape}-hi ${d.id} mesh.${key} 应与 lo 相同`);
+			}
+			const want2x = HI_2X_IDS.has(d.id) || HI_2X_SLOTS.has(d.slot);
+			if (want2x) {
+				// 2x 纹理：trim bbox 由「lo alpha 的确定性 2x 上采样」决定，大件≈2.0×；
+				// 眼/眉/口小件（trim 后仅十余 px）允许更大相对偏差，但仍须明显 >1x 且 <3x
+				// （防误用 1x 或 4x 纹理）。
+				const lw = l.texSize?.[0] ?? 0;
+				const lh = l.texSize?.[1] ?? 0;
+				const hw = d.texSize?.[0] ?? 0;
+				const hh = d.texSize?.[1] ?? 0;
+				const rw = lw ? hw / lw : 0;
+				const rh = lh ? hh / lh : 0;
+				if (Math.min(lw, lh) <= 24) {
+					assert.ok(rw >= 1.25 && rh >= 1.25 && rw <= 3 && rh <= 3,
+						`${shape}-hi 小件 ${d.id} 纹理 ${hw}x${hh} 相对 lo ${lw}x${lh} 不是 2x 量级`);
+				} else {
+					assert.ok(rw >= 1.85 && rw <= 2.4 && rh >= 1.85 && rh <= 2.4,
+						`${shape}-hi ${d.id} 纹理 ${hw}x${hh} 相对 lo ${lw}x${lh} 不是 2x（±边缘）`);
+				}
+			} else {
+				assert.deepEqual(d.texSize, l.texSize, `${shape}-hi 1x drawable ${d.id} texSize 应与 lo 相同`);
+			}
+		}
+		// lo tier 未被覆盖：仍是单页 atlas
+		const loRep = JSON.parse(readFileSync(join(LO_ROOT, shape, 'build-report.json'), 'utf8'));
+		const loPages = loRep.atlases ?? (loRep.atlas ? [loRep.atlas] : []);
+		assert.equal(loPages.length, 1, `${shape} lo tier 应仍为单页（不被 hi 构建影响）`);
+		assert.equal(loPages[0].pixelEqual, true);
+		t.diagnostic(`${shape}-hi: ${pages.map((p) => `${p.width}x${p.height}`).join(' + ')}，`
+			+ `${rig.drawables.length} drawables / 65 bones`);
+	}
+});
+
+test('v2.6.1 hi tier 构建确定性：chibi 双跑 md5 一致（FEIYU_ASSET_VERIFY_HI=1 + 源就绪）', (t) => {
+	if (process.env.FEIYU_ASSET_VERIFY_HI !== '1') {
+		return t.skip('设 FEIYU_ASSET_VERIFY_HI=1（verify:full）才跑 hi 构建确定性（较慢）');
+	}
+	if (!hasSources) return t.skip(`源包未就绪：${SRC}`);
+	if (!pythonBuildDeps()) return t.skip('python 构建依赖不可用');
+	const builder = join(ROOT, 'tools', 'art', 'build_prod.py');
+	const scratch = mkdtempSync(join(tmpdir(), 'feiyu-asset-hi-'));
+	const runs = [1, 2].map((n) => ({
+		out: join(scratch, `dist-${n}`),
+		work: join(scratch, `work-${n}`),
+	}));
+	try {
+		for (const run of runs) {
+			const r = spawnSync(PYTHON, [
+				builder, '--shape', SHAPE, '--tier', 'hi', '--build-atlas',
+				'--src', SRC, '--hi-outdir', run.out, '--workdir', run.work,
+				...discoverMasterConfigs().flatMap((config) => ['--master-config', config]),
+			], { encoding: 'utf8', timeout: 30 * 60 * 1000, maxBuffer: 1 << 26 });
+			assert.equal(r.status, 0, `hi build 失败（${SHAPE}）：\n${(r.stderr || '').slice(-4000)}\n${(r.stdout || '').slice(-4000)}`);
+		}
+		const dirName = `${SHAPE}-hi`;
+		const files = ['rig.json', 'atlas.webp', 'atlas-2.webp', 'build-report.json'];
+		const md5s = runs.map((run) => Object.fromEntries(
+			files.map((f) => [f, sha256(join(run.out, dirName, f))])));
+		for (const f of files) {
+			assert.equal(md5s[0][f], md5s[1][f],
+				`${dirName}/${f} 双跑 md5 不一致（hi 构建不确定）：${md5s[0][f]} vs ${md5s[1][f]}`);
+		}
+		const rep = JSON.parse(readFileSync(join(runs[0].out, dirName, 'build-report.json'), 'utf8'));
+		const pages = rep.atlases ?? (rep.atlas ? [rep.atlas] : []);
+		assert.equal(pages.length, 2, 'hi 构建应输出 2 页图集');
+		for (const p of pages) assert.equal(p.pixelEqual, true);
+		t.diagnostic(`hi ${SHAPE}: rig sha256 ${md5s[0]['rig.json']} / atlas ${md5s[0]['atlas.webp']} + ${md5s[0]['atlas-2.webp']}`);
 	} finally {
 		rmSync(scratch, { recursive: true, force: true });
 	}

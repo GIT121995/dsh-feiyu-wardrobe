@@ -298,3 +298,58 @@ test('2.5D 资产：显存估算与构建报告一致（含 mipmap）且 ≤40Mi
 		assert.equal(report.atlas.pixelEqual, true, `${shape} pixelEqual 应为 true`);
 	}
 });
+
+/* ---------------- v2.6.1 hi tier（2x 高 DPI，两页图集） ---------------- */
+
+test('v2.6.1 hi tier：2 页图集可被 runtime 契约消费（normalize/resolve/尺寸/显存与报告一致）', (t) => {
+	const hiShapes = SHAPES.filter((shape) => existsSync(join(ASSET_ROOT, `${shape}-hi`, 'rig.json')));
+	if (hiShapes.length === 0) return t.skip('hi tier 产物未生成（先跑 npm run build:assets:hi）');
+	for (const shape of hiShapes) {
+		const dir = join(ASSET_ROOT, `${shape}-hi`);
+		const rig = JSON.parse(readFileSync(join(dir, 'rig.json'), 'utf8'));
+		const report = JSON.parse(readFileSync(join(dir, 'build-report.json'), 'utf8'));
+		// 1) 多图集契约：2 页、非 legacy、每页 ≤4096 且 WebP 实际尺寸与 rig 元数据一致
+		const normalized = normalizeAtlases(rig);
+		assert.equal(normalized.ok, true, `${shape}-hi 图集配置非法：${normalized.errors.join(',')}`);
+		assert.equal(normalized.legacy, false, `${shape}-hi 应走多图集（非 legacy）`);
+		assert.equal(normalized.atlases.length, 2, `${shape}-hi 应为 2 页图集`);
+		assert.deepEqual(normalized.atlases.map((atlas) => atlas.file), ['atlas.webp', 'atlas-2.webp']);
+		assert.equal(report.pages, 2, `${shape}-hi 构建报告页数应为 2`);
+		assert.equal(report.atlases.length, 2);
+		for (const atlas of normalized.atlases) {
+			const size = webpSize(join(dir, atlas.file));
+			assert.equal(atlas.width, size.width, `${shape}-hi/${atlas.file} 宽与 rig 元数据不一致`);
+			assert.equal(atlas.height, size.height, `${shape}-hi/${atlas.file} 高与 rig 元数据不一致`);
+			assert.ok(atlas.width <= 4096 && atlas.height <= 4096, `${shape}-hi/${atlas.file} 超出 4096：${atlas.width}x${atlas.height}`);
+		}
+		// 2) 每 drawable 的 atlas 页可解析，且纹理文件名与页一致；几何/mesh/rect 与 lo 完全一致
+		const loRig = loadRig(shape);
+		const loById = Object.fromEntries(loRig.drawables.map((drawable) => [drawable.id, drawable]));
+		const pageIds = new Set(normalized.atlases.map((atlas) => atlas.id));
+		let twoXCount = 0;
+		let pageUse = { hi: 0, lo: 0 };
+		for (const drawable of rig.drawables) {
+			const label = `${shape}-hi/${drawable.id}`;
+			assert.ok(pageIds.has(drawable.atlas), `${label} atlas=${drawable.atlas} 未在 rig.atlases 声明`);
+			const index = resolveDrawableAtlas(drawable, normalized.atlases);
+			assert.equal(normalized.atlases[index].file, drawable.texture, `${label} texture 与 atlas 页不一致`);
+			pageUse[drawable.atlas] = (pageUse[drawable.atlas] || 0) + 1;
+			const lo = loById[drawable.id];
+			assert.ok(lo, `${label} 为 lo 不存在的 drawable`);
+			assert.deepEqual(drawable.rect, lo.rect, `${label} rect 应保持 1x 画布坐标`);
+			// 几何/骨权重/索引与 lo 完全一致；uvs 是图集空间坐标（hi 页更大，必然不同，长度一致即可）
+			for (const key of ['positions', 'bones', 'weights', 'deform', 'indices']) {
+				assert.deepEqual(drawable.mesh[key], lo.mesh[key], `${label} mesh.${key} 应与 lo 完全一致`);
+			}
+			assert.equal(drawable.mesh.uvs.length, lo.mesh.uvs.length, `${label} mesh.uvs 顶点数应与 lo 一致`);
+			assert.deepEqual(drawable.texSize, [drawable.atlasRect[2], drawable.atlasRect[3]], `${label} texSize 应与 atlasRect 一致`);
+			if (drawable.texSize[0] > lo.texSize[0] * 1.5) twoXCount += 1;
+		}
+		assert.ok(twoXCount >= 20, `${shape}-hi 2x drawable 过少：${twoXCount}`);
+		assert.ok((pageUse.hi || 0) > 0 && (pageUse.lo || 0) > 0, `${shape}-hi 两页都应被引用：${JSON.stringify(pageUse)}`);
+		// 3) 显存估算与构建报告一致（2x 页占大头，仍在预算内）
+		const memory = estimateTextureMemory(normalized.atlases.map((atlas) => ({ width: atlas.width, height: atlas.height })), false);
+		assert.equal(memory.texMiB, report.textureTotal.texMiB, `${shape}-hi texMiB 与构建报告不一致`);
+		assert.ok(memory.texMiB > 40 && memory.texMiB <= 96, `${shape}-hi texMiB 应明显高于 lo 且在预算内：${memory.texMiB}`);
+	}
+});
