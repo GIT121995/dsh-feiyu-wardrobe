@@ -140,8 +140,18 @@ python3 tools/art/build_prod.py --build-atlas \
 （`*-skirt*`/`apron` 等同理会烘焙腿/身体皮肤副本）。运行时 hand(z65) + sleeveFore(z62) 叠加 → 每侧 2 只手
 （"四只手"，v2.5 起历史 bug；副本分散在多个服装层，只清袖子会从裙子里透出来）。
 
-**修复**：`--clean-garment-skin` 对服装 drawable（slot ∈ topUnder/bottom/topBody/sleeve/sleeveUpper/
-sleeveFore/collar）删除烘焙皮肤 alpha：
+**修复（v3，v2.6.1 fix2）**：`--clean-garment-skin` 对服装 drawable（slot ∈ topUnder/bottom/topBody/
+sleeve/sleeveUpper/sleeveFore/collar）做**分类处理**（早期"全删 alpha"版本会把被手遮住的白色隐藏垫层
+暴露成白斑）：
+
+- **布料内部**手形像素（到最近非删除布料像素距离 ≤6px）→ **不删 alpha，RGB 补画为布料**：
+  8px 窗口内「非皮肤、非白」布料主色均值（不足则用 `cv2.distanceTransformWithLabels` 最近邻布料色），
+  2px 高斯平滑 + 边界 1px 羽化；保证不露白、不留手形；
+- **伸出布料轮廓的凸出部分**（距离 >6px）→ 删除 alpha（+1px 羽化 + 旧 alpha bbox 钉住，rig.json 不变）；
+- 布料保护/防洞逻辑保留（白布/蓝布不删、per-outfit 覆盖守卫）；
+- 统计：build-stats `stats['garmentSkinClean']` = interiorRepaintPx / protrudingRemovedPx / droppedNoCoverPx / perDrawable。
+
+旧版流程描述（供对照）：`--clean-garment-skin` 对服装 drawable 删除烘焙皮肤 alpha：
 
 - 分类器：暖肤色 `R-B>=10, R-G>=2, G-B>=1, R>170` ∩ 底层 body 皮肤 alpha（`tail`/`seam-fill` 不算）；
   白布（`sat<=8 & L>200`，袖口白边 sat≈3.5）与蓝/藏青布（`B-R>20`）**永不删除**；

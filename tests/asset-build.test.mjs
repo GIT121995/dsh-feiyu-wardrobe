@@ -24,7 +24,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
@@ -34,9 +34,19 @@ const PYTHON = process.env.DSH_FEIYU_PYTHON || 'python3';
 const SRC = process.env.FEIYU_ASSETS_SRC ? resolve(process.env.FEIYU_ASSETS_SRC) : join(ROOT, '.cache', 'assets-src');
 const SHAPE = process.env.FEIYU_ASSET_TEST_SHAPE || 'chibi';
 const VERIFY_DIST = process.env.FEIYU_ASSET_VERIFY_DIST === '1';
-/** v2.6：母版重贴图 config（可重复 --master-config；路径来自 art 阶段产物，未入仓）。 */
+/** v2.6：母版重贴图 config（可重复 --master-config）；v2 源包内自带 master/{shape}/config.json。 */
 const MASTER_CONFIGS = (process.env.FEIYU_ASSET_MASTER_CONFIGS || '').split(':').filter(Boolean);
-const PAYLOAD_PREFIXES = ['art/', 'm4/', 'feet/', 'hands/', 'prod/'];
+/** 源包自带 master/ 时自动发现（v2.6+ 官方 dist 由母版重贴图构建）。 */
+function discoverMasterConfigs() {
+	if (MASTER_CONFIGS.length) return MASTER_CONFIGS;
+	const dir = join(SRC, 'master');
+	if (!existsSync(dir)) return [];
+	return readdirSync(dir)
+		.filter((name) => existsSync(join(dir, name, 'config.json')))
+		.sort()
+		.map((name) => join(dir, name, 'config.json'));
+}
+const PAYLOAD_PREFIXES = ['art/', 'm4/', 'feet/', 'hands/', 'prod/', 'master/'];
 const sha256 = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
 /** python3 + 构建依赖可用？（numpy/cv2/Pillow；缺失时跳过构建类测试） */
@@ -88,7 +98,7 @@ test('assets-src manifest：schema + 逐文件 size/sha256 契约（源缺失 sk
 	const seen = new Set();
 	let bytes = 0;
 	for (const f of manifest.files) {
-		assert.match(f.path, /^(art|m4|feet|hands|prod)\//, `非法 payload 路径：${f.path}`);
+		assert.match(f.path, /^(art|m4|feet|hands|prod|master)\//, `非法 payload 路径：${f.path}`);
 		assert.ok(!seen.has(f.path), `manifest 路径重复：${f.path}`);
 		seen.add(f.path);
 		const p = join(SRC, f.path);
@@ -103,7 +113,7 @@ test('assets-src manifest：schema + 逐文件 size/sha256 契约（源缺失 sk
 	assert.equal(version, manifest.assetVersion, 'VERSION 与 manifest.assetVersion 不一致');
 	const sources = JSON.parse(readFileSync(join(SRC, 'sources.json'), 'utf8'));
 	assert.equal(sources.assetVersion, manifest.assetVersion);
-	for (const dir of ['art/', 'm4/', 'feet/', 'hands/', 'prod/']) {
+	for (const dir of ['art/', 'm4/', 'feet/', 'hands/', 'prod/', 'master/']) {
 		assert.ok(sources.layout?.[dir], `sources.json 缺少 ${dir} 布局映射`);
 	}
 	for (const prefix of PAYLOAD_PREFIXES) {
@@ -128,7 +138,7 @@ test(`build_prod 确定性：${SHAPE} 双跑 rig.json + atlas.webp md5 一致（
 			const r = spawnSync(PYTHON, [
 				builder, '--shape', SHAPE, '--build-atlas',
 				'--src', SRC, '--outdir', run.out, '--workdir', run.work,
-				...MASTER_CONFIGS.flatMap((config) => ['--master-config', config]),
+				...discoverMasterConfigs().flatMap((config) => ['--master-config', config]),
 			], { encoding: 'utf8', timeout: 30 * 60 * 1000, maxBuffer: 1 << 26 });
 			assert.equal(r.status, 0, `build_prod 失败（${SHAPE}）：\n${(r.stderr || '').slice(-4000)}\n${(r.stdout || '').slice(-4000)}`);
 		}
@@ -153,11 +163,10 @@ test(`build_prod 确定性：${SHAPE} 双跑 rig.json + atlas.webp md5 一致（
 					sha256(join(runs[0].out, SHAPE, f)),
 					sha256(join(official, f)),
 					`重建 ${SHAPE}/${f} 与官方 dist md5 不一致（源包或 builder 漂移）` +
-					(MASTER_CONFIGS.length ? '' : '；v2.6 官方 dist 由母版重贴图（--master-config）构建，' +
-						'如需逐字节校验请设置 FEIYU_ASSET_MASTER_CONFIGS=<retexture.json 冒号分隔> 后重跑'),
+					(discoverMasterConfigs().length ? '' : '；v2.6 官方 dist 由母版重贴图（--master-config）构建'),
 				);
 			}
-			t.diagnostic(`${SHAPE}: 重建产物与 docs/dress-up/art/2d5 逐字节一致（rig+atlas）${MASTER_CONFIGS.length ? `（master-config ×${MASTER_CONFIGS.length}）` : ''}`);
+			t.diagnostic(`${SHAPE}: 重建产物与 docs/dress-up/art/2d5 逐字节一致（rig+atlas）${discoverMasterConfigs().length ? `（master-config ×${discoverMasterConfigs().length}）` : ''}`);
 		}
 	} finally {
 		rmSync(scratch, { recursive: true, force: true });

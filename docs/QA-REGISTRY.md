@@ -18,6 +18,10 @@
 | D-007 | README 失效 `.scratch` 路径与过期构建说明 | P2 | **fixed（v2.6.0）** | v2.0.0+ | `grep -n '\.scratch' README.md` 为空；README 内相对链接全部可解析；构建说明只引用仓库内现行文档（`tools/art/README.md` + `assets-src` 获取流程） | 发布 checklist 链接检查（`scripts/release.mjs`，W0-c）+ 手工 grep；Lead 合入前复核 | W0-b task-7 |
 | D-008 | 真机性能/显存/稳定性未测 | P2 | open | v2.2.0 起（所有数字来自 headless SwANGLE） | ≥1 台真实移动设备按 P4 矩阵跑：进换装间 60s 无 crash/context lost；自动降级档下 FPS ≥30（记录实际值）；记录显存/内存峰值；页面 v21 / 资产 v17 | P4 真机矩阵（人工回传数据，见 HANDOFF §24 下一步 3）；headless 数据不作发布依据 | P4 真机测试；影响 D-005 决策 |
 | D-009 | 素体无露脐设计（产品要求变更中） | P2 | **fixed（v2.6.0）**（两件式露脐；仅 bare 状态可见） | v2.5.0 | 若产品要求生效：v2.6 素体 B / 短上衣造型下腰腹拆分件可见、肤色连续、无缺画/接缝，2x 腹部 crop 无露底；若不做则改 `wontfix` 并写明理由 | `npm run visual:qa` 2x 腹部 crop + 短上衣组合换装测试（2 身形） | v2.6 素体 B（规划） |
+| D-011 | 女仆装等服装下出现「四只手」（每侧 2 只） | P1 | **fixed（v2.6.0）** | v2.2.0–v2.5.0（cutout 分件起） | 2 身形 × 6 套装手部 2x 特写每侧仅 1 只手；无错位鬼手/白斑 | 手部自动检测（garment-only skin CC=0）+ 1x/2x 目检；回归：`visual:qa` hand crop | v2.6.0 修复（arm/hand 网格按部件列裁剪 + prod/ref 鬼手 inpaint） |
+| D-012 | 渲染器 alpha 管线错误 → 图集 tile 边界 1px 暗线 + 边缘暗晕 | P1 | **fixed（v2.6.0）** | v2.2.0–v2.5.0（历史） | canvas 行扫描无暗线（|dL|≤1）；DPR1/2 × mipmap on/off 四组一致；发丝/衣缘无暗晕 | 行扫描断言（hip y≈757 等）+ raw canvas PNG 对比；E2E 18/18 | v2.6.0 修复（预乘 alpha 上传/shader/mask 分支 3 处） |
+| D-013 | 素体烘焙水平细线（腕 y654–658、踝 y1000–1004、手臂 y437 色阶） | P1 | **fixed（v2.6.0）** | v2.5.0 | 1x 素体行不连续度指标归零/无可见线；2x 局部目检通过 | `visual:qa` 2x 局部 + rig QA 行指标（63.5→47.5，0 残留） | v2.6.0（母版 v3.1 + 移除 arm/hand Lab 调色） |
+| D-014 | 1x 资产高倍放大（>4x）时边缘像素噪点/发虚 | P2 | open（v2.6.x 立项：2x 高 DPI 资产，用户已批准方案 A） | v2.5.0 起 | 8x 放大边缘无像素噪点（2x 资产）；DPR≥2 明显锐利；弱机回退 1x 不掉帧 | `visual:qa` DPR2 抓帧 + 用户确认；显存/首屏增量记录 | P2（v2.6.1）：body+hair+face 2x + DPR 自适应 |
 | D-010 | 素体皮肤整体亮度较 v2.5 提高（脚/腿/手臂统一到母版肤色） | P2 | open（v2.6.0 已知，待用户确认是否回调） | v2.6.0 | 1x 600–900px 显示下皮肤不显「发白/发灰」；如回调，视觉门禁对比通过 | 视觉门禁 1x 全身 + 用户确认；Lab 系数见 v26-art 报告 | v2.6 用户确认 / v2.6.x |
 
 ## v2.6 发版前必查

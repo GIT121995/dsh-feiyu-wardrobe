@@ -14,6 +14,13 @@
 - **隐藏区**：girl 只重写静置可见像素（母版 visible mask），发/脸/衣下隐藏区沿用 v2.5 已收敛填充 → ±25° 头转/歪头行为不回归（new-hole=0）。
 - **可复现**：W0 管线入仓后，v2.6 dist 可由「源包 assets-src-v2（新增 master/ 母版+重贴图契约）」经 `npm run build:assets:v26` 逐字节重建（验收 atlas md5 一致）。
 
+### v2.6.0 修复（发布前用户反馈）
+- **女仆装「四只手」修复（历史 bug）**：根因有两层 —— ① M4 arms 图层是整幅横带，**左右手部件都切出了两只手**，每个 hand drawable 的网格/UV 覆盖双手 → 两个 hand drawable 共渲染 4 只手（且每个被各自手骨形变，产生错位"鬼手"）；② 服装件纹理里烘焙了手/皮肤副本。修复：肢体 alpha/mesh 按部件 rect 列范围裁剪（hand-L/R 各只含自己那只手，网格 bbox 184–241 / 438–497）；P3 look 参考图（`prod/ref`）的鬼手区域用 inpaint 修复后重贴回服装件 → 渲染只剩 2 只手。
+- **素体切线/色阶修复**：撤掉 v2.6 给 arm/hand 加的 Lab −3.45 整体调色（该调色在手臂部件 y≈437 水平直切边形成色阶线，也是"亮度变亮"的来源）→ 亮度回到 v2.5；另修掉烘焙的腕 y654–658、踝 y1000–1004 横线（行不连续度 63.5→47.5，重扫 0 残留）。
+- **渲染器预乘 alpha 修复（历史 bug）**：纹理直通 alpha 上传 + shader 二次乘 alpha + 预乘混合 → 覆盖率被平方，在每个 sprite 图集 tile 边界出现 1px 暗线（髋 y≈757 横贯双腿）与边缘暗晕。改为标准预乘管线（上传预乘 + shader 直接输出 + mask 分支 rgb/a 同乘）：行扫描 −18.8 → 0，DPR1/2 × mipmap on/off 四组全 0，发丝/衣服边缘暗晕消失。
+- **资产版本**：仍为 v18 / 页面 v22（尚未发布过，无需再升）。`rig.json` 因 hand 网格修复**不再与 v2.5 逐字节相同**（结构仍 65 骨 / 85·86 drawables）；atlas girl 4041×1666 / chibi 4059×1722、tex girl 25.68 / chibi 26.66 MiB（均下降，因 hand 部件裁剪）。
+- **可复现**：源包 `assets-src-v2` 已更新（含修复后母版 v3.1 + `prod/ref` 修复 + `master/` 契约），sha256 `553bd2bf…6cd3`；重建 v2.6 dist 与仓库逐字节一致。
+
 ### 验证
 - `npm run verify` **272 tests / 270 pass / 2 skip**（skip=源缺失时资产构建测试按设计跳过）；E2E **18/18**（0 retry/crash/pageerror，资产 v18/页面 v22，首屏 4 请求/2.26MiB）；DIY E2E **4/4**。
 - 视觉门禁矩阵 70/70 PASS（vs v2.5 baseline）：99.46% 变化在母版重贴图预期区，严格口径外仅 5px 压缩噪声；静置洋红洞 0；girl yaw/roll ±25 new-hole=0；构建双跑 md5 一致；npm pack 体积不变（8.6MB）。
