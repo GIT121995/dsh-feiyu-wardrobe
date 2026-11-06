@@ -9,15 +9,20 @@
 
 | ID | 标题 | 严重级 | 状态 | 发现版本 | 验收标准 | 回归方式 | 关联任务 |
 |---|---|---|---|---|---|---|---|
-| D-001 | 膝盖/踝关节接缝 + 双色（1x 可见） | P1 | fixing（v2.6 修复） | v2.5.0 | 1x 600–900px 显示下膝/踝无肉眼可见接缝、无双色块；2x 允许 ≤1px AA 过渡，不允许 ≥2px 连续色带/断层 | `npm run visual:qa` 2x 局部 knee/ankle 与 baseline 对比；4x 抓帧人工复核；静置洋红洞 0 | v2.6 素体 B / 腿件重构；W0-c 视觉门禁 knee/ankle crop |
+| D-001 | 膝盖/踝关节接缝 + 双色（1x 可见） | P1 | **fixed（v2.6.0）** | v2.5.0 | 1x 600–900px 显示下膝/踝无肉眼可见接缝、无双色块；2x 允许 ≤1px AA 过渡，不允许 ≥2px 连续色带/断层 | `npm run visual:qa` 2x 局部 knee/ankle 与 baseline 对比；4x 抓帧人工复核；静置洋红洞 0 | v2.6 素体 B / 腿件重构；W0-c 视觉门禁 knee/ankle crop |
 | D-002 | 服装件 1–2px 接缝白线（2x 可见） | P2 | open（v2.6/后续） | v2.5.0 | 2x 下服装拼缝（袖/衣身/裙头/领口）无 ≥2px 连续白线；允许 ≤1px AA；2 身形 × 5 造型组合均满足 | `npm run visual:qa` 2x 局部（肩/袖/腰/裙头/领）× 5 造型对比；4x 抓帧人工复核 | v2.6 / 后续服装拆件；W0-c 视觉门禁 |
-| D-003 | 手部线稿粗糙（1x 可接受，4x 简） | P3 | fixing（v2.5 已部分修复） | v2.2.0（cutout 沿用旧线稿） | 1x 手部无肉眼可见粗糙/断线；4x 五指轮廓与指缝连续、细节接近腿/脚件水平；若重绘，轮廓 IoU ≥0.98 且 alpha 不劣化 | `npm run visual:qa` 2x hand 局部 × 2 身形；4x 抓帧人工复核；如换新素材需补充 IoU 指标 | v2.5 T2（interior-only 细节精修，收益温和）/ v2.6 候选 |
+| D-003 | 手部线稿粗糙（1x 可接受，4x 简） | P3 | fixing（v2.5 部分修复；v2.6 母版保留 v2.5 手细节，未再提升） | v2.2.0（cutout 沿用旧线稿） | 1x 手部无肉眼可见粗糙/断线；4x 五指轮廓与指缝连续、细节接近腿/脚件水平；若重绘，轮廓 IoU ≥0.98 且 alpha 不劣化 | `npm run visual:qa` 2x hand 局部 × 2 身形；4x 抓帧人工复核；如换新素材需补充 IoU 指标 | v2.5 T2（interior-only 细节精修，收益温和）/ v2.6 候选 |
 | D-004 | tail 527px old-white-hair 垫层（静置被遮，尾摆可能露出） | P3 | open | v2.4.0（v2.5.0 tail 审计纠正） | 尾摆 ±25°/±40° 动作下白发像素不露出：洋红洞 0 且尾摆区无白发像素 diff；rest 合成与当前一致；删除后需记录 atlas 产物契约（drawables/尺寸/显存） | 尾摆洋红洞 QA + 4x 尾摆抓帧；`npm run visual:qa` 2x 尾摆 crop | v2.6 候选（HANDOFF §24 下一步 2） |
 | D-005 | 高 DPI（DPR≥2）下 1x 素材发虚 | P2 | open（远期，需单独立项） | v2.5.0（2x 手部实验无收益，全资产 2x 未做） | DPR≥2 下 2x 局部（膝/手/肩/脚/腹/发）肉眼无发虚/锯齿；锐度不劣于当前 baseline；显存/图集体积增量如实记录并评估可接受性 | `npm run visual:qa` 2x crop（DPR2 截图）与 baseline 对比；真机高 DPR 抽样 | 独立立项（HANDOFF §24 下一步 4）；依赖 D-008 真机数据 |
-| D-006 | npm 包混入 dev HTML（与预览/打包清单不一致） | P2 | fixing（W0 修，随 v2.6.0 生效） | v2.4.0/v2.5.0（`npm pack` 含工作区 gitignored `docs/preview/*.html`） | `npm pack --dry-run --json` 清单不含 `docs/preview/*.html`、不含 `screenshots.json`、无重复 `files` 条目；`docs/preview` 仅 5 张正式 png | 发布 checklist：`npm pack --dry-run --json` 断言 + `scripts/release.mjs`（W0-c）打包检查 | W0-a task-6（package.json `files` 修正）/ W0-c |
-| D-007 | README 失效 `.scratch` 路径与过期构建说明 | P2 | fixing（W0 修） | v2.0.0+ | `grep -n '\.scratch' README.md` 为空；README 内相对链接全部可解析；构建说明只引用仓库内现行文档（`tools/art/README.md` + `assets-src` 获取流程） | 发布 checklist 链接检查（`scripts/release.mjs`，W0-c）+ 手工 grep；Lead 合入前复核 | W0-b task-7 |
+| D-006 | npm 包混入 dev HTML（与预览/打包清单不一致） | P2 | **fixed（v2.6.0）** | v2.4.0/v2.5.0（`npm pack` 含工作区 gitignored `docs/preview/*.html`） | `npm pack --dry-run --json` 清单不含 `docs/preview/*.html`、不含 `screenshots.json`、无重复 `files` 条目；`docs/preview` 仅 5 张正式 png | 发布 checklist：`npm pack --dry-run --json` 断言 + `scripts/release.mjs`（W0-c）打包检查 | W0-a task-6（package.json `files` 修正）/ W0-c |
+| D-007 | README 失效 `.scratch` 路径与过期构建说明 | P2 | **fixed（v2.6.0）** | v2.0.0+ | `grep -n '\.scratch' README.md` 为空；README 内相对链接全部可解析；构建说明只引用仓库内现行文档（`tools/art/README.md` + `assets-src` 获取流程） | 发布 checklist 链接检查（`scripts/release.mjs`，W0-c）+ 手工 grep；Lead 合入前复核 | W0-b task-7 |
 | D-008 | 真机性能/显存/稳定性未测 | P2 | open | v2.2.0 起（所有数字来自 headless SwANGLE） | ≥1 台真实移动设备按 P4 矩阵跑：进换装间 60s 无 crash/context lost；自动降级档下 FPS ≥30（记录实际值）；记录显存/内存峰值；页面 v21 / 资产 v17 | P4 真机矩阵（人工回传数据，见 HANDOFF §24 下一步 3）；headless 数据不作发布依据 | P4 真机测试；影响 D-005 决策 |
-| D-009 | 素体无露脐设计（产品要求变更中） | P2 | open（目标 v2.6） | v2.5.0 | 若产品要求生效：v2.6 素体 B / 短上衣造型下腰腹拆分件可见、肤色连续、无缺画/接缝，2x 腹部 crop 无露底；若不做则改 `wontfix` 并写明理由 | `npm run visual:qa` 2x 腹部 crop + 短上衣组合换装测试（2 身形） | v2.6 素体 B（规划） |
+| D-009 | 素体无露脐设计（产品要求变更中） | P2 | **fixed（v2.6.0）**（两件式露脐；仅 bare 状态可见） | v2.5.0 | 若产品要求生效：v2.6 素体 B / 短上衣造型下腰腹拆分件可见、肤色连续、无缺画/接缝，2x 腹部 crop 无露底；若不做则改 `wontfix` 并写明理由 | `npm run visual:qa` 2x 腹部 crop + 短上衣组合换装测试（2 身形） | v2.6 素体 B（规划） |
+| D-011 | 女仆装等服装下出现「四只手」（每侧 2 只） | P1 | **fixed（v2.6.0）** | v2.2.0–v2.5.0（cutout 分件起） | 2 身形 × 6 套装手部 2x 特写每侧仅 1 只手；无错位鬼手/白斑 | 手部自动检测（garment-only skin CC=0）+ 1x/2x 目检；回归：`visual:qa` hand crop | v2.6.0 修复（arm/hand 网格按部件列裁剪 + prod/ref 鬼手 inpaint） |
+| D-012 | 渲染器 alpha 管线错误 → 图集 tile 边界 1px 暗线 + 边缘暗晕 | P1 | **fixed（v2.6.0）** | v2.2.0–v2.5.0（历史） | canvas 行扫描无暗线（|dL|≤1）；DPR1/2 × mipmap on/off 四组一致；发丝/衣缘无暗晕 | 行扫描断言（hip y≈757 等）+ raw canvas PNG 对比；E2E 18/18 | v2.6.0 修复（预乘 alpha 上传/shader/mask 分支 3 处） |
+| D-013 | 素体烘焙水平细线（腕 y654–658、踝 y1000–1004、手臂 y437 色阶） | P1 | **fixed（v2.6.0）** | v2.5.0 | 1x 素体行不连续度指标归零/无可见线；2x 局部目检通过 | `visual:qa` 2x 局部 + rig QA 行指标（63.5→47.5，0 残留） | v2.6.0（母版 v3.1 + 移除 arm/hand Lab 调色） |
+| D-014 | 1x 资产高倍放大（>4x）时边缘像素噪点/发虚 | P2 | open（v2.6.x 立项：2x 高 DPI 资产，用户已批准方案 A） | v2.5.0 起 | 8x 放大边缘无像素噪点（2x 资产）；DPR≥2 明显锐利；弱机回退 1x 不掉帧 | `visual:qa` DPR2 抓帧 + 用户确认；显存/首屏增量记录 | P2（v2.6.1）：body+hair+face 2x + DPR 自适应 |
+| D-010 | 素体皮肤整体亮度较 v2.5 提高（脚/腿/手臂统一到母版肤色） | P2 | open（v2.6.0 已知，待用户确认是否回调） | v2.6.0 | 1x 600–900px 显示下皮肤不显「发白/发灰」；如回调，视觉门禁对比通过 | 视觉门禁 1x 全身 + 用户确认；Lab 系数见 v26-art 报告 | v2.6 用户确认 / v2.6.x |
 
 ## v2.6 发版前必查
 

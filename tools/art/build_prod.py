@@ -78,12 +78,19 @@ GEN = {'shape': None, 'stats': {}}
 # The merged builder is the single source of truth; the flags only decide which
 # T1/T2 deliveries are applied, so `python3 tools/build_prod.py --build-atlas`
 # reproduces the shipped dist by default.
+MASTER_CFG = {}   # v2.6: shape -> normalised art retexture contract (--master-config)
+# v2.6.1 fix: garment drawables may bake skins/palms of body parts (the M2 cutout
+# parts were cut from the full look image; hidden-fill copies of hands/legs ended up
+# inside garment textures -> maid outfit shows 2 hands per side = "four hands").
+GARMENT_SLOTS = ('topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper',
+                 'sleeveFore', 'collar')
 OPTS = {
     'skip_hair': False,     # --skip-hair-split: pin v2.4.0 hair state (T1 changes off)
     'skip_hands': False,    # --skip-hands: no T2 hand overlay (attribution run)
     'hair_patch': None,     # --hair-patch PATH: T1 hair-patch-spec.json override
     'hands_dir': os.path.join(SRC, 'hands'),   # T2 delivery root（<src>/hands）
     'hands_2x': False,      # --hands-2x: experimental 2x hand textures (T2 refined2x)
+    'clean_garment_skin': False,  # --clean-garment-skin: v2.6.1 baked skin/palm cleanup
     'outdir': OUTDIR,       # --outdir PATH: default <repo>/tools/art/dist
 }
 # ---- T1 v2.5 girl full hair split constants ----
@@ -1541,6 +1548,256 @@ def cell_for(pid, slot):
     return 14
 
 
+# ------------------------------------------------- v2.6: body master retexture ---
+BODY_MASTER_IDS = ['body-head', 'body-torso', 'leg-L', 'leg-R',
+                   'arm-upper-L', 'arm-upper-R', 'arm-fore-L', 'arm-fore-R',
+                   'hand-L', 'hand-R']
+
+
+def load_master_config(path):
+    """Normalise an art-stage retexture contract (--master-config) for the builder.
+
+    Supported art deliverables:
+      * girl `feiyu-master-retexture-v1`: master{1x}, drawables[].id,
+        retextureRule.visibleOnlyRecommended + retextureRule.visibleMask
+        (string may carry a Chinese description suffix after the path).
+      * chibi v1: master.file (2x working master), draws[].
+    Returns a dict consumed by apply_master_retexture()."""
+    cfg = json.load(open(path))
+    base = os.path.dirname(os.path.abspath(path))
+    shape = cfg.get('shape')
+    if shape not in ('chibi', 'girl'):
+        raise SystemExit(f'master config {path}: missing/invalid shape {shape!r}')
+    mref = cfg.get('master')
+    if not isinstance(mref, str):
+        mref = (mref or {}).get('1x') or (mref or {}).get('file')
+    if not mref:
+        raise SystemExit(f'master config {path}: no master image (master.1x / master.file)')
+    master_path = mref if os.path.isabs(mref) else os.path.normpath(os.path.join(base, mref))
+    if not os.path.exists(master_path):
+        raise SystemExit(f'master config {path}: master image missing: {master_path}')
+    ids = [d.get('id') for d in (cfg.get('drawables') or [])]
+    if not ids:
+        ids = list(cfg.get('draws') or [])
+    ids = [i for i in ids if i]
+    if not ids:
+        raise SystemExit(f'master config {path}: no body drawables listed')
+    unknown = [i for i in ids if i not in BODY_MASTER_IDS]
+    if unknown:
+        raise SystemExit(f'master config {path}: only body drawables may be retextured, got {unknown}')
+    rule = cfg.get('retextureRule') or {}
+    visible_mask = None
+    if rule.get('visibleOnlyRecommended') and rule.get('visibleMask'):
+        ref = str(rule['visibleMask']).split('（')[0].split('(')[0].strip()
+        p = ref if os.path.isabs(ref) else os.path.normpath(os.path.join(base, ref))
+        if not os.path.exists(p):
+            raise SystemExit(f'master config {path}: visibleMask missing: {p}')
+        visible_mask = p
+    return {'shape': shape, 'config': os.path.abspath(path), 'master': master_path,
+            'ids': ids, 'visible_mask': visible_mask}
+
+
+def apply_master_retexture(shape, drawables, texdir, stats):
+    """v2.6 body retexture: body drawables' RGB := art master at the same canvas
+    coordinate; **alpha / rect / texSize unchanged** (silhouette + mesh contract).
+
+    Ordering (critical): must run AFTER the T1 hair split.
+      * `split_girl_back_hair` detects the baked hair by an RGB blue criterion and
+        `finalize_girl_hair` copies the baked arm-island RGB into `hair-arm-girl`;
+        retexturing earlier would destroy those source colours (islands would be
+        extracted skin-coloured, or not at all).
+      * It also runs after feet/hands overlays and T1 under-layer repaints, so the
+        master RGB wins over the v2.5 body post-processing (the art master was
+        built from the v2.5 final body anyway).
+      * Garment-only steps after it (seam_extend / port_rest_colors) never touch
+        body RGB; mesh rebuild only reads alpha.
+    Visible-only mode (girl) keeps hidden (hair/face-covered) pixels at their v2.5
+    values -> ±25° hidden-area behaviour does not regress.
+    """
+    cfg = MASTER_CFG.get(shape)
+    if not cfg:
+        return 0
+    master = load_rgba(cfg['master'])
+    mh, mw = master.shape[:2]
+    if (mw, mh) == (W, H):
+        master1 = master
+        master_canvas = master
+    elif (mw, mh) == (W * 2, H * 2):
+        master1 = cv2.resize(master, (W, H), interpolation=cv2.INTER_LINEAR)
+        master_canvas = master
+    else:
+        raise SystemExit(f'master image size {mw}x{mh} unsupported '
+                         f'(expect {W}x{H} or {W * 2}x{H * 2})')
+    vis = None
+    if cfg.get('visible_mask'):
+        vis = np.array(Image.open(cfg['visible_mask']).convert('L')) > 128
+        if vis.shape != (H, W):
+            raise SystemExit(f'visible mask {cfg["visible_mask"]} is '
+                             f'{vis.shape[1]}x{vis.shape[0]}, expected {W}x{H}')
+    if (mw, mh) != (W, H):
+        # per-drawable 1x target is the bilinear 2x->1x sample (half-pixel centres)
+        pass
+    by_id = {d['id']: d for d in drawables}
+    changed, per = 0, {}
+    for pid in cfg['ids']:
+        d = by_id.get(pid)
+        if d is None:
+            raise SystemExit(f'master retexture: drawable {pid} was not built')
+        fp = os.path.join(texdir, d['texture'])
+        tex = np.array(Image.open(fp).convert('RGBA'))
+        th, tw = tex.shape[:2]
+        if (tw, th) == (W, H):
+            rgb = master1[:, :, :3]
+            sel = np.ones((H, W), bool) if vis is None else vis.copy()
+        elif (tw, th) == (W * 2, H * 2):
+            rgb = master_canvas[:, :, :3] if (mw, mh) == (W * 2, H * 2) else \
+                cv2.resize(master1[:, :, :3], (W * 2, H * 2), interpolation=cv2.INTER_LINEAR)
+            sel = np.ones((H * 2, W * 2), bool) if vis is None else \
+                cv2.resize(vis.astype(np.uint8), (W * 2, H * 2),
+                           interpolation=cv2.INTER_NEAREST) > 0
+        else:
+            raise SystemExit(f'master retexture: {pid} texture {tw}x{th} unsupported '
+                             f'(expect {W}x{H} or {W * 2}x{H * 2})')
+        before = tex[:, :, :3].copy()
+        tex[sel, :3] = rgb[sel]
+        n = int((np.abs(tex[:, :, :3].astype(int) - before.astype(int)).max(-1) > 0).sum())
+        # re-extend RGB into transparent pixels (the master only carries an 8px
+        # color-bleed) so bilinear/mipmap sampling keeps the v2.5 fringe behaviour
+        tex = color_bleed(tex, COLOR_BLEED_PX)
+        Image.fromarray(tex, 'RGBA').save(fp)
+        per[pid] = {'selPx': int(sel.sum()), 'changedPx': n}
+        changed += n
+    stats['master'] = {'config': cfg['config'], 'masterFile': cfg['master'],
+                       'masterSize': [int(mw), int(mh)],
+                       'visibleOnly': bool(cfg.get('visible_mask')),
+                       'changedPx': changed, 'perDrawable': per}
+    log(f'[{shape}] body master retexture: {changed}px on {len(cfg["ids"])} drawables '
+        f'(visibleOnly={bool(cfg.get("visible_mask"))})')
+    return changed
+
+
+# ------------------------------------- v2.6.1: garment baked-skin cleanup ----
+def _canvas_tex(texdir, d):
+    """Full-canvas RGBA for a drawable (small hair/face textures placed at rect)."""
+    arr = np.array(Image.open(os.path.join(texdir, d['texture'])).convert('RGBA'))
+    if arr.shape[1] == W and arr.shape[0] == H:
+        return arr
+    full = np.zeros((H, W, 4), np.uint8)
+    x0, y0 = int(d['rect'][0]), int(d['rect'][1])
+    h, w = arr.shape[:2]
+    full[y0:y0 + h, x0:x0 + w] = arr
+    return full
+
+
+def _garment_skin_mask(rgb, alpha, skin_alpha):
+    """Mask of baked body skin (pale/warm) inside one garment texture.
+
+    * strong garment colours never touched: white cloth (sat<=8 & L>200) and
+      blue/navy cloth (B-R>20);
+    * warm skin/padding: R-B>=10 & R-G>=2 & G-B>=1 & R>170;
+    * dark baked-hand line art: pixels near skin with low lightness/low sat;
+    * body-skin alpha union is used as a soft hint only (protruding hand pieces
+      have no body behind; they are still repainted, see clean_garment_skin).
+    Returns (skin_or_outline_mask, remove_mask); v3 semantics: repaint all of it.
+    """
+    R = rgb[:, :, 0].astype(int)
+    G = rgb[:, :, 1].astype(int)
+    B = rgb[:, :, 2].astype(int)
+    lum = 0.299 * R + 0.587 * G + 0.114 * B
+    sat = rgb.max(2).astype(int) - rgb.min(2).astype(int)
+    op = alpha > 8
+    white = (sat <= 8) & (lum > 200) & op
+    blue = (B - R > 20) & op
+    warm = ((R - B >= 10) & (R - G >= 2) & (G - B >= 1) & (R > 170) &
+            op & ~white & ~blue)
+    near = cv2.dilate(warm.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
+    outline = near & ~warm & op & ~white & ~blue & (lum < 170)
+    return (warm | outline)
+
+
+def _composite_over(dst_rgb, dst_a, src_rgb, src_a):
+    """straight-alpha src over dst (float 0..1 alpha)."""
+    out_a = src_a + dst_a * (1.0 - src_a)
+    safe = np.maximum(out_a, 1e-6)
+    out_rgb = (src_rgb * src_a[..., None] + dst_rgb * (dst_a * (1.0 - src_a))[..., None]) / safe[..., None]
+    return out_rgb, out_a
+
+
+def clean_garment_skin(shape, drawables, texdir, outfits, stats):
+    """v2.6.1 fix4: remove baked body-skin (duplicated hands) from garment textures by
+    filling the hole with **what is actually underneath that garment layer** instead of
+    guessing a cloth colour.
+
+    History: garment parts were cut from the full look image; their hidden fill under
+    the baked hand copies is WHITE, so both alpha-delete (white blotches) and local
+    nearest/inpaint (white/blue smears) fail.  Fix: for each outfit combo, build the
+    "under" canvas in z order (body composite first, then lower garment layers already
+    repaired); every baked-skin pixel of the current layer is filled with the current
+    under colour, feathered 1px.  alpha/silhouette untouched -> rig.json byte-identical.
+    """
+    if not OPTS['clean_garment_skin']:
+        return 0
+    body_ids = [d for d in drawables if d['slot'] in BASE_DRAW_SLOTS]
+    garment_ids = [d for d in drawables if d['slot'] in GARMENT_SLOTS]
+    if not body_ids or not garment_ids:
+        return 0
+    # body under-canvas (z order: body parts, then hair layers over them)
+    under_rgb = np.zeros((H, W, 3), np.float32)
+    under_a = np.zeros((H, W), np.float32)
+    order = {'body': 0, 'legs': 1, 'armUpper': 2, 'armFore': 3, 'hand': 4,
+             'hairBack': 5, 'strands': 6, 'hairFront': 7, 'face': 8, 'tail': 2.5}
+    for d in sorted(body_ids, key=lambda x: (order.get(x['slot'], 9), x.get('z', 0))):
+        if d['id'] in ('seam-fill', 'hair-backfill'):
+            continue
+        tex = _canvas_tex(texdir, d).astype(np.float32)
+        under_rgb, under_a = _composite_over(under_rgb, under_a,
+                                             tex[:, :, :3], tex[:, :, 3] / 255.0)
+    total = 0
+    out_per = {}
+    for combo in [c for c in outfits if c != 'base']:
+        gds = [d for d in garment_ids if d['id'].startswith(combo + '-')]
+        if not gds:
+            continue
+        gds.sort(key=lambda x: x.get('z', 0))
+        c_rgb = under_rgb.copy()
+        c_a = under_a.copy()
+        for d in gds:
+            tex = _canvas_tex(texdir, d)
+            op = tex[:, :, 3] > 8
+            skin = _garment_skin_mask(tex[:, :, :3], tex[:, :, 3], None) & op
+            if skin.any():
+                rgb = tex[:, :, :3].astype(np.float32)
+                has_under = skin & (c_a > 0.05)
+                rgb[has_under] = c_rgb[has_under]
+                rest = skin & ~has_under
+                if rest.any():
+                    # nothing underneath (hole in body under-canvas): use nearest
+                    # non-skin cloth colour of the same layer as a fallback only.
+                    fabric = op & ~skin
+                    inv = (~fabric).astype(np.uint8)
+                    _, labels = cv2.distanceTransformWithLabels(
+                        inv, cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL)
+                    fy, fx = np.where(fabric)
+                    lut = np.zeros((len(fy) + 1, 3), np.float32)
+                    lut[1:, :] = tex[fy, fx, :3]
+                    rgb[rest] = lut[labels][rest]
+                # feather the fill edge back toward the original cloth pixels
+                ring = (cv2.dilate(skin.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0) & ~skin
+                f = 0.5
+                rgb[ring] = f * rgb[ring] + (1.0 - f) * tex[ring][:, :3].astype(np.float32)
+                tex[:, :, :3] = np.clip(rgb, 0, 255).astype(np.uint8)
+                Image.fromarray(tex, 'RGBA').save(os.path.join(texdir, d['texture']))
+                out_per[d['id']] = int(skin.sum())
+                total += int(skin.sum())
+            # this layer now occludes what is below it (alpha untouched)
+            a = tex[:, :, 3].astype(np.float32) / 255.0
+            c_rgb, c_a = _composite_over(c_rgb, c_a, tex[:, :, :3].astype(np.float32), a)
+    stats['garmentSkinClean'] = {'filledPx': total, 'perDrawable': out_per}
+    log(f'[{shape}] garment baked-skin cleanup (under-fill): {total}px on '
+        f'{len(out_per)} drawables, alpha untouched')
+    return total
+
+
 def build_shape(shape, page_split='base'):
     rig = Rig(shape)
     LEG_BONES = rig.add_leg_bones()
@@ -1566,15 +1823,23 @@ def build_shape(shape, page_split='base'):
             # the production arms layer, split by horizontal joint bands; the
             # joint bands overlap 10px and share source pixels so rest has no seam.
             y0, y1 = p['rect'][1], p['rect'][3]
+            x0, x1 = p['rect'][0], p['rect'][2]
             am = src[:, :, 3].astype(np.float32) / 255.0
             band = np.zeros((H, W), np.float32)
-            row_all = np.ones(W, np.float32)
+            # v2.6 fix: the M4 arms layer is a full-width band containing BOTH hands;
+            # without a column restriction every limb part kept both sides -> each
+            # hand drawable rendered two hands (4-hand bug, deformation offset made the
+            # second copy look like a ghost hand). Restrict rows AND columns to the
+            # part rect (+10px overlap so rest has no seam).
+            col = np.zeros(W, np.float32)
+            col[max(0, x0 - 10):min(W, x1 + 10)] = 1.0
             if pid.startswith('arm-upper'):
-                band[y0:y1 + 10, :] = row_all
+                row = np.zeros(H, np.float32); row[y0:y1 + 10] = 1.0
             elif pid.startswith('arm-fore'):
-                band[y0 - 10:y1 + 10, :] = row_all
+                row = np.zeros(H, np.float32); row[y0 - 10:y1 + 10] = 1.0
             else:  # hand
-                band[max(0, y0 - 10):H, :] = row_all
+                row = np.zeros(H, np.float32); row[max(0, y0 - 10):H] = 1.0
+            band = row[:, None] * col[None, :]
             part[:, :, 3] = (am * band * 255.0).clip(0, 255).astype(np.uint8)
             part = restore_source(part, src, p['rect'], pid)
             part = color_bleed(part)
@@ -1704,6 +1969,8 @@ def build_shape(shape, page_split='base'):
         drawables.append(dd)
     # ---------------- T1 v2.5: full girl hair split (no new bones) ----------------
     finalize_girl_hair_hook(shape, drawables, texdir, rig, stats)
+    # ---------------- v2.6 body master retexture (MUST be after T1, see fn) --------
+    apply_master_retexture(shape, drawables, texdir, stats)
     # ---------------- seam extension + mesh rebuild ----------------
     seam_px = seam_extend(drawables, texdir,
                           [d['id'] for d in drawables if d['slot'] in BASE_DRAW_SLOTS])
@@ -1766,6 +2033,10 @@ def build_shape(shape, page_split='base'):
     # M4b: single-page atlas (content ~5.1M px, fits <=4096x4096) -> 1 request,
     # no second-page whitespace. build_2d5 legacy single-page path.
     port_rest_colors(shape, drawables, outfits, texdir)
+    # v2.6.1 fix: garment textures may bake duplicated body parts (4-hand maid) ->
+    # remove them AFTER all garment RGB writes and BEFORE build_2d5; alpha-only, no
+    # mesh rebuild so rig.json stays byte-identical.
+    clean_garment_skin(shape, drawables, texdir, outfits, stats)
     stats['colorBleed'] = {'px': COLOR_BLEED_COUNT['px'], 'pxPerPart': round(COLOR_BLEED_PX, 1)}
     rig.add_leg_collider_meta(rig_json)
     out_rig = os.path.join(WORK, 'assets', f'{shape}-cutout.feiyu.json')
@@ -1826,6 +2097,11 @@ def main():
                     help='dist output root (default <repo>/tools/art/dist); use for A/B builds')
     ap.add_argument('--tool', default=None,
                     help='build_2d5.py path (default tools/art/build_2d5.py)')
+    ap.add_argument('--clean-garment-skin', action='store_true',
+                    help='v2.6.1: remove baked body-skin (duplicated hands/legs) from '
+                         'garment textures (alpha-only; rig.json unchanged)')
+    ap.add_argument('--master-config', action='append', default=[], metavar='JSON',
+                    help='v2.6 body master retexture contract (repeatable; shape from config)')
     ap.add_argument('--generator-id', default='cutout/prod/tools/build_prod.py',
                     help='rig.json generator provenance string (keep historical value '
                          'for byte-identical v2.5.0 rebuilds)')
@@ -1843,10 +2119,21 @@ def main():
                     help='experimental: T2 refined2x -> 2x hand source textures')
     args = ap.parse_args()
     configure_paths(args)
+    global MASTER_CFG
+    for path in args.master_config:
+        cfg = load_master_config(path)
+        if cfg['shape'] in MASTER_CFG:
+            raise SystemExit(f'duplicate --master-config for shape {cfg["shape"]}: {path}')
+        MASTER_CFG[cfg['shape']] = cfg
+    for shape in sorted(MASTER_CFG):
+        log(f'master config [{shape}]: {MASTER_CFG[shape]["config"]} '
+            f'(ids={len(MASTER_CFG[shape]["ids"])}, '
+            f'visibleOnly={bool(MASTER_CFG[shape]["visible_mask"])})')
     OPTS['skip_hair'] = args.skip_hair_split
     OPTS['skip_hands'] = args.skip_hands
     OPTS['hair_patch'] = args.hair_patch
     OPTS['hands_2x'] = args.hands_2x
+    OPTS['clean_garment_skin'] = args.clean_garment_skin
     os.makedirs(os.path.join(WORK, 'assets'), exist_ok=True)
     shapes = ['chibi', 'girl'] if args.shape == 'both' else [args.shape]
     all_stats = {}

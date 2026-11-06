@@ -25,6 +25,8 @@ import { dirname, join, relative, resolve } from 'node:path';
 
 const REPO = resolve(import.meta.dirname, '..', '..');
 const PAYLOAD_DIRS = ['art', 'm4', 'feet', 'hands', 'prod'];
+// v2.6 起：素体母版+重贴图契约（可用于复现 v2.6 dist）；v1 源包无此目录，向后兼容为可选。
+const OPTIONAL_PAYLOAD_DIRS = ['master'];
 
 function parseArgs(argv) {
   const out = {
@@ -73,7 +75,8 @@ function walkFiles(root) {
 }
 
 const args = parseArgs(process.argv.slice(2));
-const tarballName = 'assets-src-v1.tar.zst';
+const archiveRoot = args.version.replace(/^assets-/, 'assets-src-');
+const tarballName = `${archiveRoot}.tar.zst`;
 if (!existsSync(args.src)) throw new Error(`source root missing: ${args.src} (run the staging step / fetch:sources first)`);
 for (const d of PAYLOAD_DIRS) {
   if (!existsSync(join(args.src, d))) throw new Error(`source layout incomplete: missing ${d}/ under ${args.src}`);
@@ -85,7 +88,7 @@ for (const bin of ['tar', 'zstd']) {
 
 // ---- 1) 枚举 payload 文件（确定性顺序）----
 const payload = [];
-for (const d of PAYLOAD_DIRS) {
+for (const d of [...PAYLOAD_DIRS, ...OPTIONAL_PAYLOAD_DIRS.filter((d2) => existsSync(join(args.src, d2)))]) {
   for (const p of walkFiles(join(args.src, d))) payload.push({ rel: relative(args.src, p), abs: p });
 }
 const files = payload.map(({ rel, abs }) => {
@@ -108,6 +111,7 @@ const sources = {
     'prod/': 'P3 冻结构建输入（seamfill-{shape}.npz + ref/{shape}_{combo}_rgba.png rest 颜色参考）',
     'hands/': 'T2 手部精修（overlay-1x/{shape}.png + masks/hands-mask-{shape}.png + refined2x/）',
     'feet/': 'P2 脚部精修（{shape}/feet.png + masks/feet.png）',
+    'master/': 'v2.6 素体母版重贴图输入（{shape}/config.json + master-1x/2x + girl visible mask）——构建 v2.6 dist 必需，v1 包无此项',
   },
   consumer: 'tools/art/build_prod.py --src <this root>',
   fileCount: files.length,
@@ -119,7 +123,7 @@ writeFileSync(join(args.src, 'manifest.json'), JSON.stringify({
   schema: 'feiyu-assets-src-manifest',
   version: 1,
   assetVersion: version,
-  root: 'assets-src-v1',
+  root: archiveRoot,
   fileCount: files.length,
   totalBytes,
   files,
@@ -130,14 +134,15 @@ mkdirSync(dirname(args.out), { recursive: true });
 const tmpTar = args.out.replace(/\.zst$/, '') + '.tar.tmp';
 rmSync(tmpTar, { force: true });
 rmSync(args.out, { force: true });
-const entries = ['VERSION', 'sources.json', 'manifest.json', ...PAYLOAD_DIRS];
+const entries = ['VERSION', 'sources.json', 'manifest.json', ...PAYLOAD_DIRS,
+  ...OPTIONAL_PAYLOAD_DIRS.filter((d) => existsSync(join(args.src, d)))];
 // 用 execFile 风格的 spawn（避免 shell 引号差异）；tar/zstd 参数固定 -> 可复现。
-// 包内统一包一层 assets-src-v1/（--transform 前缀，确定性不受影响）
+// 包内统一包一层 <archiveRoot>/（--transform 前缀，确定性不受影响）
 const tar = spawnSync('tar', [
   '--sort=name', '--mtime=@0', '--owner=0', '--group=0', '--numeric-owner', '--format=pax',
   // pax 默认会写 atime/ctime 扩展头 -> 打包不确定；删掉（mtime 已固定为 0）
   '--pax-option=delete=atime,delete=ctime',
-  '--transform=s|^|assets-src-v1/|',
+  `--transform=s|^|${archiveRoot}/|`,
   '-cf', tmpTar, '-C', args.src, ...entries,
 ], { encoding: 'utf8', maxBuffer: 1 << 24 });
 if (tar.status !== 0) throw new Error(`tar failed (${tar.status}): ${tar.stderr || tar.stdout}`);

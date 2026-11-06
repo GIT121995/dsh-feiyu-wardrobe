@@ -6,7 +6,7 @@
 > GitHub Release asset，并加构建确定性测试。
 >
 > - 产出资产版本：**资产 v17 / v2.5.0 口径**（chibi 85 drawables / girl 86，65 骨，单页图集）。
-> - 源素材 **154.8MB raw / tarball 94.3MB**，**不入 git**，走 GitHub Release（tag `assets-v1`）的 `assets-src-v1.tar.zst`。
+> - 源素材 **154.8MB raw / tarball 94.3MB**，**不入 git**，走 GitHub Release（tag `assets-v2`）的 `assets-src-v2.tar.zst`。
 > - 运行时零依赖；构建依赖见 `tools/requirements.txt`（python3 + numpy + opencv-python-headless + Pillow）。
 
 ## 目录
@@ -17,8 +17,8 @@ tools/art/
 ├── build_2d5.py         # 图集打包器：best-fit 图集 + UV 重映射 + 定点化 + pixelEqual 校验（M3b 多页版）
 ├── vendor/
 │   └── overlay_hands.py # T2 手部精修 overlay（vendored；hands 根由参数传入）
-├── pack-sources.mjs     # 源素材树 → assets-src-v1.tar.zst + manifest.json + sources.json + VERSION + SHA256SUMS
-├── fetch-sources.mjs    # 下载/解包 assets-src-v1.tar.zst（sha256 + manifest 逐文件校验）→ .cache/assets-src/
+├── pack-sources.mjs     # 源素材树 → assets-src-v2.tar.zst + manifest.json + sources.json + VERSION + SHA256SUMS
+├── fetch-sources.mjs    # 下载/解包 assets-src-v2.tar.zst（sha256 + manifest 逐文件校验）→ .cache/assets-src/
 └── README.md
 ```
 
@@ -46,7 +46,7 @@ npm run verify:full
 
 ## 源素材包（assets-src-v1）
 
-官方包：GitHub Release `assets-v1` 的 `assets-src-v1.tar.zst`（`https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v1/assets-src-v1.tar.zst`）。
+官方包：GitHub Release `assets-v2` 的 `assets-src-v2.tar.zst`（`https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v1/assets-src-v2.tar.zst`）。
 
 | 包内路径 | 内容 | 来源（历史工程） |
 |---|---|---|
@@ -55,7 +55,7 @@ npm run verify:full
 | `prod/` | P3 冻结构建输入：`seamfill-{shape}.npz` + `ref/{shape}_{combo}_rgba.png`（rest 颜色移植参考） | `.scratch/p5/rig/assets` |
 | `hands/` | T2 手部精修：`overlay-1x/{shape}.png`、`masks/hands-mask-{shape}.png`、`refined2x/{shape}/hand-tex.png`（实验 2x） | `.scratch/p5/hands` |
 | `feet/` | P2 脚部精修：`{shape}/feet.png`、`{shape}/masks/feet.png` | `.scratch/polish2/hands-feet` |
-| `VERSION` | 源包版本：`assets-v1` | 由 pack 脚本写入 |
+| `VERSION` | 源包版本：`assets-v2` | 由 pack 脚本写入 |
 | `sources.json` | 上述布局映射（审计/升级参考） | 由 pack 脚本写入 |
 | `manifest.json` | payload 文件清单（相对路径/大小/sha256），fetch 侧逐文件校验 | 由 pack 脚本写入 |
 
@@ -86,6 +86,8 @@ python3 tools/art/build_prod.py [--shape chibi|girl|both] [--build-atlas]
 | `--workdir` | `<repo>/.cache/build` | 中间产物根（`assets/tex/{shape}`、`assets/{shape}-cutout.feiyu.json`、`assets/build-stats.json`） |
 | `--outdir` | `<repo>/tools/art/dist` | dist 输出根（`<outdir>/{chibi,girl}/{rig.json,atlas.webp,build-report.json}`） |
 | `--tool` | `tools/art/build_2d5.py` | 图集打包器路径 |
+| `--master-config` | 无 | v2.6 素体母版重贴图契约（可重复；身形取自 config 的 `shape`）。见下文「v2.6 母版重贴图」 |
+| `--clean-garment-skin` | off | v2.6.1：删除服装纹理里**烘焙的素体皮肤**（女仆装"四只手"根因）。alpha-only、不重建 mesh（rig.json 逐字节不变）。见下文「服装修复」 |
 | `--generator-id` | `cutout/prod/tools/build_prod.py` | 写进 rig.json 的 provenance 字符串；**保持历史值**才能与 v2.5.0 官方 dist 逐字节一致 |
 | `--source-note` | `M2 cutout art（production，源工程不入库）` | 写进 rig.json `cutout.source` 的 provenance 字符串（同上） |
 | `--skip-hair-split` | off | T1 拆发关闭（v2.4.0 hair 口径，QA 归因用） |
@@ -104,6 +106,71 @@ python3 tools/art/build_2d5.py --rig <source rig.json> --texdir <纹理目录> \
 - lossless WebP RGBA、逐 drawable 透明 padding、UV 重映射到图集空间、定点化（positions 0.01px / uvs 1e-5 / weights 1e-4）。
 - 默认 `--out docs/dress-up/art/2d5`（独立使用时；builder 会显式传 `--out`）。
 - 校验失败退出码 1；**不要手改产物**，改源/脚本后重跑。
+
+## v2.6 母版重贴图（`--master-config`）
+
+v2.6.0「素体 B」= 用 art 阶段产出的单一素体母版（`master-1x.png`，675×1200，与画布 identity 对齐）
+重写 **body 部件纹理的 RGB**，alpha/几何/骨骼/槽位/drawable 数全部不变：
+
+```bash
+python3 tools/art/build_prod.py --build-atlas \
+    --master-config <art-girl>/retexture.json --master-config <art-chibi>/retexture.json
+```
+
+- 契约来源：`v26-art-{girl,chibi}/retexture.json`（两种格式都支持：girl `feiyu-master-retexture-v1`
+  的 `master.1x` + `drawables[].id` + `retextureRule.visibleMask`；chibi 的 `master.file`(2x) + `draws[]`）。
+- 重贴范围：仅 body-slot drawables：`body-head / body-torso / leg-L / leg-R / arm-upper-L/R /
+  arm-fore-L/R / hand-L/R`；tail、seam-fill、hair-*、face-*、服装 drawable **不重贴**。
+- 取色：1x 母版 → 纹理同坐标 identity；2x 母版 → 1x 纹理用双线性半像素采样
+  `((x+0.5)*2-0.5)`（与 art POC 一致）；2x 纹理（`--hands-2x` 实验）按半分辨率采样。
+  重贴后对每张纹理重做 `color_bleed`（母版只有 8px 外扩），保持边缘/mipmap 行为。
+- **顺序（关键）**：在 T1 拆发（`finalize_girl_hair`）**之后**、服装 seam-extend / rest 颜色移植**之前**执行。
+  T1 的 `split_girl_back_hair` 用 RGB 蓝色判据找烘焙发、`finalize_girl_hair` 把手臂发岛 RGB 复制进
+  `hair-arm-girl`；先重贴会破坏这些源色（发岛变肤色/丢失）。重贴前所有 body RGB 后处理
+  （feet/hands overlay、T1 补画）都已完成，母版 RGB 最终覆盖，保证 rest 合成与母版一致；
+  之后只剩服装/网格步骤，不写 body RGB。
+- **可见像素策略**：girl 配置带 `visibleMask`（`body-visible-rest-1x.png`）→ 只重写静置可见像素，
+  发/脸遮住的隐藏区保留 v2.5 值（±25° 姿态行为不回归）；chibi 无 mask → 全量重写
+  （chibi 母版在 allowed-change 之外 = v2.5 基像素，rest 等价）。
+- build-stats 记录 `stats['master']`（config 路径/母版尺寸/visibleOnly/changedPx/perDrawable），便于 QA 对账。
+
+## v2.6.1 服装烘焙皮肤清理（`--clean-garment-skin`）
+
+**Bug**：M2 的服装件是从整图切出来的，`maid-sleeve-fore-L/R` 等纹理的隐藏填充区里烘焙了**手的副本**
+（`*-skirt*`/`apron` 等同理会烘焙腿/身体皮肤副本）。运行时 hand(z65) + sleeveFore(z62) 叠加 → 每侧 2 只手
+（"四只手"，v2.5 起历史 bug；副本分散在多个服装层，只清袖子会从裙子里透出来）。
+
+**修复（v3，v2.6.1 fix2）**：`--clean-garment-skin` 对服装 drawable（slot ∈ topUnder/bottom/topBody/
+sleeve/sleeveUpper/sleeveFore/collar）做**分类处理**（早期"全删 alpha"版本会把被手遮住的白色隐藏垫层
+暴露成白斑）：
+
+- **布料内部**手形像素（到最近非删除布料像素距离 ≤6px）→ **不删 alpha，RGB 补画为布料**：
+  8px 窗口内「非皮肤、非白」布料主色均值（不足则用 `cv2.distanceTransformWithLabels` 最近邻布料色），
+  2px 高斯平滑 + 边界 1px 羽化；保证不露白、不留手形；
+- **伸出布料轮廓的凸出部分**（距离 >6px）→ 删除 alpha（+1px 羽化 + 旧 alpha bbox 钉住，rig.json 不变）；
+- 布料保护/防洞逻辑保留（白布/蓝布不删、per-outfit 覆盖守卫）；
+- 统计：build-stats `stats['garmentSkinClean']` = interiorRepaintPx / protrudingRemovedPx / droppedNoCoverPx / perDrawable。
+
+旧版流程描述（供对照）：`--clean-garment-skin` 对服装 drawable 删除烘焙皮肤 alpha：
+
+- 分类器：暖肤色 `R-B>=10, R-G>=2, G-B>=1, R>170` ∩ 底层 body 皮肤 alpha（`tail`/`seam-fill` 不算）；
+  白布（`sat<=8 & L>200`，袖口白边 sat≈3.5）与蓝/藏青布（`B-R>20`）**永不删除**；
+- 深色轮廓线：手部的暗线稿通过形态学 close + 连通域并入 hand blob（面积≥80、宽高≥12），
+  删除时 blob 外扩 2px 捕获轮廓/AA 晕；只作用于服装 alpha>0；
+- **防洞**：两遍计算，删除后该像素必须仍被至少一个「自己不在该处删除」的 drawable 覆盖，否则放弃删除
+  → 静置洋红洞保持 0；
+- 删除区 alpha 边缘 1px 羽化（ring alpha×0.5）；
+- **不重建 mesh**：只改纹理 alpha，rig.json/骨架/顶点/UV 全部逐字节不变；build-stats 记录
+  `stats['garmentSkinClean']`（removedPx/droppedNoCoverPx/perDrawable）。
+
+v2.6.1 重建（两身形 + 母版 v3.1 + 服装清理）：
+
+```bash
+python3 tools/art/build_prod.py --build-atlas --clean-garment-skin \
+    --src .cache/assets-src \
+    --master-config <src>/master/girl/config.json \
+    --master-config <src>/master/chibi/config.json
+```
 
 ## 确定性与验收口径
 
@@ -127,3 +194,22 @@ python3 tools/art/build_2d5.py --rig <source rig.json> --texdir <纹理目录> \
 - **2x 手部**：T2 的 refined2x 数据保留在源包中（实验），默认构建不使用；收益未证实。
 - **历史 `.scratch` 工具**：T1/T2/T3 交付脚本（`.scratch/p5/*/tools`、`.scratch/cutout/prod/tools`）不再作为生产入口；
   本目录文件是合并后的唯一事实来源。
+
+
+## v2.6 素体母版重贴图（`--master-config`）
+
+v2.6 的 body RGB 来自「素体母版」而非历史部件纹理。源包 v2 起新增 `master/` 目录
+（`master/{shape}/config.json` + 母版 + girl 可见掩膜）。重建 v2.6 dist：
+
+```bash
+npm run fetch:sources        # assets-src-v2
+npm run build:assets:v26     # = build_prod.py --build-atlas + 两个 --master-config
+# 或手动：
+python3 tools/art/build_prod.py --build-atlas --src .cache/assets-src \
+  --master-config .cache/assets-src/master/girl/config.json \
+  --master-config .cache/assets-src/master/chibi/config.json
+```
+
+验收：重建 `atlas.webp` 的 md5 应与仓库 `docs/dress-up/art/2d5/{shape}/atlas.webp` 一致
+（`rig.json` 在 v2.6 与 v2.5 逐字节相同）；双跑确定性由 `npm run verify:full` 校验。
+v2.5 及以前的重建 = 不传 `--master-config`（历史源包 assets-v1 亦可）。
