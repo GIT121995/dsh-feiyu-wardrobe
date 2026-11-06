@@ -26,7 +26,8 @@ import { dirname, join, relative, resolve } from 'node:path';
 const REPO = resolve(import.meta.dirname, '..', '..');
 const PAYLOAD_DIRS = ['art', 'm4', 'feet', 'hands', 'prod'];
 // v2.6 起：素体母版+重贴图契约（可用于复现 v2.6 dist）；v1 源包无此目录，向后兼容为可选。
-const OPTIONAL_PAYLOAD_DIRS = ['master'];
+// v2.6.1 起：hi/ 为高 DPI 2x 美术源（AI 增强 body/hair/face/tail），用于复现 hi tier dist。
+const OPTIONAL_PAYLOAD_DIRS = ['master', 'hi'];
 
 function parseArgs(argv) {
   const out = {
@@ -112,6 +113,7 @@ const sources = {
     'hands/': 'T2 手部精修（overlay-1x/{shape}.png + masks/hands-mask-{shape}.png + refined2x/）',
     'feet/': 'P2 脚部精修（{shape}/feet.png + masks/feet.png）',
     'master/': 'v2.6 素体母版重贴图输入（{shape}/config.json + master-1x/2x + girl visible mask）——构建 v2.6 dist 必需，v1 包无此项',
+    'hi/': 'v2.6.1 高 DPI 2x 美术源（{shape}/master-2x.png + hair/ + face/ + tail/ + hi-manifest.json）——构建 hi tier dist 必需，v2.6.0 及以前包无此项',
   },
   consumer: 'tools/art/build_prod.py --src <this root>',
   fileCount: files.length,

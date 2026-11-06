@@ -10,6 +10,7 @@ import {
 	PARAM_LIMITS,
 	QUALITY_PRESETS,
 	accumulateTicks,
+	assetDirForTier,
 	blinkEyeKey,
 	clampParams,
 	desiredEyeKey,
@@ -22,6 +23,7 @@ import {
 	faceStateKeys,
 	headFollowParams,
 	pickQualityTier,
+	resolveAssetTier,
 	resolveLook,
 	resolveQuality,
 	summarizeInitialPayload,
@@ -425,4 +427,54 @@ test('estimateTextureMemory：多纹理 DIY 显存估算（纹理独立、不进
 	assert.ok(memory.texBytes > 0);
 	assert.equal(memory.texMiB, Math.round((memory.texBytes / 1048576) * 100) / 100);
 	assert.ok(memory.texMiBwithMipmap >= memory.texMiB);
+});
+
+/* ---------------- v2.6.1 资产 tier（2x 高 DPI） ---------------- */
+
+test('resolveAssetTier：DPR≥2 + 内存/核数 + 纹理上限才 hi，否则 lo', () => {
+	const strong = { deviceMemory: 8, hardwareConcurrency: 8 };
+	assert.equal(resolveAssetTier({ device: strong, dpr: 2, maxTextureSize: 8192 }).tier, 'hi');
+	assert.equal(resolveAssetTier({ device: strong, dpr: 2.5, maxTextureSize: 8192 }).tier, 'hi');
+	assert.equal(resolveAssetTier({ device: strong, dpr: 1, maxTextureSize: 8192 }).tier, 'lo');
+	assert.equal(resolveAssetTier({ device: strong, dpr: 1.5, maxTextureSize: 8192 }).tier, 'lo');
+	assert.equal(resolveAssetTier({ device: strong, dpr: 2, maxTextureSize: 2048 }).tier, 'lo');
+	// 内存/核数任一达标即可（iPadOS 无 deviceMemory 时看核数）
+	assert.equal(resolveAssetTier({ device: { deviceMemory: 2, hardwareConcurrency: 8 }, dpr: 2, maxTextureSize: 8192 }).tier, 'hi');
+	assert.equal(resolveAssetTier({ device: { deviceMemory: 8, hardwareConcurrency: 2 }, dpr: 2, maxTextureSize: 8192 }).tier, 'hi');
+	assert.equal(resolveAssetTier({ device: { deviceMemory: 4, hardwareConcurrency: 4 }, dpr: 2, maxTextureSize: 4096 }).tier, 'hi', '边界值应通过');
+	// 都弱 / 都未知 → lo（保守：宁可 1x）
+	assert.equal(resolveAssetTier({ device: { deviceMemory: 2, hardwareConcurrency: 2 }, dpr: 2, maxTextureSize: 8192 }).tier, 'lo');
+	assert.equal(resolveAssetTier({ device: {}, dpr: 2, maxTextureSize: 8192 }).tier, 'lo');
+	const noGl = resolveAssetTier({ device: strong, dpr: 2 });
+	assert.equal(noGl.tier, 'lo');
+	assert.match(noGl.reason, /max-texture<4096/);
+	const low = resolveAssetTier({ device: {}, dpr: 1 });
+	assert.equal(low.tier, 'lo');
+	assert.match(low.reason, /dpr<2/);
+	assert.match(low.reason, /device-weak/);
+	assert.deepEqual(low.signals, { dpr: 1, deviceMemory: null, hardwareConcurrency: null, maxTextureSize: null });
+});
+
+test('resolveAssetTier：显式 override（?feiyuTier / localStorage）优先，非法值忽略', () => {
+	const strong = { device: { deviceMemory: 8, hardwareConcurrency: 8 }, dpr: 2, maxTextureSize: 8192 };
+	const forcedLo = resolveAssetTier({ ...strong, override: 'lo', overrideSource: 'url' });
+	assert.equal(forcedLo.tier, 'lo');
+	assert.equal(forcedLo.reason, 'override:url');
+	assert.deepEqual(forcedLo.override, { tier: 'lo', source: 'url' });
+	assert.equal(forcedLo.signals.maxTextureSize, 8192, '覆盖时仍记录设备信号供报告/调试');
+	const weak = { device: { deviceMemory: 1, hardwareConcurrency: 1 }, dpr: 1 };
+	assert.equal(resolveAssetTier({ ...weak, override: 'hi', overrideSource: 'storage' }).tier, 'hi');
+	assert.equal(resolveAssetTier({ ...weak, override: 'HI', overrideSource: 'storage' }).tier, 'hi', '大小写不敏感');
+	assert.equal(resolveAssetTier({ ...weak, override: 'auto' }).tier, 'lo', '非法 override 应忽略走 auto');
+	assert.equal(resolveAssetTier({ ...weak, override: '  ' }).tier, 'lo');
+	assert.equal(resolveAssetTier({ ...weak, override: 1 }).tier, 'lo', '非字符串 override 忽略');
+	assert.equal(resolveAssetTier({ ...weak, override: 'hi' }).reason, 'override:explicit');
+});
+
+test('assetDirForTier：lo=art/2d5/{shape}，hi=art/2d5/{shape}-hi（默认/空值兜底）', () => {
+	assert.equal(assetDirForTier('chibi', 'lo'), 'chibi');
+	assert.equal(assetDirForTier('girl', 'hi'), 'girl-hi');
+	assert.equal(assetDirForTier('chibi'), 'chibi', '默认 lo');
+	assert.equal(assetDirForTier('', 'hi'), 'chibi-hi', '空 shape 兜底 chibi');
+	assert.equal(assetDirForTier('girl', 'bogus'), 'girl', '未知 tier 按 lo');
 });

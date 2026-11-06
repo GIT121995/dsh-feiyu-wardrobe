@@ -23,9 +23,9 @@ import { dirname, join, resolve } from 'node:path';
 
 const REPO = resolve(import.meta.dirname, '..', '..');
 const DEFAULT_URL = 'https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v2/assets-src-v2.tar.zst';
-// 官方 assets-v2 包固定 sha256（pack-sources.mjs 打印）；发布者可用 --sha256/env 覆盖。
+// 官方 assets-v2 包固定 sha256（pack-sources.mjs 打印；v2.6.1 起含 hi/ 高 DPI 2x 源）；发布者可用 --sha256/env 覆盖。
 // 留 placeholder 时仍会执行 manifest 逐文件校验，并打印警告。
-const PINNED_SHA256 = '553bd2bfbe51a2949839b589239bb6751516a26a0ce8afcc6bc4a1570fce6cd3';
+const PINNED_SHA256 = '834e24851e7644aaf734d62f7ea6fff0a1a6939a0d815ca42d0bc8c54c078af5';
 const ARCHIVE_ROOT = 'assets-src-v2';
 
 function parseArgs(argv) {

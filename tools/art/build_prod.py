@@ -1568,7 +1568,8 @@ def load_master_config(path):
     shape = cfg.get('shape')
     if shape not in ('chibi', 'girl'):
         raise SystemExit(f'master config {path}: missing/invalid shape {shape!r}')
-    mref = cfg.get('master')
+    mref_raw = cfg.get('master')
+    mref = mref_raw
     if not isinstance(mref, str):
         mref = (mref or {}).get('1x') or (mref or {}).get('file')
     if not mref:
@@ -1585,6 +1586,21 @@ def load_master_config(path):
     unknown = [i for i in ids if i not in BODY_MASTER_IDS]
     if unknown:
         raise SystemExit(f'master config {path}: only body drawables may be retextured, got {unknown}')
+    # v2.6.1 hi tier: optional 2x body master. Explicit `master.2x`, or a `master.file`
+    # that is already a 2x working master (chibi v1). The art hi-src master is
+    # resolved later in `_hi_master_path()` (preferred).
+    master2x = None
+    mref2 = None
+    if isinstance(mref_raw, dict):
+        mref2 = mref_raw.get('2x')
+    if not mref2:
+        mm = mref_raw if isinstance(mref_raw, str) else (mref_raw or {}).get('file')
+        if isinstance(mm, str) and '2x' in os.path.basename(mm):
+            mref2 = mm
+    if mref2:
+        p2 = mref2 if os.path.isabs(mref2) else os.path.normpath(os.path.join(base, mref2))
+        if os.path.exists(p2):
+            master2x = p2
     rule = cfg.get('retextureRule') or {}
     visible_mask = None
     if rule.get('visibleOnlyRecommended') and rule.get('visibleMask'):
@@ -1594,7 +1610,7 @@ def load_master_config(path):
             raise SystemExit(f'master config {path}: visibleMask missing: {p}')
         visible_mask = p
     return {'shape': shape, 'config': os.path.abspath(path), 'master': master_path,
-            'ids': ids, 'visible_mask': visible_mask}
+            'master2x': master2x, 'ids': ids, 'visible_mask': visible_mask}
 
 
 def apply_master_retexture(shape, drawables, texdir, stats):
@@ -1796,6 +1812,217 @@ def clean_garment_skin(shape, drawables, texdir, outfits, stats):
     log(f'[{shape}] garment baked-skin cleanup (under-fill): {total}px on '
         f'{len(out_per)} drawables, alpha untouched')
     return total
+
+
+# ------------------------------------------------- v2.6.1: hi (2x) tier -------
+HI_TEX_SLOTS = {'hairBack', 'strands', 'hairFront', 'face'}
+HI_TEX_IDS = {'tail', 'hair-backfill'}
+HI_APPLY_OVERLAP = set(BODY_MASTER_IDS) | HI_TEX_IDS
+
+
+def _lanczos2x(arr):
+    """deterministic 2x upscale of an RGBA texture (Lanczos4)."""
+    return cv2.resize(arr, (arr.shape[1] * 2, arr.shape[0] * 2),
+                      interpolation=cv2.INTER_LANCZOS4)
+
+
+def _hi_source_file(hi_src, shape, d):
+    """Optional art-delivered 2x texture for a drawable (else Lanczos placeholder).
+
+    Contract (P2a, `.cache/assets-src/hi/{shape}/hi-manifest.json`):
+      * hair slots -> `<hi-src>/{shape}/hair/<texture-stem>.png`
+      * face slots -> `<hi-src>/{shape}/face/<texture-stem>.png`
+      * tail       -> `<hi-src>/{shape}/tail/tail.png`
+    The art file is the exact 2x (same trim bbox) of the internal lo texture;
+    alpha is not taken from it (deterministic Lanczos-2x of the lo alpha is used).
+    Body drawables use the master 2x image instead (see `_hi_master_path`).
+    """
+    if not hi_src:
+        return None
+    base = os.path.join(hi_src, shape)
+    stem = os.path.splitext(os.path.basename(d['texture']))[0]
+    slot = d['slot']
+    if d['id'] == 'tail':
+        rel = os.path.join('tail', 'tail.png')
+    elif slot in ('hairBack', 'strands', 'hairFront'):
+        rel = os.path.join('hair', stem + '.png')
+    elif slot == 'face':
+        rel = os.path.join('face', stem + '.png')
+    else:
+        return None
+    p = os.path.join(base, rel)
+    if os.path.exists(p):
+        return p
+    # tolerate flat layouts delivered by earlier art runs
+    for alt in (os.path.join(base, 'tail.png'),
+                os.path.join(base, os.path.dirname(rel), stem + '.png')):
+        if os.path.exists(alt):
+            return alt
+    return None
+
+
+def _hi_master_path(shape, cfg, hi_src):
+    """Resolve the 2x body master for the hi tier.
+
+    Preference: art-delivered `<hi-src>/{shape}/master-2x.png` (AI-enhanced,
+    visible region only) -> explicit `master.2x` in the master config -> a local
+    2x working master (`master.1x`/`master.file` whose basename contains `2x`).
+    Returns `(path|None, provenance)`; `None` = deterministic Lanczos fallback."""
+    if hi_src:
+        p = os.path.join(hi_src, shape, 'master-2x.png')
+        if os.path.exists(p):
+            return p, 'art hi-src'
+    if cfg.get('master2x'):
+        return cfg['master2x'], 'master-config 2x'
+    m1 = cfg.get('master')
+    if m1 and '2x' in os.path.basename(m1) and os.path.exists(m1):
+        return m1, 'local 2x working master'
+    return None, 'missing'
+
+
+def build_hi_tier(shape, rig_path, texdir, stats, hi_outdir, hi_src):
+    """Build the mixed-resolution hi (2x) tier from the lo build artifacts.
+
+    * body 10 drawables: RGB sampled identity from the art master-2x (or master1x
+      Lanczos fallback); hidden pixels keep the Lanczos-upscaled lo RGB; alpha =
+      deterministic Lanczos 2x upsample of the lo alpha (silhouette ±1px);
+    * hair/face/tail: art-delivered 2x RGB when `<hi-src>/{shape}/...` exists,
+      else Lanczos 2x placeholder (pipeline打通); alpha = Lanczos 2x of lo alpha;
+    * garment drawables stay 1x (copy lo texture);
+    * texSize is doubled for 2x drawables, rect stays in 1x canvas coords;
+      meshes are untouched (uvs are normalised);
+    * two atlas pages: page `hi` (2x tiles) + page `lo` (1x garments/rest), each
+      <=4096 and pixelEqual=True (build_2d5 contract).
+    Returns the build stats entry."""
+    rig = json.load(open(rig_path))
+    tex_hi = os.path.join(WORK, 'assets', 'tex-hi', shape)
+    os.makedirs(tex_hi, exist_ok=True)
+    cfg = MASTER_CFG.get(shape) or {}
+    master2_path, master2_from = _hi_master_path(shape, cfg, hi_src)
+    master2 = load_rgba(master2_path) if master2_path else None
+    log(f'[{shape}] hi master 2x: {master2_from}'
+        + (f' {master2_path}' if master2_path else ' (no 2x master -> Lanczos fallback)'))
+    vis2 = None
+    if cfg.get('visible_mask'):
+        vm = np.array(Image.open(cfg['visible_mask']).convert('L')) > 128
+        vis2 = cv2.resize(vm.astype(np.uint8), (W * 2, H * 2),
+                          interpolation=cv2.INTER_NEAREST) > 0
+    hi_ids, lo_ids = [], []
+    hi_stats = {}
+    for d in rig['drawables']:
+        pid = d['id']
+        slot = d['slot']
+        src_tex = os.path.join(texdir, os.path.basename(d['texture']))
+        lo_tex = np.array(Image.open(src_tex).convert('RGBA'))
+        is_body = pid in BODY_MASTER_IDS
+        is_2x = is_body or slot in HI_TEX_SLOTS or pid in HI_TEX_IDS
+        if not is_2x:
+            # 1x drawable (garments / seam-fill / ...): keep the lo texture
+            shutil.copy2(src_tex, os.path.join(tex_hi, os.path.basename(d['texture'])))
+            lo_ids.append(pid)
+            continue
+        # ---------- 2x branch ----------
+        alpha2 = _lanczos2x(lo_tex[:, :, 3])
+        # keep the silhouette within ±1px of the 2x upsampled alpha: clip Lanczos
+        # ringing (values <8 are already "transparent" for the builder/runtime) so
+        # the trim bbox stays ~2x the lo tile instead of growing by the halo.
+        alpha2[alpha2 < 8] = 0
+        rgb_up = _lanczos2x(lo_tex[:, :, :3])
+        hi_p = _hi_source_file(hi_src, shape, d)
+        art = load_rgba(hi_p) if hi_p else None
+        if lo_tex.shape[1] == W and lo_tex.shape[0] == H:
+            # full-canvas texture (body slots & tail): sample/copy on the 2x canvas
+            if is_body and master2 is not None:
+                m2 = master2
+                if m2.shape[1] != W * 2 or m2.shape[0] != H * 2:
+                    m2 = cv2.resize(m2, (W * 2, H * 2), interpolation=cv2.INTER_LANCZOS4)
+                rgb2 = m2[:, :, :3].copy()
+                if vis2 is not None:
+                    hid2 = ~vis2
+                    rgb2[hid2] = rgb_up[hid2]
+            elif art is not None:
+                if art.shape[:2] != (H * 2, W * 2):
+                    log(f'[{shape}] WARN hi source {art.shape[:2]} != 2x canvas, resizing: {hi_p}')
+                    art = cv2.resize(art, (W * 2, H * 2), interpolation=cv2.INTER_LANCZOS4)
+                rgb2 = art[:, :, :3].copy()
+            else:
+                rgb2 = rgb_up
+            rgba2 = np.dstack([rgb2, alpha2])
+        else:
+            # small texture (hair/face parts): exact 2x of the same trimmed texture
+            if art is not None:
+                if art.shape[:2] != alpha2.shape[:2]:
+                    log(f'[{shape}] WARN hi source {art.shape[:2]} != 2x lo '
+                        f'{alpha2.shape[:2]}, resizing: {hi_p}')
+                    art = cv2.resize(art, (alpha2.shape[1], alpha2.shape[0]),
+                                     interpolation=cv2.INTER_LANCZOS4)
+                rgb2 = art[:, :, :3]
+            else:
+                rgb2 = rgb_up
+            rgba2 = np.dstack([rgb2, alpha2])
+        out_name = os.path.basename(d['texture'])
+        out_path = os.path.join(tex_hi, out_name)
+        if out_name.lower().endswith('.webp'):
+            # lossless: the atlas re-pack must not inherit a lossy intermediate
+            Image.fromarray(rgba2, 'RGBA').save(out_path, format='WEBP', lossless=True)
+        else:
+            Image.fromarray(rgba2, 'RGBA').save(out_path)
+        d['texSize'] = [int(rgba2.shape[1]), int(rgba2.shape[0])]
+        hi_ids.append(pid)
+        hi_stats[pid] = {'texSize': d['texSize'], 'hiSource': art is not None,
+                         'hiSrc': os.path.basename(hi_p) if hi_p else None,
+                         'bodyMaster2x': bool(is_body and master2 is not None)}
+    hi_art = sum(1 for v in hi_stats.values() if v['hiSource'])
+    hi_canvas = sum(1 for v in hi_stats.values() if v['bodyMaster2x'])
+    hi_placeholder = sum(1 for v in hi_stats.values()
+                         if not v['hiSource'] and not v['bodyMaster2x'])
+    log(f'[{shape}] hi sources: {hi_art} layer files from art, '
+        f'{hi_canvas} body drawables from 2x master, {hi_placeholder} placeholder')
+    # two atlas pages: 2x big tiles first, 1x garments second
+    rig.pop('atlasPages', None)
+    for d in rig['drawables']:
+        d.pop('atlas', None)
+    rig['atlasPages'] = [
+        {'id': 'hi', 'file': 'atlas.webp', 'drawables': hi_ids},
+        {'id': 'lo', 'file': 'atlas-2.webp', 'drawables': lo_ids},
+    ]
+    hi_rig_path = os.path.join(WORK, 'assets', f'{shape}-hi-cutout.feiyu.json')
+    json.dump(rig, open(hi_rig_path, 'w'), separators=(',', ':'))
+    tmp_root = os.path.join(WORK, 'hi-dist-tmp')
+    os.makedirs(tmp_root, exist_ok=True)
+    cmd = [sys.executable, TOOL, '--rig', hi_rig_path, '--texdir', tex_hi,
+           '--out', tmp_root, '--shape', shape, '--trim-alpha',
+           '--max-width', '4096', '--max-side', '4096', '--pad', '2']
+    log('build_2d5 hi:', ' '.join(cmd))
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    sys.stdout.write(r.stdout[-4000:])
+    sys.stderr.write(r.stderr[-4000:])
+    if r.returncode != 0:
+        raise SystemExit(f'build_2d5 hi failed for {shape}')
+    src_dir = os.path.join(tmp_root, shape)
+    dst_dir = os.path.join(hi_outdir, f'{shape}-hi')
+    if os.path.isdir(dst_dir):
+        shutil.rmtree(dst_dir)
+    shutil.move(src_dir, dst_dir)
+    report = json.load(open(os.path.join(dst_dir, 'build-report.json')))
+    pages = report.get('atlases') or ([report['atlas']] if report.get('atlas') else [])
+    out = {'dir': dst_dir, 'pages': len(pages),
+           'atlasBytes': [p.get('bytes') for p in pages],
+           'pageSizes': [[p.get('width'), p.get('height')] for p in pages],
+           'pixelEqual': [p.get('pixelEqual') for p in pages],
+           'rigBytes': os.path.getsize(os.path.join(dst_dir, 'rig.json')),
+           'texMiB': report.get('textureTotal', {}).get('texMiB'),
+           'texMiBwithMipmap': report.get('textureTotal', {}).get('texMiBwithMipmap'),
+           'hiDrawables': len(hi_ids), 'loDrawables': len(lo_ids),
+           'hiSource': {'layersFromArt': hi_art, 'bodyFromMaster2x': hi_canvas,
+                        'placeholder': hi_placeholder, 'master2xFrom': master2_from,
+                        'root': hi_src},
+           'hiTex': hi_stats}
+    log(f'[{shape}] hi tier -> {dst_dir}: pages {out["pages"]} '
+        f'{out["pageSizes"]} pxEqual={out["pixelEqual"]} rig={out["rigBytes"]}B '
+        f'tex={out["texMiB"]}MiB (2x {len(hi_ids)} / 1x {len(lo_ids)}; '
+        f'art {hi_art} layers + {hi_canvas} body-master2x, placeholder {hi_placeholder})')
+    return out
 
 
 def build_shape(shape, page_split='base'):
@@ -2089,6 +2316,15 @@ def main():
     ap = argparse.ArgumentParser(description='大肥鱼衣橱 2.5D production cutout builder')
     ap.add_argument('--shape', choices=['chibi', 'girl', 'both'], default='both')
     ap.add_argument('--build-atlas', action='store_true')
+    ap.add_argument('--tier', choices=['lo', 'hi'], default='lo',
+                    help='asset tier: lo = current 1x dist (default); hi = mixed 2x '
+                         'body/hair/face/tail + 1x garments, two-page atlas')
+    ap.add_argument('--hi-outdir', default=None,
+                    help='hi tier output root (default <repo>/docs/dress-up/art/2d5; '
+                         'writes <root>/{shape}-hi/)')
+    ap.add_argument('--hi-src', default=None,
+                    help='art-delivered 2x source root (default <src>/hi); missing '
+                         'files fall back to deterministic Lanczos 2x placeholders')
     ap.add_argument('--src', default=None,
                     help='source package root (default <repo>/.cache/assets-src)')
     ap.add_argument('--workdir', default=None,
@@ -2135,11 +2371,18 @@ def main():
     OPTS['hands_2x'] = args.hands_2x
     OPTS['clean_garment_skin'] = args.clean_garment_skin
     os.makedirs(os.path.join(WORK, 'assets'), exist_ok=True)
+    hi_outdir = os.path.abspath(args.hi_outdir or os.path.join(
+        REPO, 'docs', 'dress-up', 'art', '2d5'))
+    hi_src = os.path.abspath(args.hi_src or os.path.join(SRC, 'hi'))
     shapes = ['chibi', 'girl'] if args.shape == 'both' else [args.shape]
     all_stats = {}
     for shape in shapes:
         rig_path, texdir, stats = build_shape(shape)
         all_stats[shape] = stats
+        if args.build_atlas and args.tier == 'hi':
+            all_stats[shape]['hi'] = build_hi_tier(
+                shape, rig_path, texdir, stats, hi_outdir, hi_src)
+            continue
         if args.build_atlas:
             d = run_build_2d5(shape, rig_path, texdir)
             rep = json.load(open(os.path.join(d, 'build-report.json')))

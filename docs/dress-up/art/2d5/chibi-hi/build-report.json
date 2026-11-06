@@ -1,0 +1,1580 @@
+{
+ "shape": "chibi",
+ "sourceRig": "chibi-hi-cutout.feiyu.json",
+ "sourceRigBytes": 2115331,
+ "generator": "tools/build_2d5.py",
+ "padding": 2,
+ "trimAlpha": true,
+ "pages": 2,
+ "atlas": {
+  "width": 4016,
+  "height": 3214,
+  "bytes": 3054318,
+  "pixelEqual": true,
+  "rects": 39
+ },
+ "atlases": [
+  {
+   "id": "hi",
+   "file": "atlas.webp",
+   "width": 4016,
+   "height": 3214,
+   "bytes": 3054318,
+   "pixelEqual": true,
+   "rects": 39
+  },
+  {
+   "id": "lo",
+   "file": "atlas-2.webp",
+   "width": 4083,
+   "height": 975,
+   "bytes": 1017280,
+   "pixelEqual": true,
+   "rects": 46
+  }
+ ],
+ "rig": {
+  "bytes": 1984064,
+  "gzipBytes": 359998,
+  "sha256": "aba988874e9d72fd25cdecf923778b8ab02f8c461c0677ef4fa00c08b61e9f49"
+ },
+ "drawables": [
+  {
+   "id": "body-head",
+   "slot": "body",
+   "z": 11.0,
+   "atlas": "hi",
+   "atlasRect": [
+    2212,
+    2,
+    1162,
+    1141
+   ],
+   "texSize": [
+    1162,
+    1141
+   ],
+   "verts": 896,
+   "tris": 1568
+  },
+  {
+   "id": "body-torso",
+   "slot": "body",
+   "z": 10.0,
+   "atlas": "hi",
+   "atlasRect": [
+    2858,
+    1818,
+    1156,
+    652
+   ],
+   "texSize": [
+    1156,
+    652
+   ],
+   "verts": 502,
+   "tris": 786
+  },
+  {
+   "id": "tail",
+   "slot": "body",
+   "z": 8.5,
+   "atlas": "hi",
+   "atlasRect": [
+    1796,
+    1818,
+    484,
+    738
+   ],
+   "texSize": [
+    484,
+    738
+   ],
+   "verts": 231,
+   "tris": 356
+  },
+  {
+   "id": "arm-upper-L",
+   "slot": "armUpper",
+   "z": 45.0,
+   "atlas": "hi",
+   "atlasRect": [
+    2,
+    2836,
+    171,
+    376
+   ],
+   "texSize": [
+    171,
+    376
+   ],
+   "verts": 99,
+   "tris": 140
+  },
+  {
+   "id": "arm-upper-R",
+   "slot": "armUpper",
+   "z": 45.0,
+   "atlas": "hi",
+   "atlasRect": [
+    543,
+    2836,
+    152,
+    311
+   ],
+   "texSize": [
+    152,
+    311
+   ],
+   "verts": 83,
+   "tris": 124
+  },
+  {
+   "id": "arm-fore-L",
+   "slot": "armFore",
+   "z": 48.0,
+   "atlas": "hi",
+   "atlasRect": [
+    177,
+    2836,
+    182,
+    356
+   ],
+   "texSize": [
+    182,
+    356
+   ],
+   "verts": 98,
+   "tris": 150
+  },
+  {
+   "id": "arm-fore-R",
+   "slot": "armFore",
+   "z": 48.0,
+   "atlas": "hi",
+   "atlasRect": [
+    363,
+    2836,
+    176,
+    348
+   ],
+   "texSize": [
+    176,
+    348
+   ],
+   "verts": 99,
+   "tris": 152
+  },
+  {
+   "id": "hand-L",
+   "slot": "hand",
+   "z": 65.0,
+   "atlas": "hi",
+   "atlasRect": [
+    2695,
+    2836,
+    120,
+    148
+   ],
+   "texSize": [
+    120,
+    148
+   ],
+   "verts": 41,
+   "tris": 58
+  },
+  {
+   "id": "hand-R",
+   "slot": "hand",
+   "z": 65.0,
+   "atlas": "hi",
+   "atlasRect": [
+    2559,
+    2836,
+    132,
+    154
+   ],
+   "texSize": [
+    132,
+    154
+   ],
+   "verts": 40,
+   "tris": 56
+  },
+  {
+   "id": "leg-L",
+   "slot": "legs",
+   "z": 9.1,
+   "atlas": "hi",
+   "atlasRect": [
+    3378,
+    2,
+    282,
+    601
+   ],
+   "texSize": [
+    282,
+    601
+   ],
+   "verts": 188,
+   "tris": 308
+  },
+  {
+   "id": "leg-R",
+   "slot": "legs",
+   "z": 9.1,
+   "atlas": "hi",
+   "atlasRect": [
+    3664,
+    2,
+    256,
+    596
+   ],
+   "texSize": [
+    256,
+    596
+   ],
+   "verts": 183,
+   "tris": 302
+  },
+  {
+   "id": "seam-fill",
+   "slot": "body",
+   "z": 7.6,
+   "atlas": "lo",
+   "atlasRect": [
+    1267,
+    827,
+    13,
+    14
+   ],
+   "texSize": [
+    13,
+    14
+   ],
+   "verts": 4,
+   "tris": 2
+  },
+  {
+   "id": "maid-torso",
+   "slot": "topBody",
+   "z": 40.0,
+   "atlas": "lo",
+   "atlasRect": [
+    938,
+    827,
+    325,
+    82
+   ],
+   "texSize": [
+    325,
+    82
+   ],
+   "verts": 151,
+   "tris": 240
+  },
+  {
+   "id": "maid-collar",
+   "slot": "collar",
+   "z": 56.0,
+   "atlas": "lo",
+   "atlasRect": [
+    3812,
+    507,
+    269,
+    153
+   ],
+   "texSize": [
+    269,
+    153
+   ],
+   "verts": 212,
+   "tris": 358
+  },
+  {
+   "id": "maid-apron",
+   "slot": "collar",
+   "z": 55.0,
+   "atlas": "lo",
+   "atlasRect": [
+    2,
+    2,
+    310,
+    501
+   ],
+   "texSize": [
+    310,
+    501
+   ],
+   "verts": 579,
+   "tris": 958
+  },
+  {
+   "id": "maid-sleeve-upper-L",
+   "slot": "sleeveUpper",
+   "z": 60.0,
+   "atlas": "lo",
+   "atlasRect": [
+    1217,
+    507,
+    136,
+    185
+   ],
+   "texSize": [
+    136,
+    185
+   ],
+   "verts": 122,
+   "tris": 196
+  },
+  {
+   "id": "maid-sleeve-fore-L",
+   "slot": "sleeveFore",
+   "z": 62.0,
+   "atlas": "lo",
+   "atlasRect": [
+    952,
+    507,
+    129,
+    211
+   ],
+   "texSize": [
+    129,
+    211
+   ],
+   "verts": 151,
+   "tris": 252
+  },
+  {
+   "id": "maid-sleeve-upper-R",
+   "slot": "sleeveUpper",
+   "z": 60.0,
+   "atlas": "lo",
+   "atlasRect": [
+    1357,
+    507,
+    127,
+    185
+   ],
+   "texSize": [
+    127,
+    185
+   ],
+   "verts": 109,
+   "tris": 172
+  },
+  {
+   "id": "maid-sleeve-fore-R",
+   "slot": "sleeveFore",
+   "z": 62.0,
+   "atlas": "lo",
+   "atlasRect": [
+    1085,
+    507,
+    128,
+    208
+   ],
+   "texSize": [
+    128,
+    208
+   ],
+   "verts": 147,
+   "tris": 244
+  },
+  {
+   "id": "maid-skirt",
+   "slot": "bottom",
+   "z": 30.0,
+   "atlas": "lo",
+   "atlasRect": [
+    316,
+    2,
+    488,
+    365
+   ],
+   "texSize": [
+    488,
+    365
+   ],
+   "verts": 758,
+   "tris": 1382
+  },
+  {
+   "id": "maid-skirt-under",
+   "slot": "bottom",
+   "z": 29.0,
+   "atlas": "lo",
+   "atlasRect": [
+    808,
+    2,
+    488,
+    363
+   ],
+   "texSize": [
+    488,
+    363
+   ],
+   "verts": 759,
+   "tris": 1382
+  },
+  {
+   "id": "sweater-plaid-torso",
+   "slot": "topBody",
+   "z": 40.0,
+   "atlas": "lo",
+   "atlasRect": [
+    3208,
+    507,
+    160,
+    169
+   ],
+   "texSize": [
+    160,
+    169
+   ],
+   "verts": 163,
+   "tris": 276
+  },
+  {
+   "id": "sweater-plaid-collar",
+   "slot": "collar",
+   "z": 56.0,
+   "atlas": "lo",
+   "atlasRect": [
+    2452,
+    507,
+    266,
+    181
+   ],
+   "texSize": [
+    266,
+    181
+   ],
+   "verts": 233,
+   "tris": 400
+  },
+  {
+   "id": "sweater-plaid-sleeve-upper-L",
+   "slot": "sleeveUpper",
+   "z": 60.0,
+   "atlas": "lo",
+   "atlasRect": [
+    1740,
+    507,
+    118,
+    185
+   ],
+   "texSize": [
+    118,
+    185
+   ],
+   "verts": 118,
+   "tris": 190
+  },
+  {
+   "id": "sweater-plaid-sleeve-fore-L",
+   "slot": "sleeveFore",
+   "z": 62.0,
+   "atlas": "lo",
+   "atlasRect": [
+    2,
+    827,
+    117,
+    146
+   ],
+   "texSize": [
+    117,
+    146
+   ],
+   "verts": 100,
+   "tris": 160
+  },
+  {
+   "id": "sweater-plaid-sleeve-upper-R",
+   "slot": "sleeveUpper",
+   "z": 60.0,
+   "atlas": "lo",
+   "atlasRect": [
+    2222,
+    507,
+    111,
+    185
+   ],
+   "texSize": [
+    111,
+    185
+   ],
+   "verts": 108,
+   "tris": 172
+  },
+  {
+   "id": "sweater-plaid-sleeve-fore-R",
+   "slot": "sleeveFore",
+   "z": 62.0,
+   "atlas": "lo",
+   "atlasRect": [
+    244,
+    827,
+    109,
+    146
+   ],
+   "texSize": [
+    109,
+    146
+   ],
+   "verts": 99,
+   "tris": 158
+  },
+  {
+   "id": "sweater-plaid-skirt",
+   "slot": "bottom",
+   "z": 30.0,
+   "atlas": "lo",
+   "atlasRect": [
+    2508,
+    2,
+    300,
+    318
+   ],
+   "texSize": [
+    300,
+    318
+   ],
+   "verts": 475,
+   "tris": 854
+  },
+  {
+   "id": "sweater-plaid-skirt-under",
+   "slot": "bottom",
+   "z": 29.0,
+   "atlas": "lo",
+   "atlasRect": [
+    3420,
+    2,
+    300,
+    316
+   ],
+   "texSize": [
+    300,
+    316
+   ],
+   "verts": 470,
+   "tris": 844
+  },
+  {
+   "id": "sweater-pleated-torso",
+   "slot": "topBody",
+   "z": 40.0,
+   "atlas": "lo",
+   "atlasRect": [
+    3372,
+    507,
+    160,
+    169
+   ],
+   "texSize": [
+    160,
+    169
+   ],
+   "verts": 163,
+   "tris": 276
+  },
+  {
+   "id": "sweater-pleated-collar",
+   "slot": "collar",
+   "z": 56.0,
+   "atlas": "lo",
+   "atlasRect": [
+    2722,
+    507,
+    266,
+    181
+   ],
+   "texSize": [
+    266,
+    181
+   ],
+   "verts": 233,
+   "tris": 400
+  },
+  {
+   "id": "sweater-pleated-sleeve-upper-L",
+   "slot": "sleeveUpper",
+   "z": 60.0,
+   "atlas": "lo",
+   "atlasRect": [
+    1862,
+    507,
+    118,
+    185
+   ],
+   "texSize": [
+    118,
+    185
+   ],
+   "verts": 118,
+   "tris": 190
+  },
+  {
+   "id": "sweater-pleated-sleeve-fore-L",
+   "slot": "sleeveFore",
+   "z": 62.0,
+   "atlas": "lo",
+   "atlasRect": [
+    123,
+    827,
+    117,
+    146
+   ],
+   "texSize": [
+    117,
+    146
+   ],
+   "verts": 100,
+   "tris": 160
+  },
+  {
+   "id": "sweater-pleated-sleeve-upper-R",
+   "slot": "sleeveUpper",
+   "z": 60.0,
+   "atlas": "lo",
+   "atlasRect": [
+    2337,
+    507,
+    111,
+    185
+   ],
+   "texSize": [
+    111,
+    185
+   ],
+   "verts": 108,
+   "tris": 172
+  },
+  {
+   "id": "sweater-pleated-sleeve-fore-R",
+   "slot": "sleeveFore",
+   "z": 62.0,
+   "atlas": "lo",
+   "atlasRect": [
+    357,
+    827,
+    109,
+    146
+   ],
+   "texSize": [
+    109,
+    146
+   ],
+   "verts": 99,
+   "tris": 158
+  },
+  {
+   "id": "sweater-pleated-skirt",
+   "slot": "bottom",
+   "z": 30.0,
+   "atlas": "lo",
+   "atlasRect": [
+    1300,
+    2,
+    298,
+    325
+   ],
+   "texSize": [
+    298,
+    325
+   ],
+   "verts": 441,
+   "tris": 790
+  },
+  {
+   "id": "sweater-pleated-skirt-under",
+   "slot": "bottom",
+   "z": 29.0,
+   "atlas": "lo",
+   "atlasRect": [
+    1904,
+    2,
+    298,
+    323
+   ],
+   "texSize": [
+    298,
+    323
+   ],
+   "verts": 436,
+   "tris": 780
+  },
+  {
+   "id": "hoodie-plaid-torso",
+   "slot": "topBody",
+   "z": 40.0,
+   "atlas": "lo",
+   "atlasRect": [
+    306,
+    507,
+    210,
+    285
+   ],
+   "texSize": [
+    210,
+    285
+   ],
+   "verts": 263,
+   "tris": 446
+  },
+  {
+   "id": "hoodie-plaid-sleeve-upper-L",
+   "slot": "sleeveUpper",
+   "z": 60.0,
+   "atlas": "lo",
+   "atlasRect": [
+    1488,
+    507,
+    122,
+    185
+   ],
+   "texSize": [
+    122,
+    185
+   ],
+   "verts": 118,
+   "tris": 190
+  },
+  {
+   "id": "hoodie-plaid-sleeve-fore-L",
+   "slot": "sleeveFore",
+   "z": 62.0,
+   "atlas": "lo",
+   "atlasRect": [
+    470,
+    827,
+    117,
+    114
+   ],
+   "texSize": [
+    117,
+    114
+   ],
+   "verts": 73,
+   "tris": 112
+  },
+  {
+   "id": "hoodie-plaid-sleeve-upper-R",
+   "slot": "sleeveUpper",
+   "z": 60.0,
+   "atlas": "lo",
+   "atlasRect": [
+    1984,
+    507,
+    115,
+    185
+   ],
+   "texSize": [
+    115,
+    185
+   ],
+   "verts": 108,
+   "tris": 172
+  },
+  {
+   "id": "hoodie-plaid-sleeve-fore-R",
+   "slot": "sleeveFore",
+   "z": 62.0,
+   "atlas": "lo",
+   "atlasRect": [
+    712,
+    827,
+    109,
+    114
+   ],
+   "texSize": [
+    109,
+    114
+   ],
+   "verts": 75,
+   "tris": 116
+  },
+  {
+   "id": "hoodie-plaid-skirt",
+   "slot": "bottom",
+   "z": 30.0,
+   "atlas": "lo",
+   "atlasRect": [
+    2812,
+    2,
+    300,
+    318
+   ],
+   "texSize": [
+    300,
+    318
+   ],
+   "verts": 469,
+   "tris": 844
+  },
+  {
+   "id": "hoodie-plaid-skirt-under",
+   "slot": "bottom",
+   "z": 29.0,
+   "atlas": "lo",
+   "atlasRect": [
+    3724,
+    2,
+    300,
+    316
+   ],
+   "texSize": [
+    300,
+    316
+   ],
+   "verts": 463,
+   "tris": 834
+  },
+  {
+   "id": "hoodie-pleated-torso",
+   "slot": "topBody",
+   "z": 40.0,
+   "atlas": "lo",
+   "atlasRect": [
+    520,
+    507,
+    210,
+    285
+   ],
+   "texSize": [
+    210,
+    285
+   ],
+   "verts": 263,
+   "tris": 446
+  },
+  {
+   "id": "hoodie-pleated-sleeve-upper-L",
+   "slot": "sleeveUpper",
+   "z": 60.0,
+   "atlas": "lo",
+   "atlasRect": [
+    1614,
+    507,
+    122,
+    185
+   ],
+   "texSize": [
+    122,
+    185
+   ],
+   "verts": 118,
+   "tris": 190
+  },
+  {
+   "id": "hoodie-pleated-sleeve-fore-L",
+   "slot": "sleeveFore",
+   "z": 62.0,
+   "atlas": "lo",
+   "atlasRect": [
+    591,
+    827,
+    117,
+    114
+   ],
+   "texSize": [
+    117,
+    114
+   ],
+   "verts": 73,
+   "tris": 112
+  },
+  {
+   "id": "hoodie-pleated-sleeve-upper-R",
+   "slot": "sleeveUpper",
+   "z": 60.0,
+   "atlas": "lo",
+   "atlasRect": [
+    2103,
+    507,
+    115,
+    185
+   ],
+   "texSize": [
+    115,
+    185
+   ],
+   "verts": 108,
+   "tris": 172
+  },
+  {
+   "id": "hoodie-pleated-sleeve-fore-R",
+   "slot": "sleeveFore",
+   "z": 62.0,
+   "atlas": "lo",
+   "atlasRect": [
+    825,
+    827,
+    109,
+    114
+   ],
+   "texSize": [
+    109,
+    114
+   ],
+   "verts": 75,
+   "tris": 116
+  },
+  {
+   "id": "hoodie-pleated-skirt",
+   "slot": "bottom",
+   "z": 30.0,
+   "atlas": "lo",
+   "atlasRect": [
+    1602,
+    2,
+    298,
+    325
+   ],
+   "texSize": [
+    298,
+    325
+   ],
+   "verts": 435,
+   "tris": 778
+  },
+  {
+   "id": "hoodie-pleated-skirt-under",
+   "slot": "bottom",
+   "z": 29.0,
+   "atlas": "lo",
+   "atlasRect": [
+    2206,
+    2,
+    298,
+    323
+   ],
+   "texSize": [
+    298,
+    323
+   ],
+   "verts": 431,
+   "tris": 768
+  },
+  {
+   "id": "sailor-plaid-torso",
+   "slot": "topUnder",
+   "z": 20.0,
+   "atlas": "lo",
+   "atlasRect": [
+    734,
+    507,
+    214,
+    213
+   ],
+   "texSize": [
+    214,
+    213
+   ],
+   "verts": 191,
+   "tris": 308
+  },
+  {
+   "id": "sailor-plaid-collar",
+   "slot": "collar",
+   "z": 56.0,
+   "atlas": "lo",
+   "atlasRect": [
+    3536,
+    507,
+    272,
+    159
+   ],
+   "texSize": [
+    272,
+    159
+   ],
+   "verts": 222,
+   "tris": 342
+  },
+  {
+   "id": "sailor-plaid-sleeve-upper-L",
+   "slot": "sleeveUpper",
+   "z": 60.0,
+   "atlas": "lo",
+   "atlasRect": [
+    2992,
+    507,
+    106,
+    173
+   ],
+   "texSize": [
+    106,
+    173
+   ],
+   "verts": 98,
+   "tris": 154
+  },
+  {
+   "id": "sailor-plaid-sleeve-upper-R",
+   "slot": "sleeveUpper",
+   "z": 60.0,
+   "atlas": "lo",
+   "atlasRect": [
+    3102,
+    507,
+    102,
+    171
+   ],
+   "texSize": [
+    102,
+    171
+   ],
+   "verts": 84,
+   "tris": 128
+  },
+  {
+   "id": "sailor-plaid-skirt",
+   "slot": "bottom",
+   "z": 30.0,
+   "atlas": "lo",
+   "atlasRect": [
+    3116,
+    2,
+    300,
+    318
+   ],
+   "texSize": [
+    300,
+    318
+   ],
+   "verts": 443,
+   "tris": 792
+  },
+  {
+   "id": "sailor-plaid-skirt-under",
+   "slot": "bottom",
+   "z": 29.0,
+   "atlas": "lo",
+   "atlasRect": [
+    2,
+    507,
+    300,
+    316
+   ],
+   "texSize": [
+    300,
+    316
+   ],
+   "verts": 444,
+   "tris": 796
+  },
+  {
+   "id": "hair-back",
+   "slot": "hairBack",
+   "z": 5,
+   "atlas": "hi",
+   "atlasRect": [
+    1156,
+    2,
+    1052,
+    1228
+   ],
+   "texSize": [
+    1052,
+    1228
+   ],
+   "verts": 285,
+   "tris": 358
+  },
+  {
+   "id": "hair-front-bangs",
+   "slot": "hairFront",
+   "z": 70,
+   "atlas": "hi",
+   "atlasRect": [
+    2,
+    1818,
+    894,
+    1014
+   ],
+   "texSize": [
+    894,
+    1014
+   ],
+   "verts": 1279,
+   "tris": 2210
+  },
+  {
+   "id": "hair-strand-L1",
+   "slot": "strands",
+   "z": 8.0,
+   "atlas": "hi",
+   "atlasRect": [
+    2574,
+    1818,
+    280,
+    692
+   ],
+   "texSize": [
+    280,
+    692
+   ],
+   "verts": 287,
+   "tris": 462
+  },
+  {
+   "id": "hair-strand-L2",
+   "slot": "strands",
+   "z": 8.0,
+   "atlas": "hi",
+   "atlasRect": [
+    1398,
+    1818,
+    152,
+    772
+   ],
+   "texSize": [
+    152,
+    772
+   ],
+   "verts": 269,
+   "tris": 434
+  },
+  {
+   "id": "hair-strand-L3",
+   "slot": "strands",
+   "z": 8.0,
+   "atlas": "hi",
+   "atlasRect": [
+    1554,
+    1818,
+    238,
+    756
+   ],
+   "texSize": [
+    238,
+    756
+   ],
+   "verts": 322,
+   "tris": 508
+  },
+  {
+   "id": "hair-strand-R1",
+   "slot": "strands",
+   "z": 8.0,
+   "atlas": "hi",
+   "atlasRect": [
+    2284,
+    1818,
+    286,
+    702
+   ],
+   "texSize": [
+    286,
+    702
+   ],
+   "verts": 400,
+   "tris": 660
+  },
+  {
+   "id": "hair-strand-R2",
+   "slot": "strands",
+   "z": 8.0,
+   "atlas": "hi",
+   "atlasRect": [
+    900,
+    1818,
+    184,
+    788
+   ],
+   "texSize": [
+    184,
+    788
+   ],
+   "verts": 340,
+   "tris": 568
+  },
+  {
+   "id": "hair-strand-R3",
+   "slot": "strands",
+   "z": 8.0,
+   "atlas": "hi",
+   "atlasRect": [
+    1088,
+    1818,
+    306,
+    782
+   ],
+   "texSize": [
+    306,
+    782
+   ],
+   "verts": 348,
+   "tris": 572
+  },
+  {
+   "id": "face-eye-L-sclera",
+   "slot": "face",
+   "z": 15.0,
+   "atlas": "hi",
+   "atlasRect": [
+    2377,
+    2836,
+    178,
+    154
+   ],
+   "texSize": [
+    178,
+    154
+   ],
+   "verts": 50,
+   "tris": 32
+  },
+  {
+   "id": "face-eye-L-iris",
+   "slot": "face",
+   "z": 15.1,
+   "atlas": "hi",
+   "atlasRect": [
+    2935,
+    2836,
+    102,
+    120
+   ],
+   "texSize": [
+    102,
+    120
+   ],
+   "verts": 60,
+   "tris": 88
+  },
+  {
+   "id": "face-eye-L-lash",
+   "slot": "face",
+   "z": 15.2,
+   "atlas": "hi",
+   "atlasRect": [
+    895,
+    2836,
+    182,
+    198
+   ],
+   "texSize": [
+    182,
+    198
+   ],
+   "verts": 95,
+   "tris": 100
+  },
+  {
+   "id": "face-eye-R-sclera",
+   "slot": "face",
+   "z": 15.0,
+   "atlas": "hi",
+   "atlasRect": [
+    2197,
+    2836,
+    176,
+    160
+   ],
+   "texSize": [
+    176,
+    160
+   ],
+   "verts": 33,
+   "tris": 24
+  },
+  {
+   "id": "face-eye-R-iris",
+   "slot": "face",
+   "z": 15.1,
+   "atlas": "hi",
+   "atlasRect": [
+    2819,
+    2836,
+    112,
+    122
+   ],
+   "texSize": [
+    112,
+    122
+   ],
+   "verts": 68,
+   "tris": 102
+  },
+  {
+   "id": "face-eye-R-lash",
+   "slot": "face",
+   "z": 15.2,
+   "atlas": "hi",
+   "atlasRect": [
+    699,
+    2836,
+    192,
+    202
+   ],
+   "texSize": [
+    192,
+    202
+   ],
+   "verts": 102,
+   "tris": 122
+  },
+  {
+   "id": "face-eye-L-lid-half",
+   "slot": "face",
+   "z": 15.3,
+   "atlas": "hi",
+   "atlasRect": [
+    1639,
+    2836,
+    182,
+    164
+   ],
+   "texSize": [
+    182,
+    164
+   ],
+   "verts": 102,
+   "tris": 150
+  },
+  {
+   "id": "face-eye-R-lid-half",
+   "slot": "face",
+   "z": 15.3,
+   "atlas": "hi",
+   "atlasRect": [
+    1081,
+    2836,
+    182,
+    192
+   ],
+   "texSize": [
+    182,
+    192
+   ],
+   "verts": 118,
+   "tris": 180
+  },
+  {
+   "id": "face-eye-L-lid-closed",
+   "slot": "face",
+   "z": 15.3,
+   "atlas": "hi",
+   "atlasRect": [
+    1825,
+    2836,
+    182,
+    164
+   ],
+   "texSize": [
+    182,
+    164
+   ],
+   "verts": 102,
+   "tris": 150
+  },
+  {
+   "id": "face-eye-R-lid-closed",
+   "slot": "face",
+   "z": 15.3,
+   "atlas": "hi",
+   "atlasRect": [
+    1267,
+    2836,
+    182,
+    192
+   ],
+   "texSize": [
+    182,
+    192
+   ],
+   "verts": 118,
+   "tris": 180
+  },
+  {
+   "id": "face-eye-L-lid-smile",
+   "slot": "face",
+   "z": 15.3,
+   "atlas": "hi",
+   "atlasRect": [
+    2011,
+    2836,
+    182,
+    164
+   ],
+   "texSize": [
+    182,
+    164
+   ],
+   "verts": 102,
+   "tris": 150
+  },
+  {
+   "id": "face-eye-R-lid-smile",
+   "slot": "face",
+   "z": 15.3,
+   "atlas": "hi",
+   "atlasRect": [
+    1453,
+    2836,
+    182,
+    192
+   ],
+   "texSize": [
+    182,
+    192
+   ],
+   "verts": 118,
+   "tris": 180
+  },
+  {
+   "id": "face-brow-L",
+   "slot": "face",
+   "z": 15.5,
+   "atlas": "hi",
+   "atlasRect": [
+    3135,
+    2836,
+    84,
+    84
+   ],
+   "texSize": [
+    84,
+    84
+   ],
+   "verts": 18,
+   "tris": 14
+  },
+  {
+   "id": "face-brow-R",
+   "slot": "face",
+   "z": 15.5,
+   "atlas": "hi",
+   "atlasRect": [
+    3375,
+    2836,
+    62,
+    20
+   ],
+   "texSize": [
+    62,
+    20
+   ],
+   "verts": 10,
+   "tris": 8
+  },
+  {
+   "id": "face-mouth-neutral",
+   "slot": "face",
+   "z": 15.6,
+   "atlas": "hi",
+   "atlasRect": [
+    3441,
+    2836,
+    32,
+    18
+   ],
+   "texSize": [
+    32,
+    18
+   ],
+   "verts": 6,
+   "tris": 4
+  },
+  {
+   "id": "face-mouth-small",
+   "slot": "face",
+   "z": 15.6,
+   "atlas": "hi",
+   "atlasRect": [
+    3477,
+    2836,
+    30,
+    12
+   ],
+   "texSize": [
+    30,
+    12
+   ],
+   "verts": 6,
+   "tris": 4
+  },
+  {
+   "id": "face-mouth-mid",
+   "slot": "face",
+   "z": 15.6,
+   "atlas": "hi",
+   "atlasRect": [
+    3313,
+    2836,
+    58,
+    64
+   ],
+   "texSize": [
+    58,
+    64
+   ],
+   "verts": 23,
+   "tris": 28
+  },
+  {
+   "id": "face-mouth-open",
+   "slot": "face",
+   "z": 15.6,
+   "atlas": "hi",
+   "atlasRect": [
+    3041,
+    2836,
+    90,
+    87
+   ],
+   "texSize": [
+    90,
+    87
+   ],
+   "verts": 43,
+   "tris": 56
+  },
+  {
+   "id": "face-mouth-smile",
+   "slot": "face",
+   "z": 15.6,
+   "atlas": "hi",
+   "atlasRect": [
+    3223,
+    2836,
+    86,
+    71
+   ],
+   "texSize": [
+    86,
+    71
+   ],
+   "verts": 28,
+   "tris": 26
+  },
+  {
+   "id": "hair-backfill",
+   "slot": "hairBack",
+   "z": 4,
+   "atlas": "hi",
+   "atlasRect": [
+    2,
+    2,
+    1150,
+    1812
+   ],
+   "texSize": [
+    1150,
+    1812
+   ],
+   "verts": 1878,
+   "tris": 3238
+  }
+ ],
+ "textureTotal": {
+  "atlasBytes": 4071598,
+  "pages": 2,
+  "bytesPerPixel": 4,
+  "texMiB": 64.42,
+  "texMiBwithMipmap": 85.9
+ }
+}
