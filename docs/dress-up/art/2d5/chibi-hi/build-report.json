@@ -9,7 +9,7 @@
  "atlas": {
   "width": 4016,
   "height": 3214,
-  "bytes": 3054318,
+  "bytes": 3062686,
   "pixelEqual": true,
   "rects": 39
  },
@@ -19,7 +19,7 @@
    "file": "atlas.webp",
    "width": 4016,
    "height": 3214,
-   "bytes": 3054318,
+   "bytes": 3062686,
    "pixelEqual": true,
    "rects": 39
   },
@@ -1571,7 +1571,7 @@
   }
  ],
  "textureTotal": {
-  "atlasBytes": 4071598,
+  "atlasBytes": 4079966,
   "pages": 2,
   "bytesPerPixel": 4,
   "texMiB": 64.42,

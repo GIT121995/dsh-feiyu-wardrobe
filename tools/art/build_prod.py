@@ -61,6 +61,11 @@ SOURCE_NOTE = 'M2 cutout art（production，源工程不入库）'   # rig.json 
 W, H = 675, 1200
 H_, W_ = H, W   # aliases used by the P3 helper
 COLOR_BLEED_PX = 2          # M4b: 3->2px
+# v2.6.2 fix: chibi 母版隐藏区黑色残留保护。v2.6 art master 在头发/手臂下方遗留了近黑像素
+# （静止时被发层/肢体遮住；头发摆动或手臂动作时露出，表现为体表"黑块"）。重贴图时仅当
+# master 近乎纯黑、而该贴图原（v2.5 生产）像素明显更亮时，保留原 RGB。
+MASTER_RESIDUE_MAX = 20        # master RGB 三通道最大值 < 此值 → 视为"近黑残留"
+MASTER_RESIDUE_KEEP_MIN = 70   # 原像素 RGB 最大值 > 此值才保留（避免误伤正常深色线稿/描边）
 # z / slot overrides required by B-M4a spec (tail 8.5, skirt-under 29 comes from M2)
 NEW_SLOTS = ['legs', 'armUpper', 'armFore', 'hand', 'collar', 'sleeveUpper', 'sleeveFore']
 BASE_Z = {'body-head': 11.0, 'body-torso': 10.0, 'tail': 8.5,
@@ -1675,20 +1680,65 @@ def apply_master_retexture(shape, drawables, texdir, stats):
             raise SystemExit(f'master retexture: {pid} texture {tw}x{th} unsupported '
                              f'(expect {W}x{H} or {W * 2}x{H * 2})')
         before = tex[:, :, :3].copy()
+        protected = 0
+        if shape == 'chibi':
+            # v2.6.2 fix: 母版全量重贴图时处理隐藏区近黑残留（见 MASTER_RESIDUE_* 注释）。
+            # 残留像素不是简单回填 v2.5 生产色（那里是白羽/背景白边，露出白块同样异常），
+            # 而是用「最近的发色 master 像素」做颜色外扩（发色判据 b-r>25 & b>60），
+            # 使发丝错开时看到的是头发阴影而不是黑块/白块；找不到发色邻居时退回最近有效像素。
+            keep = ((rgb.max(axis=2) < MASTER_RESIDUE_MAX)
+                    & (before.max(axis=2) > MASTER_RESIDUE_KEEP_MIN)
+                    & (tex[:, :, 3] > 32) & sel)
+            protected = int(keep.sum())
+            if protected:
+                rgb = rgb.copy()
+                if (tw, th) == (W, H):
+                    m_alpha = master1[:, :, 3]
+                elif (mw, mh) == (W * 2, H * 2):
+                    m_alpha = master_canvas[:, :, 3]
+                else:
+                    m_alpha = cv2.resize(master1[:, :, 3], (W * 2, H * 2),
+                                         interpolation=cv2.INTER_NEAREST)
+                donors = sel & ~keep & (m_alpha > 32)
+                hair_donors = donors & (rgb[:, :, 2].astype(int) - rgb[:, :, 0].astype(int) > 25) \
+                    & (rgb[:, :, 2] > 60)
+                used = None
+                for cand in (hair_donors, donors):
+                    if int(cand.sum()) < 8:
+                        continue
+                    try:
+                        _, labels = cv2.distanceTransformWithLabels(
+                            (~cand).astype(np.uint8), cv2.DIST_L2, 5,
+                            labelType=cv2.DIST_LABEL_PIXEL)
+                        fy, fx = np.where(cand)
+                        lut = np.zeros((len(fy) + 1, 3), np.float32)
+                        lut[1:, :] = rgb[fy, fx, :3]
+                        rgb[keep] = lut[labels[keep]].astype(rgb.dtype)
+                        used = 'hair-bleed' if cand is hair_donors else 'bleed'
+                    except cv2.error:
+                        continue
+                    break
+                if used is None:
+                    rgb[keep] = before[keep]
+                stats.setdefault('residueFill', {})
+                stats['residueFill'][pid] = {'keepPx': protected, 'mode': used or 'v25'}
         tex[sel, :3] = rgb[sel]
         n = int((np.abs(tex[:, :, :3].astype(int) - before.astype(int)).max(-1) > 0).sum())
         # re-extend RGB into transparent pixels (the master only carries an 8px
         # color-bleed) so bilinear/mipmap sampling keeps the v2.5 fringe behaviour
         tex = color_bleed(tex, COLOR_BLEED_PX)
         Image.fromarray(tex, 'RGBA').save(fp)
-        per[pid] = {'selPx': int(sel.sum()), 'changedPx': n}
+        per[pid] = {'selPx': int(sel.sum()), 'changedPx': n, 'protectedPx': protected}
         changed += n
+    residue_protected = sum(v.get('protectedPx', 0) for v in per.values())
     stats['master'] = {'config': cfg['config'], 'masterFile': cfg['master'],
                        'masterSize': [int(mw), int(mh)],
                        'visibleOnly': bool(cfg.get('visible_mask')),
+                       'residueProtectedPx': residue_protected,
                        'changedPx': changed, 'perDrawable': per}
     log(f'[{shape}] body master retexture: {changed}px on {len(cfg["ids"])} drawables '
-        f'(visibleOnly={bool(cfg.get("visible_mask"))})')
+        f'(visibleOnly={bool(cfg.get("visible_mask"))}, '
+        f'residueProtected={residue_protected}px)')
     return changed
 
 
@@ -1909,6 +1959,7 @@ def build_hi_tier(shape, rig_path, texdir, stats, hi_outdir, hi_src):
                           interpolation=cv2.INTER_NEAREST) > 0
     hi_ids, lo_ids = [], []
     hi_stats = {}
+    hi_residue_protected = 0   # v2.6.2: 2x 母版隐藏区近黑残留被替换的像素数
     for d in rig['drawables']:
         pid = d['id']
         slot = d['slot']
@@ -1937,6 +1988,16 @@ def build_hi_tier(shape, rig_path, texdir, stats, hi_outdir, hi_src):
                 if m2.shape[1] != W * 2 or m2.shape[0] != H * 2:
                     m2 = cv2.resize(m2, (W * 2, H * 2), interpolation=cv2.INTER_LANCZOS4)
                 rgb2 = m2[:, :, :3].copy()
+                if shape == 'chibi':
+                    # v2.6.2 fix: 2x 母版同样带隐藏区近黑残留 → 用 lo 纹理（已修复）的
+                    # Lanczos-2x 基座替换，避免头发摆动时露出黑块。
+                    keep = ((rgb2.max(axis=2) < MASTER_RESIDUE_MAX)
+                            & (rgb_up.max(axis=2) > MASTER_RESIDUE_KEEP_MIN)
+                            & (alpha2 > 32))
+                    k = int(keep.sum())
+                    if k:
+                        rgb2[keep] = rgb_up[keep]
+                        hi_residue_protected += k
                 if vis2 is not None:
                     hid2 = ~vis2
                     rgb2[hid2] = rgb_up[hid2]
@@ -1977,7 +2038,8 @@ def build_hi_tier(shape, rig_path, texdir, stats, hi_outdir, hi_src):
     hi_placeholder = sum(1 for v in hi_stats.values()
                          if not v['hiSource'] and not v['bodyMaster2x'])
     log(f'[{shape}] hi sources: {hi_art} layer files from art, '
-        f'{hi_canvas} body drawables from 2x master, {hi_placeholder} placeholder')
+        f'{hi_canvas} body drawables from 2x master, {hi_placeholder} placeholder, '
+        f'residueProtected={hi_residue_protected}px')
     # two atlas pages: 2x big tiles first, 1x garments second
     rig.pop('atlasPages', None)
     for d in rig['drawables']:
@@ -2016,7 +2078,7 @@ def build_hi_tier(shape, rig_path, texdir, stats, hi_outdir, hi_src):
            'hiDrawables': len(hi_ids), 'loDrawables': len(lo_ids),
            'hiSource': {'layersFromArt': hi_art, 'bodyFromMaster2x': hi_canvas,
                         'placeholder': hi_placeholder, 'master2xFrom': master2_from,
-                        'root': hi_src},
+                        'residueProtectedPx': hi_residue_protected, 'root': hi_src},
            'hiTex': hi_stats}
     log(f'[{shape}] hi tier -> {dst_dir}: pages {out["pages"]} '
         f'{out["pageSizes"]} pxEqual={out["pixelEqual"]} rig={out["rigBytes"]}B '

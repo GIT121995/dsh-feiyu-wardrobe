@@ -154,6 +154,31 @@ test(`build_prod 确定性：${SHAPE} 双跑 rig.json + atlas.webp md5 一致（
 		for (const page of pages) assert.equal(page.pixelEqual, true, `${SHAPE} 图集 pixelEqual != true`);
 		t.diagnostic(`${SHAPE}: rig sha256 ${md5s[0]['rig.json']} / atlas sha256 ${md5s[0]['atlas.webp']}`);
 
+		// v2.6.2 回归（D-015）：chibi 母版隐藏区近黑残留（头发/手臂摆动时露出黑块）不得回归。
+		// 判定：lo chibi 体表纹理中「近黑且不透明」像素总数上限。v2.5 基线 ~5,000；
+		// v2.6.0 残留 bug 时 body-head+body-torso 合计 ~12,653；v2.6.2 修复后 ~5,9xx。
+		if (SHAPE === 'chibi' && discoverMasterConfigs().length) {
+			if (!pythonBuildDeps()) return t.skip('python 构建依赖不可用，跳过近黑残留检查');
+			const py = [
+				'import sys',
+				'import numpy as np',
+				'from PIL import Image',
+				'texdir = sys.argv[1]',
+				'bad = 0',
+				'for name in ("body-head.png", "body-torso.png"):',
+				'    a = np.array(Image.open(texdir + "/" + name).convert("RGBA")).astype(int)',
+				'    vis = a[:, :, 3] > 32',
+				'    bad += int(((a[:, :, :3].max(axis=2) < 20) & vis).sum())',
+				'print(bad)',
+			].join('\n');
+			const r = spawnSync(PYTHON, ['-c', py, join(runs[0].work, 'assets', 'tex', 'chibi')], { encoding: 'utf8', timeout: 120000 });
+			assert.equal(r.status, 0, `chibi 近黑残留检查失败：${(r.stderr || '').slice(-2000)}`);
+			const residue = Number(String(r.stdout).trim());
+			assert.ok(Number.isFinite(residue), `chibi 近黑残留检查输出非法：${r.stdout}`);
+			assert.ok(residue <= 7200, `chibi 体表近黑像素 ${residue} > 7200（母版隐藏区黑色残留回归？见 v2.6.2 / D-015）`);
+			t.diagnostic(`chibi 体表近黑残留：${residue}px（上限 7200；v2.6.2 修复后 6,611；v2.6.0 bug 时 ~12,653）`);
+		}
+
 		// verify:full 口径：重建产物必须与仓库官方 dist 逐字节一致（rig + atlas）
 		if (VERIFY_DIST) {
 			const official = join(ROOT, 'docs', 'dress-up', 'art', '2d5', SHAPE);

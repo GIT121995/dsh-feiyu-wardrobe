@@ -1,12 +1,12 @@
 {
  "format": "feiyu-visual-qa-baseline",
  "version": 1,
- "createdAt": "2026-11-06T07:36:29.892Z",
+ "createdAt": "2026-11-06T09:38:47.283Z",
  "generatedBy": "scripts/visual-qa.mjs --mode baseline",
  "note": "headless Chrome + SwANGLE（无 GPU）；仅像素回归基线，不代表真机 FPS/显存。",
  "repoPathHint": "dsh-feiyu-wardrobe",
  "versions": {
-  "asset": 19,
+  "asset": 20,
   "page": 23,
   "pageFiles": [
    "docs/dress-up/app.js",
@@ -18,7 +18,7 @@
  "assets": {
   "chibi": {
    "rig.json": "642d8cf6351c16c62d39c2b6730552eeadb63a4ed6994b6b3875d1bd3f27482f",
-   "atlas.webp": "9673cb58a329cc99b3148da6c329cf6e36900c30921a1848f92efc8cc8ef1d08"
+   "atlas.webp": "2b2e19e0303ff4ee62619b2004fd39716fd4d3e572535f7505192de0c7837b33"
   },
   "girl": {
    "rig.json": "8017c2cd6f0eab4c6c657e42eef77b4de002d7b5e1960d609d733f721ccd57a7",
@@ -165,8 +165,8 @@
     675,
     1200
    ],
-   "bytes": 86002,
-   "sha256": "360bff2180bc1f5ef45ec3c90f8ce9897094795529d6322372edcd3dc0d2b00f"
+   "bytes": 86898,
+   "sha256": "fdfaa3910a652cd5db4c9a3b087076cce7ad99c49a4f50847b837098fbd56247"
   },
   {
    "id": "chibi/maid/full-1x",
@@ -179,8 +179,8 @@
     675,
     1200
    ],
-   "bytes": 112279,
-   "sha256": "e6fbdc4c527d9f262d112256b3759ae45ae5259fd1d8abedcb5037f62a667907"
+   "bytes": 113160,
+   "sha256": "256b1589f38703e4c65b75f0e2e76e81884c6c4f852f1e2b91e89b1b7db371ac"
   },
   {
    "id": "chibi/sweater-plaid/full-1x",
@@ -193,8 +193,8 @@
     675,
     1200
    ],
-   "bytes": 93986,
-   "sha256": "51bf2e6272b7511d50d6621784d77c2344a38a6b37592ccbd895271b54724080"
+   "bytes": 94905,
+   "sha256": "e5be7ddf35af114e8f5ddca62d255e660e79e439f2c3c10c46f62bae2a0734e6"
   },
   {
    "id": "chibi/hoodie-pleated/full-1x",
@@ -207,8 +207,8 @@
     675,
     1200
    ],
-   "bytes": 95590,
-   "sha256": "634bcfa8c2d85d95479fba9ecce56c6450b86d3be648d9714f43491215a39807"
+   "bytes": 96472,
+   "sha256": "48fdf90c96658947e04565ef5d13f4e8bf40edb5da3799a4d024ca39658d1987"
   },
   {
    "id": "chibi/sailor-plaid/full-1x",
@@ -221,8 +221,8 @@
     675,
     1200
    ],
-   "bytes": 107228,
-   "sha256": "6de4abc6c4906193c875e520b028805bb5b2427bc3dc9d53a5f35e37e1b99a63"
+   "bytes": 108161,
+   "sha256": "2bc30206f73e08ee7f0aa0d3f62ef2059adb21b75bea97ee4988ef58bd18e10c"
   },
   {
    "id": "chibi/base/knee-2x",
@@ -236,8 +236,8 @@
     494,
     300
    ],
-   "bytes": 11626,
-   "sha256": "eeb5fd435e63d1e8ab498fbbe5aae77442c00b3298661af89e0a4c7207d750b4"
+   "bytes": 11625,
+   "sha256": "f6b1d75a76e4edf598c6260239a57670ebcbc1ed5d74932f6a2369e0bfa9da06"
   },
   {
    "id": "chibi/base/hand-2x",
@@ -251,8 +251,8 @@
     750,
     262
    ],
-   "bytes": 19276,
-   "sha256": "be776cba18d556abf175364048cb87a59dd4b0e04b470967c385f1c2b68d43e3"
+   "bytes": 19287,
+   "sha256": "2532295508a034e823de2ba2e3e25a691581c2b6e4309753e22c286db9e5c37a"
   },
   {
    "id": "chibi/base/shoulder-2x",
@@ -266,8 +266,8 @@
     650,
     340
    ],
-   "bytes": 25461,
-   "sha256": "df6f63fb5af32e314e8d54a167a3313e48945add077a9b879e7a7dc589bbb6ad"
+   "bytes": 25472,
+   "sha256": "cb1b9e946897cf85941c4e9ada1cb63c39926f66238c3cb201b0450cd788721b"
   },
   {
    "id": "chibi/base/foot-2x",
@@ -281,8 +281,8 @@
     516,
     270
    ],
-   "bytes": 10386,
-   "sha256": "1931d4d2f3f447b686df9b7e039cd81da84fea2f56df597782741aaad33ca4fc"
+   "bytes": 10357,
+   "sha256": "7ac66397bb22ecfc3448b919d1a3b4ad7970c06f52afc1bb41115ede7a529acb"
   },
   {
    "id": "chibi/base/abdomen-2x",
@@ -296,8 +296,8 @@
     460,
     340
    ],
-   "bytes": 11386,
-   "sha256": "520e91d7b37c201553264e8737b5475483ff2525e3d939c0a1f24f6f6b4fc91f"
+   "bytes": 11399,
+   "sha256": "652322e5d3e406ebb732b9aa49277ec5c632d9485566d0224965989b7528cf0d"
   },
   {
    "id": "chibi/base/hair-2x",
@@ -311,8 +311,8 @@
     722,
     600
    ],
-   "bytes": 33394,
-   "sha256": "e21a2f784e3d927fe7e5f29e84aee4f236c73549df90013a0b38821a8a0e5093"
+   "bytes": 33450,
+   "sha256": "2b174980c02d70b97470430386bce628bb78b6577dd4f96f68b3f565c0b9b6dc"
   },
   {
    "id": "chibi/maid/knee-2x",
@@ -326,8 +326,8 @@
     494,
     300
    ],
-   "bytes": 23824,
-   "sha256": "c5e516d7171b5af403f56d341b5fac5dda0eaf34213f9ff8d3557b8554317f6c"
+   "bytes": 23789,
+   "sha256": "c52310d4a2e99199628da139c5ce4143a9bf159f1de7560ee69fac720adae414"
   },
   {
    "id": "chibi/maid/hand-2x",
@@ -341,8 +341,8 @@
     750,
     262
    ],
-   "bytes": 33911,
-   "sha256": "8dcfb2451a5c64a4e18bbaee7981d553fdae599debfcd0ef010cd42984fe29df"
+   "bytes": 33906,
+   "sha256": "c2e297152a3823660a1365390f18c7eb7e030c78e87929932d4019463a3e734d"
   },
   {
    "id": "chibi/maid/shoulder-2x",
@@ -356,8 +356,8 @@
     650,
     340
    ],
-   "bytes": 35007,
-   "sha256": "0805e98bdb81b2b4995899ef5747ae41dd6a67d5a622a07f5970bfbd23cd3f13"
+   "bytes": 35006,
+   "sha256": "acda34d4f63426cced021dfbbb7fe15d0cad6b1d38b463cd4b68b393c3bae242"
   },
   {
    "id": "chibi/maid/foot-2x",
@@ -371,8 +371,8 @@
     516,
     270
    ],
-   "bytes": 10386,
-   "sha256": "1931d4d2f3f447b686df9b7e039cd81da84fea2f56df597782741aaad33ca4fc"
+   "bytes": 10357,
+   "sha256": "7ac66397bb22ecfc3448b919d1a3b4ad7970c06f52afc1bb41115ede7a529acb"
   },
   {
    "id": "chibi/maid/abdomen-2x",
@@ -386,8 +386,8 @@
     460,
     340
    ],
-   "bytes": 21173,
-   "sha256": "d7a9d96a1b0fb641f23a307a46c8b212bcb9e795747f690bf116f41a0a0c3c7a"
+   "bytes": 21183,
+   "sha256": "a4b05aa9b8e10405c248216a08d20e91c475de898cc2a13e4cb4965fa758908e"
   },
   {
    "id": "chibi/maid/hair-2x",
@@ -401,8 +401,8 @@
     722,
     600
    ],
-   "bytes": 33394,
-   "sha256": "e21a2f784e3d927fe7e5f29e84aee4f236c73549df90013a0b38821a8a0e5093"
+   "bytes": 33450,
+   "sha256": "2b174980c02d70b97470430386bce628bb78b6577dd4f96f68b3f565c0b9b6dc"
   },
   {
    "id": "chibi/sweater-plaid/knee-2x",
@@ -416,8 +416,8 @@
     494,
     300
    ],
-   "bytes": 18239,
-   "sha256": "b77e41136a79cb3582e8cb43f583097cd9b48a4c7bbdc0bf6f27732e75603218"
+   "bytes": 18238,
+   "sha256": "1775433dbdabe51dc190654bab52fd03214a9b1c2d86c3d7f4ba996c06f84442"
   },
   {
    "id": "chibi/sweater-plaid/hand-2x",
@@ -431,8 +431,8 @@
     750,
     262
    ],
-   "bytes": 37520,
-   "sha256": "48201167def694d06d07ed81f48eb560c115283090d37b526c47f8b38b74909a"
+   "bytes": 37510,
+   "sha256": "d20aae4633ef20d12d3a0c8736527e418bf16d090c5c70241cde738ff11acbfb"
   },
   {
    "id": "chibi/sweater-plaid/shoulder-2x",
@@ -446,8 +446,8 @@
     650,
     340
    ],
-   "bytes": 21914,
-   "sha256": "21459e51279c27d5f661bd1377e104100fc4337914b535c5724540ca5d42a8db"
+   "bytes": 21910,
+   "sha256": "0b8ac8606e0a90b8ec6836e92a3a444144a39e8d5b1892bb30a873ce66b8af7b"
   },
   {
    "id": "chibi/sweater-plaid/foot-2x",
@@ -461,8 +461,8 @@
     516,
     270
    ],
-   "bytes": 10386,
-   "sha256": "1931d4d2f3f447b686df9b7e039cd81da84fea2f56df597782741aaad33ca4fc"
+   "bytes": 10357,
+   "sha256": "7ac66397bb22ecfc3448b919d1a3b4ad7970c06f52afc1bb41115ede7a529acb"
   },
   {
    "id": "chibi/sweater-plaid/abdomen-2x",
@@ -476,8 +476,8 @@
     460,
     340
    ],
-   "bytes": 18809,
-   "sha256": "2ebfa0325812ede20a954e01476e67c53a33d2e4efbd56a211f10937fc44122a"
+   "bytes": 18811,
+   "sha256": "feb6a9dba36264339fae9059be0aca451e5687f5fa2c4c34de5a8509ae601cca"
   },
   {
    "id": "chibi/sweater-plaid/hair-2x",
@@ -491,8 +491,8 @@
     722,
     600
    ],
-   "bytes": 33394,
-   "sha256": "e21a2f784e3d927fe7e5f29e84aee4f236c73549df90013a0b38821a8a0e5093"
+   "bytes": 33450,
+   "sha256": "2b174980c02d70b97470430386bce628bb78b6577dd4f96f68b3f565c0b9b6dc"
   },
   {
    "id": "chibi/hoodie-pleated/knee-2x",
@@ -506,8 +506,8 @@
     494,
     300
    ],
-   "bytes": 16291,
-   "sha256": "f14e821be7b74b9eb0e2fb3dfe6d321da56099cf7e988170c85e4c9ac9fe26bd"
+   "bytes": 16276,
+   "sha256": "363e94738cdb38dea2f00a2378f7bf946c1a23cdb56c2acbe6d778d187ea34d0"
   },
   {
    "id": "chibi/hoodie-pleated/hand-2x",
@@ -521,8 +521,8 @@
     750,
     262
    ],
-   "bytes": 27735,
-   "sha256": "4cb351d31edee7190493d0b9a62b75faf3347dc91235259dda8d582fb90e5454"
+   "bytes": 27750,
+   "sha256": "4f563a4639be77311c7165b593db1cc3c41eeced604a953855676130f6ffc4a7"
   },
   {
    "id": "chibi/hoodie-pleated/shoulder-2x",
@@ -551,8 +551,8 @@
     516,
     270
    ],
-   "bytes": 10386,
-   "sha256": "1931d4d2f3f447b686df9b7e039cd81da84fea2f56df597782741aaad33ca4fc"
+   "bytes": 10357,
+   "sha256": "7ac66397bb22ecfc3448b919d1a3b4ad7970c06f52afc1bb41115ede7a529acb"
   },
   {
    "id": "chibi/hoodie-pleated/abdomen-2x",
@@ -566,8 +566,8 @@
     460,
     340
    ],
-   "bytes": 18404,
-   "sha256": "4945808d7f0d968fd91d4eb6005bedcb20ac3be186108e905869c662e7ca2a97"
+   "bytes": 18409,
+   "sha256": "c124c828eb2381827823e5546289b2150e186ef341299e210721f2578fe6197f"
   },
   {
    "id": "chibi/hoodie-pleated/hair-2x",
@@ -581,8 +581,8 @@
     722,
     600
    ],
-   "bytes": 33394,
-   "sha256": "e21a2f784e3d927fe7e5f29e84aee4f236c73549df90013a0b38821a8a0e5093"
+   "bytes": 33450,
+   "sha256": "2b174980c02d70b97470430386bce628bb78b6577dd4f96f68b3f565c0b9b6dc"
   },
   {
    "id": "chibi/sailor-plaid/knee-2x",
@@ -596,8 +596,8 @@
     494,
     300
    ],
-   "bytes": 18230,
-   "sha256": "82d4ea8377c8276eb361f7cb8f7c7f3eadb5ed7fab544a47d19b395c8ad66cd7"
+   "bytes": 18226,
+   "sha256": "0df9addc4113cdad9e3b890a8fc7b609307d380a0fd84d62f3103aaf7b16bf3a"
   },
   {
    "id": "chibi/sailor-plaid/hand-2x",
@@ -611,8 +611,8 @@
     750,
     262
    ],
-   "bytes": 38146,
-   "sha256": "2ec11bad5f11c6550a3ca80fc1765d21e67fa397e2b0fcc82e647f662fcd3b59"
+   "bytes": 38172,
+   "sha256": "fb025a68825d66dbdfee68221d275b4fa242d014e5bca46b860aa62b9e4a658e"
   },
   {
    "id": "chibi/sailor-plaid/shoulder-2x",
@@ -626,8 +626,8 @@
     650,
     340
    ],
-   "bytes": 37133,
-   "sha256": "ece903a5eed08b830cba7dc300912cb853a6cfcd66fbf204a18bc486711cb8e5"
+   "bytes": 37127,
+   "sha256": "641f2125226e42b5fc7cf42c85fe9866952f51a405945295099f7c6e4fc7bcc6"
   },
   {
    "id": "chibi/sailor-plaid/foot-2x",
@@ -641,8 +641,8 @@
     516,
     270
    ],
-   "bytes": 10386,
-   "sha256": "1931d4d2f3f447b686df9b7e039cd81da84fea2f56df597782741aaad33ca4fc"
+   "bytes": 10357,
+   "sha256": "7ac66397bb22ecfc3448b919d1a3b4ad7970c06f52afc1bb41115ede7a529acb"
   },
   {
    "id": "chibi/sailor-plaid/abdomen-2x",
@@ -656,8 +656,8 @@
     460,
     340
    ],
-   "bytes": 32680,
-   "sha256": "07ffa853be609a1f19d86ce5464ba45f91ebd8cd1825e378179e84512d45a9e3"
+   "bytes": 32712,
+   "sha256": "fd8bec5654e1d11ce83b156a208e939116260be401df7c409a5cad166d61efba"
   },
   {
    "id": "chibi/sailor-plaid/hair-2x",
@@ -671,8 +671,8 @@
     722,
     600
    ],
-   "bytes": 33394,
-   "sha256": "e21a2f784e3d927fe7e5f29e84aee4f236c73549df90013a0b38821a8a0e5093"
+   "bytes": 33450,
+   "sha256": "2b174980c02d70b97470430386bce628bb78b6577dd4f96f68b3f565c0b9b6dc"
   },
   {
    "id": "girl/base/full-1x",
@@ -1197,6 +1197,6 @@
  ],
  "totals": {
   "images": 70,
-  "bytes": 2366043
+  "bytes": 2370732
  }
 }

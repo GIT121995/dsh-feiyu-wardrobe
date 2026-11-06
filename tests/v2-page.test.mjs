@@ -39,7 +39,7 @@ test('index.html：删除 DOM 人物容器/脸部层/渲染开关，保留舞台
 	assert.match(INDEX, /开启硬件加速/, '提示文案应建议开启硬件加速');
 	assert.ok(INDEX.includes('id="diyNote"'), '应有 DIY 静态贴片提示');
 	assert.match(INDEX, /不支持骨骼动画/, 'DIY 提示应说明不支持骨骼动画');
-	// 版本号（v2.6.1 页面模块升 v23；资产 v19）
+	// 版本号（v2.6.1 页面模块升 v23；v2.6.2 资产升 v20）
 	assert.match(INDEX, /app\.js\?v=23/);
 	assert.match(INDEX, /style\.css\?v=23/);
 	assert.ok(INDEX.includes('type="module"'));
@@ -51,7 +51,7 @@ test('app.js：唯一渲染路径是 2.5D runtime，DOM 渲染/双模式代码�
 	assert.ok(APP.includes('import(RUNTIME_2D5_MODULE)'), '应动态 import 2.5D runtime');
 	assert.ok(APP.includes('bootRuntime()'), 'boot 应启动 2.5D runtime（唯一路径）');
 	assert.ok(APP.includes('RUNTIME_2D5_ASSET_VERSION'), 'rig/atlas 应带资产版本');
-	assert.ok(APP.includes("RUNTIME_2D5_ASSET_VERSION = '19'"), 'v2.6.1 资产版本应为 19（rig/atlas ?v=19）');
+	assert.ok(APP.includes("RUNTIME_2D5_ASSET_VERSION = '20'"), 'v2.6.2 资产版本应为 20（rig/atlas ?v=20；chibi 修复后递增）');
 	assert.ok(APP.includes('client-config.json'), '页面应读宿主 client-config（仅互动）');
 	assert.ok(APP.includes('diyLayerUrls'), 'DIY 应改 canvas 静态贴片');
 	assert.ok(APP.includes('不支持骨骼动画'), 'DIY 静态提示文案');

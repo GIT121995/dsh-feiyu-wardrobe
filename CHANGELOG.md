@@ -2,6 +2,20 @@
 
 > 文档路径说明（W0，2026-11-05）：下文历史条目中的 `docs/dress-up/LAYER-ARCHITECTURE.md`、`LAYER-MODEL.md`、`PROMPTS.md`、`PLAN-2.5D-RIG.md`、`RENDERING-EFFECT-EVALUATION.md`、`DIY-UPLOAD.md` 均已归档到 [`docs/archive/`](docs/archive/README.md)（原因与现行替代见该索引）。历史条目原文保留不改，仅作当时发布记录。
 
+## 2.6.2 — 2026-11-06
+
+「修复：chibi 素体隐藏区黑色残留（头发/手臂摆动时露出体表黑块）（资产 v20/页面 v23）」
+
+### 修复
+- **根因**：v2.6.0 的 chibi 素体母版 v3（`master/chibi/master-2x.png`）在头发/侧发/手臂后方遗留了近黑像素（clean-body 去发残留；静止时被发层/肢体完全遮住）。chibi 母版重贴图使用「全量」模式（`visibleOnly=False`）→ 近黑像素被写进 `body-head` / `body-torso` 等素体纹理；`HairSway` 物理/头部动作使发丝错开时，这些像素从发间露出，表现为体侧两道黑色块（用户 2026-11-06 反馈）。**与 v2.6.1 的 2x hi tier 无关**：lo tier 同样复现，属 v2.6.0 母版重贴图副作用。
+- **修复**：builder 的母版重贴图（lo）与 hi tier 体表 2x 母版采样增加「隐藏区近黑残留处理」——当 master RGB 近黑（三通道 max<20）而原 v2.5 生产贴图对应像素明显更亮（max>70）且不透明（alpha>32）时判定为残留；**不是简单回填 v2.5 生产色**（那里是白羽/背景白边，露出白块同样异常），而是用「最近的发色 master 像素」做颜色外扩（发色判据 b−r>25 且 b>60），使发丝错开时看到的是头发阴影/发色延续。chibi lo 实际处理 **6,214px**（body-head 3,956 / body-torso 2,086 / 其余 172），hi tier 同规则（2x 母版采样同样处理）。
+- **影响范围**：仅 chibi 素体纹理的**隐藏区**像素变化（lo/hi `atlas.webp` 与 `build-report.json` 字节变化；`rig.json`、65 骨、85 drawables、网格/UV、静态 rest 渲染不变）；**girl 资产逐字节不变**（girl 走 visible mask 策略）。资产版本 **v19→v20**（dist 变更必须递增，避免浏览器缓存旧图）；页面模块保持 **v23**。
+- **回归**：`tests/asset-build.test.mjs` 增加「chibi 体表近黑像素上限」断言（防止母版隐藏区残留回归）；`verify:full` 构建确定性/官方 dist md5 校验同步更新。
+
+### 已知限制
+- 该修复保证"动画时不再露黑块/白块"，隐藏区露出的颜色由最近发色像素外扩得到（发色延续/阴影感），并非为隐藏区重新绘制精细阴影；如需更精致的"发下阴影"效果，仍需后续美术重绘母版隐藏区。
+- 真机未测（D-008）；其余限制同 v2.6.1。
+
 ## 2.6.1 — 2026-11-06
 
 「高 DPI 2x 资产（hi tier）：DPR≥2 自动启用 2x 素体/发/脸/尾纹理，弱机保持 1x（资产 v19 / 页面 v23）」
