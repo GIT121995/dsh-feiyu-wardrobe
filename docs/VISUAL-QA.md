@@ -36,13 +36,14 @@ node scripts/visual-qa.mjs --mode compare --out /tmp/feiyu-visual-qa-reports
 | 维度 | 取值 |
 |---|---|
 | 身形 | `chibi`、`girl` |
-| 造型 | `base`（素体 cutout）、`maid`、`sweater-plaid`、`hoodie-pleated`、`sailor-plaid` |
+| 造型 | `base`（素体 cutout）、`maid`、`hoodie-plaid`、`hoodie-pleated`、`sailor-plaid` |
 | 1x 全身 | 画布区 675×1200（DPR1），JPEG **q82**，合成背景 `#808a99` |
 | 2x 关键局部 | 膝 / 手 / 肩 / 脚 / 腹 / 发，DPR2 画布裁切（2x 设计像素），JPEG **q85** |
 
 - 2x 区域**不是写死坐标**：由各身形 `rig.json` 的骨骼关节（shin/shoulder/foot/hips/head）与部件 rect（hand-L/R、body-torso、hair-front-bangs）推导，记录在 `docs/qa-baseline/manifest.json` 的 `regions`；rig 布局变了而资产版本没升会直接 fail。
 - 抓帧统一走 runtime 的「静态 QA 模式」：`freeze(true)` + `setAuto(false)` + `setQuality('high')` + `setMipmaps(false)` + `setStatic(true)`（物理回 rest）+ `setFaceOverride({eye:'open',mouth:'closed'})` + 90 tick 衰减 boot 残留的眨眼/笑眼/tap/head-follow 计时器。**不要随意改动这段顺序**，否则帧间不可复现（历史教训：boot 里随机眨眼会把「半眨眼」抓进基线，compare 出现数千像素伪差异）。
-- 基线体积硬上限 **3MiB**（当前 v2.5.0 基线 70 张 ≈2.36MiB）；超限 `--mode baseline` 直接失败。
+- 基线体积硬上限 **3MiB**（当前 v2.7.0 基线 70 张 ≈2.28MiB）；超限 `--mode baseline` 直接失败。
+- 当前基线版本：**页面 v24 / 资产 v21**（v2.7.0 起 `sweater-plaid` 造型由 `hoodie-plaid` 替代，baseline 已同步重生成）。
 
 ## 版本门禁（cache-bust）
 
@@ -67,7 +68,7 @@ node scripts/visual-qa.mjs --mode compare --out /tmp/feiyu-visual-qa-reports
 
 - [ ] **无肉眼可见接缝**：头发分束、身体/断肢切口、躯干与腿/尾的接缝处没有亮线/暗线/错位。
 - [ ] **无双色/叠色**：透明切口边缘没有色边（尤其深色发丝切在浅色皮肤/衣服上），补画区颜色与周围连续。
-- [ ] **无白线**：套装（女仆/毛衣/卫衣/水手服）袖口、领口、裙腰、裙摆与身体交界处没有 1–2px 白描边。
+- [ ] **无白线**：套装（女仆/卫衣/水手服）袖口、领口、裙腰、裙摆与身体交界处没有 1–2px 白描边。
 - [ ] **腹部/肚脐自然**：素体腹部无横切接缝、肚脐形状/位置正常；服装下腹部无破面。
 - [ ] **发层遮挡正确**：前发/后发/侧发遮住应遮的身体区域，没有发片浮在衣服前或衣服盖住头发。
 
@@ -95,7 +96,7 @@ node scripts/visual-qa.mjs --mode compare --out /tmp/feiyu-visual-qa-reports
    - 有意的视觉改动（新造型、修接缝、调色）已在 `docs/QA-REGISTRY.md` / CHANGELOG 记录。
 2. **步骤**：
    1. 在 worktree 里先跑 `node scripts/visual-qa.mjs --mode compare`，确认失败项与本次改动预期一致（防止把无关回归混进新基线）；
-   2. `node scripts/visual-qa.mjs --mode baseline`（报告在 `--out` 指定目录；当前基线 70 张 ≈2.36MiB，上限 3MiB）；
+   2. `node scripts/visual-qa.mjs --mode baseline`（报告在 `--out` 指定目录；当前基线 70 张 ≈2.28MiB，上限 3MiB）；
    3. **逐张人工 review** 新基线（尤其本次改动涉及的 1x/2x 图），用 `git diff --stat docs/qa-baseline` 确认只有预期图片变化、无无关文件增删；
    4. 在**同一次提交**中：资产/渲染改动 + 版本号（资产版本 & 页面 `?v=`）+ `docs/qa-baseline/**` + CHANGELOG 条目，一起提交；禁止仅提交基线而不提交对应视觉改动（或反之）；
    5. 提交前再跑一次 `node scripts/visual-qa.mjs --mode compare`，必须 **0 变更图**（证明基线与当前代码自洽、可复现）；
@@ -110,7 +111,7 @@ node scripts/visual-qa.mjs --mode compare --out /tmp/feiyu-visual-qa-reports
 | 登记项（示例 ID） | 覆盖图 | 备注 |
 |---|---|---|
 | 膝盖接缝 / 双色 | `*/base/knee-2x`（全部 5 造型也有） | 1x 全身同时目检 |
-| 服装 1–2px 白线 | `*/{maid,sweater-plaid,hoodie-pleated,sailor-plaid}/shoulder-2x` 等 | 袖口/领口在肩部特写内 |
+| 服装 1–2px 白线 | `*/{maid,hoodie-plaid,hoodie-pleated,sailor-plaid}/shoulder-2x` 等 | 袖口/领口在肩部特写内 |
 | 手部线稿粗糙 | `*/{all}/hand-2x` | 腕缝在肩/手特写之间交叉看 |
 | 腹部/肚脐 | `*/base/abdomen-2x`（服装下腹用 1x） | |
 | 后发/发束分层 | `*/{all}/hair-2x` + 1x | |

@@ -25,7 +25,7 @@ const REPO = resolve(import.meta.dirname, '..', '..');
 const DEFAULT_URL = 'https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v2/assets-src-v2.tar.zst';
 // 官方 assets-v2 包固定 sha256（pack-sources.mjs 打印；v2.6.1 起含 hi/ 高 DPI 2x 源）；发布者可用 --sha256/env 覆盖。
 // 留 placeholder 时仍会执行 manifest 逐文件校验，并打印警告。
-const PINNED_SHA256 = '834e24851e7644aaf734d62f7ea6fff0a1a6939a0d815ca42d0bc8c54c078af5';
+const PINNED_SHA256 = '2e6a003bd4b4695e7550142dbed2d1487d70e8a8c7d0f3110384e791ec3dc934';
 const ARCHIVE_ROOT = 'assets-src-v2';
 
 function parseArgs(argv) {

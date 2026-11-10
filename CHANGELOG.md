@@ -2,6 +2,32 @@
 
 > 文档路径说明（W0，2026-11-05）：下文历史条目中的 `docs/dress-up/LAYER-ARCHITECTURE.md`、`LAYER-MODEL.md`、`PROMPTS.md`、`PLAN-2.5D-RIG.md`、`RENDERING-EFFECT-EVALUATION.md`、`DIY-UPLOAD.md` 均已归档到 [`docs/archive/`](docs/archive/README.md)（原因与现行替代见该索引）。历史条目原文保留不改，仅作当时发布记录。
 
+## 2.7.0 — 2026-11-10
+
+「下架白色高领毛衣：上衣项 + `sweater-plaid` / `sweater-pleated` 两个组合整体移除（高领不适配短脖子 chibi 角色，用户拍板）（资产 v21 / 页面 v24）」
+
+### 下架范围
+- **上衣项 `sweater`（白色高领毛衣）整体移除**：高领造型不适配短脖子 chibi 角色，用户 2026-11-10 拍板彻底下架（不做替代款）。衣柜上衣只剩 `hoodie`（白色连帽卫衣）/ `sailor`（水手服上衣）；`manifest.defaults.top` 由 `sweater` 改为 `hoodie`。
+- **组合 `sweater-plaid` / `sweater-pleated` 移除**：cutout production 组合由 6 个降为 **4 个**（`maid` / `hoodie-plaid` / `hoodie-pleated` / `sailor-plaid`，rig `defaults.outfit=maid`）；两组合对应 drawable（各 8 件，共 16 件）、图集纹理、`art/icons/sweater.webp`、M4 服装 layer 与源包 `art/` 毛衣源一并删除。
+- **资产契约变化**：rig drawables chibi **85→69** / girl **86→70**；图集因移除毛衣件重新打包（尺寸/字节变化，`build-report.json` 同步）；65 骨、骨架/物理/其余部件不变。资产版本 **v20→v21**（rig/atlas `?v=21`），页面模块 **v23→v24**（`app.js?v=24`）。
+
+### 兼容回退（旧存档 / 旧 DIY pack 不报错）
+- **旧存档**：localStorage 残留的 `top=sweater`（或旧组合）经 `normalizeState` 校验失败 → 回退 `manifest.defaults.top`（`hoodie`）；旧 `outfit=sweater-plaid/sweater-pleated` 同理回退默认套装（`maid`）。
+- **旧 v2.1 DIY pack**：`LEGACY_V21_BASE_REFS` 旧键改为映射现有 hoodie-plaid 部件 —— `bottom-plaid`→`hoodie-plaid-skirt/-skirt-under`、`bottom-pleated`→`hoodie-pleated-skirt/-skirt-under`、旧毛衣上衣→`hoodie-plaid-torso`、旧毛衣袖→`hoodie-plaid-sleeve-upper/fore`（L/R 共 4 件）；`hoodie-body/hoodie-sleeve` 同样映射 hoodie-plaid 部件。
+- **DIY 自动配对**：`migrateDiyPackOutfits` auto-pair 改用 `hoodie-plaid`（top/coat/dress/outfit 补 hoodie-plaid 裙对，bottom 补 hoodie-plaid 上衣 + 分段袖）；`tools/diy/bind_layers.py` 的 `PAIR_REFERENCE_OUTFITS` 改 hoodie-plaid 优先，legacy 静态回退 `PAIRING['bottom']` 改 hoodie-body/hoodie-sleeve（运行时按迁移表落到 hoodie-plaid 部件）。
+- **运行时缺件回退**：`resolveLook` 旧 generic 上衣缺件回退由毛衣改为连帽卫衣（warning `top:?→hoodie`）；cutout rig 上旧 state 命中不了组合时回退 rig 默认套装（`maid`）、记 warnings，均不抛错。
+
+### 回归
+- **测试**：`manifest-v8`（tops 仅 hoodie/sailor、defaults.top、4 组合）、`runtime-2d5-core`（套装/动态组合/legacy→hoodie）、`diy-v22-compat`（旧引用→hoodie-plaid 部件、binder `pairingSource=base-rig:hoodie-plaid`）、`wardrobe-state`（默认/非法回退/随机/穿搭描述）、`dressup-2d5-assets`（drawables 69/70）等同步更新；`npm run verify` 全绿。
+- **视觉门禁**：`scripts/visual-qa.mjs` 造型 `sweater-plaid` → `hoodie-plaid`（覆盖矩阵仍 2 身形 × 5 造型 × 70 张）；baseline 重生成到 页面 v24 / 资产 v21（删除旧毛衣造型目录），`--mode compare` PASS。
+
+### 可复现
+- 源包 `assets-src-v2` 重新打包（删除毛衣源；89.8MB，sha256 `2e6a003b…c934`）；两身形 lo+hi dist 由 `npm run build:assets` / `build:assets:hi` 重建，`verify:full` 确定性/官方 dist 校验同步。
+
+### 已知限制
+- 毛衣造型不再可恢复（用户拍板下架，源与 dist 均已删除；旧存档自动回退，不保留切换入口）。
+- 真机未测（D-008）；hi tier 服装仍 1x（D-005/P3）等限制同 v2.6.2。
+
 ## 2.6.2 — 2026-11-06
 
 「修复：chibi 素体隐藏区黑色残留（头发/手臂摆动时露出体表黑块）（资产 v20/页面 v23）」

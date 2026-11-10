@@ -126,7 +126,7 @@ test('diyRecordToItem：按品类映射槽位，blob URL 原样保留', () => {
 	assert.deepEqual(bottom.layers.chibi, { bottom: 'blob:b' });
 	assert.equal(bottom.layers.chibi.sleeve, undefined);
 	assert.equal(isDiyItemId(top.id), true);
-	assert.equal(isDiyItemId('sweater'), false);
+	assert.equal(isDiyItemId('hoodie'), false);
 });
 
 test('diyLayerUrls：贴片按 bottom → topBody → sleeve 顺序，缺层跳过，girl 无贴片', () => {

@@ -72,12 +72,6 @@
     ],
     "tops": [
       {
-        "id": "sweater",
-        "name": "白色高领毛衣",
-        "desc": "软乎乎的，像一条围巾。",
-        "icon": "art/icons/sweater.webp"
-      },
-      {
         "id": "hoodie",
         "name": "白色连帽卫衣",
         "desc": "宽宽松松，把自己藏进去。",
@@ -184,7 +178,7 @@
   "defaults": {
     "shape": "chibi",
     "outfit": "maid",
-    "top": "sweater",
+    "top": "hoodie",
     "bottom": "plaid",
     "bg": "bg-snow",
     "effect": "snow"

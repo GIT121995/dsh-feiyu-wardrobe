@@ -48,15 +48,15 @@ CATEGORY_ROLES = {
 PAIRING = {
     'top': {'topBody': [], 'sleeve': [], 'bottom': ['bottom-plaid'], 'topUnder': []},
     'coat': {'topBody': [], 'sleeve': [], 'bottom': ['bottom-plaid'], 'topUnder': []},
-    'bottom': {'topBody': ['sweater-body'], 'sleeve': ['sweater-sleeve'], 'bottom': [], 'topUnder': []},
+    'bottom': {'topBody': ['hoodie-body'], 'sleeve': ['hoodie-sleeve'], 'bottom': [], 'topUnder': []},
     'dress': {'topBody': [], 'sleeve': [], 'bottom': [], 'topUnder': []},
     'outfit': {'topBody': [], 'sleeve': [], 'bottom': [], 'topUnder': []},
 }
 
 # outfit 槽位（v2.2 cutout：topBody/bottom/sleeve 之外新增 collar/sleeveUpper/sleeveFore；legacy sleeve 保留）
 PAIR_SLOTS = ('topBody', 'sleeve', 'bottom', 'topUnder', 'collar', 'sleeveUpper', 'sleeveFore')
-# 用哪套 base 组合做配对（v2.2 有 sweater-plaid 上下装配件；旧 rig 回退 PAIRING 常量）
-PAIR_REFERENCE_OUTFITS = ('sweater-plaid', 'sweater-pleated', 'maid', 'sailor-plaid')
+# 用哪套 base 组合做配对（v2.7.0 下架毛衣后：优先连帽卫衣套；旧 rig 回退 PAIRING 常量）
+PAIR_REFERENCE_OUTFITS = ('hoodie-plaid', 'hoodie-pleated', 'maid', 'sailor-plaid')
 
 
 def derive_pairing(base_rig: dict, category: str) -> tuple[dict, dict]:

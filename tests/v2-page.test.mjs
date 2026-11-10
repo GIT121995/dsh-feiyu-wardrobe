@@ -39,19 +39,19 @@ test('index.html：删除 DOM 人物容器/脸部层/渲染开关，保留舞台
 	assert.match(INDEX, /开启硬件加速/, '提示文案应建议开启硬件加速');
 	assert.ok(INDEX.includes('id="diyNote"'), '应有 DIY 静态贴片提示');
 	assert.match(INDEX, /不支持骨骼动画/, 'DIY 提示应说明不支持骨骼动画');
-	// 版本号（v2.6.1 页面模块升 v23；v2.6.2 资产升 v20）
-	assert.match(INDEX, /app\.js\?v=23/);
-	assert.match(INDEX, /style\.css\?v=23/);
+	// 版本号（v2.7.0 页面模块升 v24；资产升 v21）
+	assert.match(INDEX, /app\.js\?v=24/);
+	assert.match(INDEX, /style\.css\?v=24/);
 	assert.ok(INDEX.includes('type="module"'));
 });
 
 test('app.js：唯一渲染路径是 2.5D runtime，DOM 渲染/双模式代码全部移除', () => {
 	// 必须保留：runtime 懒加载（boot 即唯一路径）+ 资产版本 + 文本提示 + DIY 静态
-	assert.ok(APP.includes("const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=23'"));
+	assert.ok(APP.includes("const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=24'"));
 	assert.ok(APP.includes('import(RUNTIME_2D5_MODULE)'), '应动态 import 2.5D runtime');
 	assert.ok(APP.includes('bootRuntime()'), 'boot 应启动 2.5D runtime（唯一路径）');
 	assert.ok(APP.includes('RUNTIME_2D5_ASSET_VERSION'), 'rig/atlas 应带资产版本');
-	assert.ok(APP.includes("RUNTIME_2D5_ASSET_VERSION = '20'"), 'v2.6.2 资产版本应为 20（rig/atlas ?v=20；chibi 修复后递增）');
+	assert.ok(APP.includes("RUNTIME_2D5_ASSET_VERSION = '21'"), 'v2.7.0 资产版本应为 21（rig/atlas ?v=21；毛衣下架后 dist 变更递增）');
 	assert.ok(APP.includes('client-config.json'), '页面应读宿主 client-config（仅互动）');
 	assert.ok(APP.includes('diyLayerUrls'), 'DIY 应改 canvas 静态贴片');
 	assert.ok(APP.includes('不支持骨骼动画'), 'DIY 静态提示文案');
@@ -93,7 +93,7 @@ test('wardrobe-core / runtime core：不再提供 DOM 渲染或渲染模式决�
 	}
 	assert.ok(CORE.includes('export function resolveLook'));
 	assert.ok(CORE.includes('export function visibleDrawables'));
-	assert.ok(RUNTIME.includes("from './runtime-2d5-core.js?v=23'"), 'runtime 模块应按 v23 复用 core');
+	assert.ok(RUNTIME.includes("from './runtime-2d5-core.js?v=24'"), 'runtime 模块应按 v24 复用 core');
 	assert.ok(RUNTIME.includes('assetVersion'), 'runtime 应支持资产版本查询串');
 	// v2.6.1 资产 tier（2x 高 DPI）：页面/运行时都必须接线 URL/localStorage 覆盖与回退
 	assert.ok(APP.includes('resolveTierOverride'), 'app.js 应解析 ?feiyuTier / localStorage tier 覆盖');

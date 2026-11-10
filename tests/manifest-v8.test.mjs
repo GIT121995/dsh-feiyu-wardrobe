@@ -39,6 +39,10 @@ test('manifest v8：无 drawOrder / 无 shapes[].layers / 无 items[].layers', (
 	}
 	// 数据面保留：分类/默认穿搭/背景/特效/台词
 	assert.deepEqual(MANIFEST.categories.map((category) => category.id), ['outfits', 'tops', 'bottoms', 'backgrounds', 'effects']);
+	// v2.7.0 下架白色高领毛衣（高领不适配短脖子 chibi）：上衣只剩连帽卫衣/水手服，默认上衣改 hoodie
+	assert.deepEqual(MANIFEST.items.tops.map((item) => item.id), ['hoodie', 'sailor']);
+	assert.deepEqual(MANIFEST.items.outfits.map((item) => item.id), ['none', 'maid']);
+	assert.equal(MANIFEST.defaults.top, 'hoodie');
 	assert.ok(MANIFEST.defaults && MANIFEST.defaults.shape);
 	assert.ok(Array.isArray(MANIFEST.bubbles) && MANIFEST.bubbles.length > 0);
 	assert.ok(MANIFEST.bubbleSets && typeof MANIFEST.bubbleSets === 'object');
@@ -113,14 +117,12 @@ test('2.5D 生产资产覆盖两身形与全部可见服装（含 chibi hoodie�
 		// cutout 素体部件（v2.2）
 		'body-head', 'body-torso', 'leg-L', 'arm-upper-L', 'arm-fore-L', 'hand-L', 'seam-fill',
 		'hair-front-bangs', 'hair-backfill',
-		// 服装部件（6 组合）
+		// 服装部件（v2.7.0 下架毛衣后 4 个 cutout 组合：maid / hoodie-plaid / hoodie-pleated / sailor-plaid）
 		'maid-torso', 'maid-skirt', 'maid-collar', 'maid-apron',
-		'sweater-plaid-torso', 'sweater-plaid-skirt', 'sweater-plaid-collar',
-		'sweater-pleated-torso', 'sweater-pleated-skirt',
 		'hoodie-plaid-torso', 'hoodie-plaid-skirt',
 		'hoodie-pleated-torso', 'hoodie-pleated-skirt',
 		'sailor-plaid-torso', 'sailor-plaid-skirt', 'sailor-plaid-collar',
-		'sweater-plaid-sleeve-upper-L', 'sweater-plaid-sleeve-fore-L',
+		'hoodie-plaid-sleeve-upper-L', 'hoodie-plaid-sleeve-fore-L',
 		// face 部件
 		'face-eye-L-sclera', 'face-eye-L-iris', 'face-eye-L-lash',
 		'face-eye-L-lid-half', 'face-eye-L-lid-closed', 'face-eye-L-lid-smile',
@@ -133,8 +135,8 @@ test('2.5D 生产资产覆盖两身形与全部可见服装（含 chibi hoodie�
 		// chibi 有后发层 hair-back；girl 后发由 hair-backfill 承担（无该 id）
 		if (shape === 'chibi') assert.ok(ids.has('hair-back'), 'chibi 缺少后发层 hair-back');
 		assert.ok(ids.has('hair-backfill'), `${shape} 缺少计算式补边层 hair-backfill`);
-		// 套装入口：6 套（含 hoodie-plaid / hoodie-pleated）
-		for (const outfit of ['maid', 'sweater-plaid', 'sweater-pleated', 'hoodie-plaid', 'hoodie-pleated', 'sailor-plaid']) {
+		// 套装入口：v2.7.0 下架毛衣组合后，production rig 只剩 4 个 cutout 组合 + maid
+		for (const outfit of ['maid', 'hoodie-plaid', 'hoodie-pleated', 'sailor-plaid']) {
 			assert.ok(rig.outfits[outfit], `${shape} 缺少套装 ${outfit}`);
 			for (const slot of ['topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar']) {
 				for (const id of rig.outfits[outfit][slot] || []) assert.ok(ids.has(id), `${shape}/${outfit}.${slot} 引用缺失 drawable ${id}`);

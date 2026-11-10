@@ -103,7 +103,7 @@ HAIR_SLOTS_ALL = ('hairBack', 'strands', 'hairFront', 'face')
 GIRL_LIMB_PARTS = ['arm-upper-L', 'arm-upper-R', 'arm-fore-L', 'arm-fore-R',
                    'hand-L', 'hand-R']
 GIRL_HAIR_BODY_PARTS = ['body-head', 'body-torso', 'leg-L', 'leg-R']
-GIRL_OUTFIT_COMBOS = ['maid', 'sweater-plaid', 'sweater-pleated', 'hoodie-plaid',
+GIRL_OUTFIT_COMBOS = ['maid', 'hoodie-plaid',
                       'hoodie-pleated', 'sailor-plaid']
 LIMB_ISLAND_MAX_PX = 2500   # arm-band alpha components below this are hair islands
 HAIR_ARM_ID = 'hair-arm-girl'
@@ -1043,7 +1043,7 @@ def seam_extend(drawables, texdir, base_ids):
     for d in drawables:
         if d['slot'] in PORT_SLOTS:
             prefix = d['id'].split('-')[0]
-            key = 'sweater' if d['id'].startswith('sweater-') else prefix
+            key = prefix
             combos.setdefault(_combo_of(d['id']), []).append(d)
     changed = 0
     for combo, parts in combos.items():
@@ -1080,7 +1080,7 @@ def seam_extend(drawables, texdir, base_ids):
 
 
 def _combo_of(did):
-    for c in ['maid', 'sweater-plaid', 'sweater-pleated', 'hoodie-plaid',
+    for c in ['maid', 'hoodie-plaid',
               'hoodie-pleated', 'sailor-plaid']:
         if did.startswith(c + '-'):
             return c
@@ -2212,9 +2212,9 @@ def build_shape(shape, page_split='base'):
     apply_hair_split(shape, drawables, texdir, rig, stats)
     if not OPTS['skip_hands']:
         overlay_refined_hands(shape, drawables, texdir, stats)
-    # ---------------- garment parts (6 combos) ----------------
+    # ---------------- garment parts (4 combos; v2.7.0 下架毛衣) ----------------
     outfits = {'base': {'name': '素体（cutout）'}}
-    combos = ['maid', 'sweater-plaid', 'sweater-pleated', 'hoodie-plaid',
+    combos = ['maid', 'hoodie-plaid',
               'hoodie-pleated', 'sailor-plaid']
     for combo in combos:
         gi = json.load(open(os.path.join(M2, 'garments', shape, combo, 'parts-index.json')))
@@ -2307,7 +2307,7 @@ def build_shape(shape, page_split='base'):
         'slots': slots,
         'outfits': outfits,
         'colliders': tmpl['colliders'],
-        'defaults': {'outfit': 'sweater-plaid',
+        'defaults': {'outfit': 'maid',
                      'params': tmpl['defaults']['params']},
         'masks': tmpl['masks'],
         'cutout': {

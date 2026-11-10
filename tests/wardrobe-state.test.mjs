@@ -39,7 +39,7 @@ test('defaultState：取 manifest.defaults，且单品必须在对应分类里',
 	const state = defaultState(MANIFEST);
 	assert.equal(state.shape, MANIFEST.defaults.shape);
 	assert.equal(state.outfit, 'maid');
-	assert.equal(state.top, 'sweater');
+	assert.equal(state.top, 'hoodie');
 	assert.equal(state.bottom, 'plaid');
 	assert.equal(state.bg, 'bg-snow');
 	assert.equal(state.effect, 'snow');
@@ -57,7 +57,7 @@ test('normalizeState：localStorage/URL 脏数据回退默认值，非法身形/
 	});
 	assert.equal(state.shape, 'girl');
 	assert.equal(state.outfit, 'maid'); // ghost 非法 → 默认
-	assert.equal(state.top, 'sweater'); // 非法 → 默认
+	assert.equal(state.top, 'hoodie'); // 非法 → 默认
 	assert.equal(state.bottom, 'pleated'); // 合法保留
 	assert.equal(state.bg, 'bg-snow');
 	assert.equal(state.effect, 'stars');
@@ -91,8 +91,8 @@ test('describeOutfit：套装/上下装名称 + 身形/背景/特效详情', () 
 	assert.equal(outfitText.name, '经典女仆装');
 	assert.match(outfitText.detail, /Q版/);
 	assert.match(outfitText.detail, /樱花庭院/);
-	const mix = describeOutfit(MANIFEST, { ...defaultState(MANIFEST), outfit: 'none', top: 'sweater', bottom: 'plaid', effect: 'none' });
-	assert.equal(mix.name, '白色高领毛衣 + 格纹百褶裙');
+	const mix = describeOutfit(MANIFEST, { ...defaultState(MANIFEST), outfit: 'none', top: 'hoodie', bottom: 'plaid', effect: 'none' });
+	assert.equal(mix.name, '白色连帽卫衣 + 格纹百褶裙');
 	assert.equal(mix.detail.includes('无'), false, 'effect=none 不出现在详情');
 });
 
@@ -103,7 +103,7 @@ test('randomOutfit：套装 65% 概率；否则上衣+下装；背景/特效随�
 	assert.equal(outfitRoll.shape, base.shape);
 	const mixRoll = randomOutfit(MANIFEST, base, makeRandom([0.99, 0.5, 0.5, 0.1, 0.1]));
 	assert.equal(mixRoll.outfit, 'none');
-	assert.ok(['sweater', 'hoodie', 'sailor'].includes(mixRoll.top));
+	assert.ok(['hoodie', 'sailor'].includes(mixRoll.top));
 	assert.ok(['plaid', 'pleated'].includes(mixRoll.bottom));
 	assert.ok(mixRoll.bg.startsWith('bg-'));
 });

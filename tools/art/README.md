@@ -6,7 +6,7 @@
 > GitHub Release asset，并加构建确定性测试。
 >
 > - 产出资产版本：**资产 v17 / v2.5.0 口径**（chibi 85 drawables / girl 86，65 骨，单页图集）。
-> - 源素材 **154.8MB raw / tarball 94.3MB**，**不入 git**，走 GitHub Release（tag `assets-v2`）的 `assets-src-v2.tar.zst`。
+> - 源素材 **132.9MB raw / tarball 89.8MB**，**不入 git**，走 GitHub Release（tag `assets-v2`）的 `assets-src-v2.tar.zst`。
 > - 运行时零依赖；构建依赖见 `tools/requirements.txt`（python3 + numpy + opencv-python-headless + Pillow）。
 
 ## 目录
@@ -25,7 +25,7 @@ tools/art/
 ## 快速开始（复现 v2.5.0 资产）
 
 ```bash
-# 1) 取源素材（下载 ~94MB / 解包 154.8MB → .cache/assets-src/，gitignored；或 --from <已有 tar.zst>）
+# 1) 取源素材（下载 ~90MB / 解包 132.9MB → .cache/assets-src/，gitignored；或 --from <已有 tar.zst>）
 npm run fetch:sources
 
 # 2) 构建（→ tools/art/dist/{chibi,girl}/，gitignored；中间产物在 .cache/build/）
@@ -46,7 +46,7 @@ npm run verify:full
 
 ## 源素材包（assets-src-v1）
 
-官方包：GitHub Release `assets-v2` 的 `assets-src-v2.tar.zst`（`https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v1/assets-src-v2.tar.zst`）。
+官方包：GitHub Release `assets-v2` 的 `assets-src-v2.tar.zst`（`https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v2/assets-src-v2.tar.zst`）。
 
 | 包内路径 | 内容 | 来源（历史工程） |
 |---|---|---|
@@ -59,8 +59,8 @@ npm run verify:full
 | `sources.json` | 上述布局映射（审计/升级参考） | 由 pack 脚本写入 |
 | `manifest.json` | payload 文件清单（相对路径/大小/sha256），fetch 侧逐文件校验 | 由 pack 脚本写入 |
 
-- **当前 v1 包**：**245 files / 154,758,073 B（154.8MB）raw**；`tar --sort=name --mtime=@0 --pax-option=delete=atime,delete=ctime`
-  + `zstd -19` → **94,273,694 B（94.3MB，ratio 0.61）**，sha256 `d19ff537440116a1be9673d192b47a89bfefa7125fa6de3356c68d3930d26460`
+- **当前 v2 包（v2.7.0 下架毛衣后）**：**271 files / 132,915,144 B（132.9MB）raw**；`tar --sort=name --mtime=@0 --pax-option=delete=atime,delete=ctime`
+  + `zstd -19` → **89,799,309 B（89.8MB，ratio 0.68）**，sha256 `2e6a003bd4b4695e7550142dbed2d1487d70e8a8c7d0f3110384e791ec3dc934`
   （见 `.scratch/p7/SHA256SUMS`）。同一 staging 树重复打包 / 从已解包树回炉打包均得到相同 sha256（确定性）。
   `fetch-sources.mjs` 内置该 sha256 固定值（发布者也可用 `FEIYU_ASSETS_SRC_SHA256` / `--sha256` 覆盖）。
 - **源包不是**历史工程全量快照：只冻结 `build_prod.py` 实际读取的文件（排除 M2 `work/qa/masks`、M4 未引用 webp/layer、
@@ -184,7 +184,7 @@ python3 tools/art/build_prod.py --build-atlas --clean-garment-skin \
 
 ## 已知限制（诚实）
 
-- **源包体积**：94.3MB tarball / 154.8MB 解包（zstd -19 实测 ratio 0.61）→ 不入 git，走 GitHub Release；无源时无法构建。
+- **源包体积**：89.8MB tarball / 132.9MB 解包（zstd -19 实测 ratio 0.68）→ 不入 git，走 GitHub Release；无源时无法构建。
 - **构建耗时**：两身形 `--build-atlas` ≈ 4.5–5 分钟（2 核，headless，无 GPU；本机口径）。
 - **构建环境**：python3 + numpy/opencv/Pillow；图集编码依赖 Pillow 的 lossless WebP（Pillow/libwebp 版本理论上可能影响
   编码字节；v2.5 基线与本机 Pillow 10.2.0 对齐）。生产环境固定依赖版本（`tools/requirements.txt` 只给下限）。

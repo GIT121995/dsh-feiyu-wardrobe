@@ -127,18 +127,21 @@ outfits 分类（图标 = pack 纹理缩略图）；`fallback=static` 的套装�
 
 > v2.3.0 仅替换手/脚精修像素（资产版本 15、页面模块 v19）：base rig 的 drawable id/slot/骨架/物理链与 v2.2 完全一致，
 > 已安装 pack（v2.2 refs）无需重建，按本节规则兼容；旧 v2.1 refs 由运行时迁移兜底。
+> v2.7.0 下架白色高领毛衣（资产 v21 / 页面 v24）：base rig 删除毛衣 drawable，其余部件/骨架/物理链不变；
+> 旧 v2.1 refs 里的毛衣/裙子引用由运行时迁移映射到现有 hoodie-plaid 部件。
 
-v2.2 起 base rig 为 cutout 分部件（`sweater-plaid-torso/-skirt` 等），不再有 v2.1 的 generic
-`bottom-plaid/sweater-body/sweater-sleeve/maid-body…`。兼容策略：
+v2.2 起 base rig 为 cutout 分部件（`hoodie-plaid-torso/-skirt` 等），不再有 v2.1 的 generic
+`bottom-plaid` / 单件上衣/袖 id（毛衣相关 id 已于 v2.7.0 随下架删除，仅保留在运行时迁移表旧键中）。兼容策略：
 
 - **新 pack（v2.2.1 binder）**：`tools/diy/bind_layers.py` 的 pairing 从 base rig 的可用组合套装动态读取
-  （top/coat/dress → v2.2 裙对；bottom → v2.2 上衣/领/袖部件），`pairingSource` 写入 pack 报告，不再写死 v2.1 id；
-  legacy `sleeve` 槽位继续支持（DIY 自带袖层仍放 `sleeve` z60/61）。
+  （v2.7.0 起优先 hoodie-plaid：top/coat/dress → hoodie-plaid 裙对；bottom → hoodie-plaid 上衣/分段袖），
+  `pairingSource` 写入 pack 报告，不再写死 v2.1 id；legacy `sleeve` 槽位继续支持（DIY 自带袖层仍放 `sleeve` z60/61）。
 - **旧 pack（v2.1 生成）**：runtime `addOutfitPack` 注册时调用
   `migrateDiyPackOutfits(outfits, scene.drawableById, ownIds, {category})`：
-  缺失的 v2.1 base 引用按迁移表映射到 v2.2 现有部件（`bottom-plaid→sweater-plaid-skirt/-skirt-under`、
-  `sweater-body→sweater-plaid-torso`、`sweater-sleeve→sleeveUpper/sleeveFore×2` 等）；
-  旧 dress/outfit pack 本来没有下装 → 按品类自动补 v2.2 裙对（避免光腿）；bottom pack 可自动补上衣；
+  缺失的 v2.1 base 引用按迁移表映射到现有部件（`bottom-plaid→hoodie-plaid-skirt/-skirt-under`、
+  `bottom-pleated→hoodie-pleated-skirt/-skirt-under`、旧毛衣上衣→`hoodie-plaid-torso`、旧毛衣袖→
+  `hoodie-plaid-sleeve-upper/fore × L/R`；`hoodie-body/hoodie-sleeve` 同样映射 hoodie-plaid 部件）；
+  旧 dress/outfit pack 本来没有下装 → 按品类自动补 hoodie-plaid 裙对（避免光腿）；bottom pack 可自动补 hoodie-plaid 上衣/袖；
   目标均缺失则安全置空并记 `unmapped`（不抛错、不改 pack 原对象），`getState().look.slots` 语义不变。
 - 迁移只在运行时内存中生效，不写回 pack/registry，也不退回 v2.1 资产（v2.1 人物资产已删除）。
 - **v2.4 骨架前缀兼容**：`normalizeDiyPack(pack, { bones, boneNames })` 允许 `packBones ≤ sceneBones`（旧 59 骨 pack

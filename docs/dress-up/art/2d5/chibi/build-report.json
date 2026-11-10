@@ -1,22 +1,22 @@
 {
  "shape": "chibi",
  "sourceRig": "chibi-cutout.feiyu.json",
- "sourceRigBytes": 2113148,
+ "sourceRigBytes": 1772179,
  "generator": "tools/build_2d5.py",
  "padding": 1,
  "trimAlpha": true,
  "pages": 1,
  "atlas": {
-  "width": 4059,
-  "height": 1722,
-  "bytes": 1949780,
+  "width": 4062,
+  "height": 1458,
+  "bytes": 1651426,
   "pixelEqual": true,
-  "rects": 85
+  "rects": 69
  },
  "rig": {
-  "bytes": 1983323,
-  "gzipBytes": 360976,
-  "sha256": "642d8cf6351c16c62d39c2b6730552eeadb63a4ed6994b6b3875d1bd3f27482f"
+  "bytes": 1636186,
+  "gzipBytes": 292884,
+  "sha256": "b5cfec02bcbe9a622250ece808bc009adca9a9760e6905b6974359ead2fd7ca6"
  },
  "drawables": [
   {
@@ -43,7 +43,7 @@
    "z": 10.0,
    "atlas": null,
    "atlasRect": [
-    1974,
+    1374,
     907,
     574,
     322
@@ -79,7 +79,7 @@
    "z": 45.0,
    "atlas": null,
    "atlasRect": [
-    2243,
+    612,
     1272,
     82,
     184
@@ -97,8 +97,8 @@
    "z": 45.0,
    "atlas": null,
    "atlasRect": [
-    272,
-    1568,
+    1628,
+    1272,
     72,
     152
    ],
@@ -115,7 +115,7 @@
    "z": 48.0,
    "atlas": null,
    "atlasRect": [
-    2863,
+    696,
     1272,
     87,
     174
@@ -133,7 +133,7 @@
    "z": 48.0,
    "atlas": null,
    "atlasRect": [
-    3164,
+    997,
     1272,
     84,
     170
@@ -151,8 +151,8 @@
    "z": 65.0,
    "atlas": null,
    "atlasRect": [
-    2567,
-    1568,
+    3463,
+    1272,
     56,
     70
    ],
@@ -169,8 +169,8 @@
    "z": 65.0,
    "atlas": null,
    "atlasRect": [
-    2503,
-    1568,
+    3399,
+    1272,
     62,
     73
    ],
@@ -187,8 +187,8 @@
    "z": 9.1,
    "atlas": null,
    "atlasRect": [
-    3912,
-    1,
+    3158,
+    907,
     137,
     297
    ],
@@ -205,8 +205,8 @@
    "z": 9.1,
    "atlas": null,
    "atlasRect": [
-    1,
-    1272,
+    3297,
+    907,
     124,
     294
    ],
@@ -223,8 +223,8 @@
    "z": 7.6,
    "atlas": null,
    "atlasRect": [
-    2900,
-    1568,
+    3796,
+    1272,
     13,
     14
    ],
@@ -241,8 +241,8 @@
    "z": 40.0,
    "atlas": null,
    "atlasRect": [
-    1726,
-    1568,
+    2622,
+    1272,
     325,
     82
    ],
@@ -259,8 +259,8 @@
    "z": 56.0,
    "atlas": null,
    "atlasRect": [
-    1,
-    1568,
+    1357,
+    1272,
     269,
     153
    ],
@@ -295,8 +295,8 @@
    "z": 60.0,
    "atlas": null,
    "atlasRect": [
-    1028,
-    1272,
+    3871,
+    1,
     136,
     185
    ],
@@ -313,8 +313,8 @@
    "z": 62.0,
    "atlas": null,
    "atlasRect": [
-    767,
-    1272,
+    3610,
+    1,
     129,
     211
    ],
@@ -331,7 +331,7 @@
    "z": 60.0,
    "atlas": null,
    "atlasRect": [
-    1166,
+    1,
     1272,
     127,
     185
@@ -349,8 +349,8 @@
    "z": 62.0,
    "atlas": null,
    "atlasRect": [
-    898,
-    1272,
+    3741,
+    1,
     128,
     208
    ],
@@ -398,301 +398,13 @@
    "tris": 1382
   },
   {
-   "id": "sweater-plaid-torso",
-   "slot": "topBody",
-   "z": 40.0,
-   "atlas": null,
-   "atlasRect": [
-    3250,
-    1272,
-    160,
-    169
-   ],
-   "texSize": [
-    160,
-    169
-   ],
-   "verts": 163,
-   "tris": 276
-  },
-  {
-   "id": "sweater-plaid-collar",
-   "slot": "collar",
-   "z": 56.0,
-   "atlas": null,
-   "atlasRect": [
-    2327,
-    1272,
-    266,
-    181
-   ],
-   "texSize": [
-    266,
-    181
-   ],
-   "verts": 233,
-   "tris": 400
-  },
-  {
-   "id": "sweater-plaid-sleeve-upper-L",
-   "slot": "sleeveUpper",
-   "z": 60.0,
-   "atlas": null,
-   "atlasRect": [
-    1543,
-    1272,
-    118,
-    185
-   ],
-   "texSize": [
-    118,
-    185
-   ],
-   "verts": 118,
-   "tris": 190
-  },
-  {
-   "id": "sweater-plaid-sleeve-fore-L",
-   "slot": "sleeveFore",
-   "z": 62.0,
-   "atlas": null,
-   "atlasRect": [
-    346,
-    1568,
-    117,
-    146
-   ],
-   "texSize": [
-    117,
-    146
-   ],
-   "verts": 100,
-   "tris": 160
-  },
-  {
-   "id": "sweater-plaid-sleeve-upper-R",
-   "slot": "sleeveUpper",
-   "z": 60.0,
-   "atlas": null,
-   "atlasRect": [
-    2017,
-    1272,
-    111,
-    185
-   ],
-   "texSize": [
-    111,
-    185
-   ],
-   "verts": 108,
-   "tris": 172
-  },
-  {
-   "id": "sweater-plaid-sleeve-fore-R",
-   "slot": "sleeveFore",
-   "z": 62.0,
-   "atlas": null,
-   "atlasRect": [
-    584,
-    1568,
-    109,
-    146
-   ],
-   "texSize": [
-    109,
-    146
-   ],
-   "verts": 99,
-   "tris": 158
-  },
-  {
-   "id": "sweater-plaid-skirt",
-   "slot": "bottom",
-   "z": 30.0,
-   "atlas": null,
-   "atlasRect": [
-    2550,
-    907,
-    300,
-    318
-   ],
-   "texSize": [
-    300,
-    318
-   ],
-   "verts": 475,
-   "tris": 854
-  },
-  {
-   "id": "sweater-plaid-skirt-under",
-   "slot": "bottom",
-   "z": 29.0,
-   "atlas": null,
-   "atlasRect": [
-    3456,
-    907,
-    300,
-    316
-   ],
-   "texSize": [
-    300,
-    316
-   ],
-   "verts": 470,
-   "tris": 844
-  },
-  {
-   "id": "sweater-pleated-torso",
-   "slot": "topBody",
-   "z": 40.0,
-   "atlas": null,
-   "atlasRect": [
-    3412,
-    1272,
-    160,
-    169
-   ],
-   "texSize": [
-    160,
-    169
-   ],
-   "verts": 163,
-   "tris": 276
-  },
-  {
-   "id": "sweater-pleated-collar",
-   "slot": "collar",
-   "z": 56.0,
-   "atlas": null,
-   "atlasRect": [
-    2595,
-    1272,
-    266,
-    181
-   ],
-   "texSize": [
-    266,
-    181
-   ],
-   "verts": 233,
-   "tris": 400
-  },
-  {
-   "id": "sweater-pleated-sleeve-upper-L",
-   "slot": "sleeveUpper",
-   "z": 60.0,
-   "atlas": null,
-   "atlasRect": [
-    1663,
-    1272,
-    118,
-    185
-   ],
-   "texSize": [
-    118,
-    185
-   ],
-   "verts": 118,
-   "tris": 190
-  },
-  {
-   "id": "sweater-pleated-sleeve-fore-L",
-   "slot": "sleeveFore",
-   "z": 62.0,
-   "atlas": null,
-   "atlasRect": [
-    465,
-    1568,
-    117,
-    146
-   ],
-   "texSize": [
-    117,
-    146
-   ],
-   "verts": 100,
-   "tris": 160
-  },
-  {
-   "id": "sweater-pleated-sleeve-upper-R",
-   "slot": "sleeveUpper",
-   "z": 60.0,
-   "atlas": null,
-   "atlasRect": [
-    2130,
-    1272,
-    111,
-    185
-   ],
-   "texSize": [
-    111,
-    185
-   ],
-   "verts": 108,
-   "tris": 172
-  },
-  {
-   "id": "sweater-pleated-sleeve-fore-R",
-   "slot": "sleeveFore",
-   "z": 62.0,
-   "atlas": null,
-   "atlasRect": [
-    695,
-    1568,
-    109,
-    146
-   ],
-   "texSize": [
-    109,
-    146
-   ],
-   "verts": 99,
-   "tris": 158
-  },
-  {
-   "id": "sweater-pleated-skirt",
-   "slot": "bottom",
-   "z": 30.0,
-   "atlas": null,
-   "atlasRect": [
-    774,
-    907,
-    298,
-    325
-   ],
-   "texSize": [
-    298,
-    325
-   ],
-   "verts": 441,
-   "tris": 790
-  },
-  {
-   "id": "sweater-pleated-skirt-under",
-   "slot": "bottom",
-   "z": 29.0,
-   "atlas": null,
-   "atlasRect": [
-    1374,
-    907,
-    298,
-    323
-   ],
-   "texSize": [
-    298,
-    323
-   ],
-   "verts": 436,
-   "tris": 780
-  },
-  {
    "id": "hoodie-plaid-torso",
    "slot": "topBody",
    "z": 40.0,
    "atlas": null,
    "atlasRect": [
-    127,
-    1272,
+    3423,
+    907,
     210,
     285
    ],
@@ -709,7 +421,7 @@
    "z": 60.0,
    "atlas": null,
    "atlasRect": [
-    1295,
+    130,
     1272,
     122,
     185
@@ -727,8 +439,8 @@
    "z": 62.0,
    "atlas": null,
    "atlasRect": [
-    806,
-    1568,
+    1702,
+    1272,
     117,
     114
    ],
@@ -745,7 +457,7 @@
    "z": 60.0,
    "atlas": null,
    "atlasRect": [
-    1783,
+    378,
     1272,
     115,
     185
@@ -763,8 +475,8 @@
    "z": 62.0,
    "atlas": null,
    "atlasRect": [
-    1044,
-    1568,
+    1940,
+    1272,
     109,
     114
    ],
@@ -781,7 +493,7 @@
    "z": 30.0,
    "atlas": null,
    "atlasRect": [
-    2852,
+    1950,
     907,
     300,
     318
@@ -799,7 +511,7 @@
    "z": 29.0,
    "atlas": null,
    "atlasRect": [
-    3758,
+    2554,
     907,
     300,
     316
@@ -817,8 +529,8 @@
    "z": 40.0,
    "atlas": null,
    "atlasRect": [
-    339,
-    1272,
+    3635,
+    907,
     210,
     285
    ],
@@ -835,7 +547,7 @@
    "z": 60.0,
    "atlas": null,
    "atlasRect": [
-    1419,
+    254,
     1272,
     122,
     185
@@ -853,8 +565,8 @@
    "z": 62.0,
    "atlas": null,
    "atlasRect": [
-    925,
-    1568,
+    1821,
+    1272,
     117,
     114
    ],
@@ -871,7 +583,7 @@
    "z": 60.0,
    "atlas": null,
    "atlasRect": [
-    1900,
+    495,
     1272,
     115,
     185
@@ -889,8 +601,8 @@
    "z": 62.0,
    "atlas": null,
    "atlasRect": [
-    1155,
-    1568,
+    2051,
+    1272,
     109,
     114
    ],
@@ -907,7 +619,7 @@
    "z": 30.0,
    "atlas": null,
    "atlasRect": [
-    1074,
+    774,
     907,
     298,
     325
@@ -925,7 +637,7 @@
    "z": 29.0,
    "atlas": null,
    "atlasRect": [
-    1674,
+    1074,
     907,
     298,
     323
@@ -943,8 +655,8 @@
    "z": 20.0,
    "atlas": null,
    "atlasRect": [
-    551,
-    1272,
+    3847,
+    907,
     214,
     213
    ],
@@ -961,7 +673,7 @@
    "z": 56.0,
    "atlas": null,
    "atlasRect": [
-    3574,
+    1083,
     1272,
     272,
     159
@@ -979,7 +691,7 @@
    "z": 60.0,
    "atlas": null,
    "atlasRect": [
-    2952,
+    785,
     1272,
     106,
     173
@@ -997,7 +709,7 @@
    "z": 60.0,
    "atlas": null,
    "atlasRect": [
-    3060,
+    893,
     1272,
     102,
     171
@@ -1015,7 +727,7 @@
    "z": 30.0,
    "atlas": null,
    "atlasRect": [
-    3154,
+    2252,
     907,
     300,
     318
@@ -1033,8 +745,8 @@
    "z": 29.0,
    "atlas": null,
    "atlasRect": [
-    3610,
-    1,
+    2856,
+    907,
     300,
     316
    ],
@@ -1195,8 +907,8 @@
    "z": 15.0,
    "atlas": null,
    "atlasRect": [
-    2414,
-    1568,
+    3310,
+    1272,
     87,
     75
    ],
@@ -1213,8 +925,8 @@
    "z": 15.1,
    "atlas": null,
    "atlasRect": [
-    2681,
-    1568,
+    3577,
+    1272,
     49,
     58
    ],
@@ -1231,8 +943,8 @@
    "z": 15.2,
    "atlas": null,
    "atlasRect": [
-    1362,
-    1568,
+    2258,
+    1272,
     89,
     97
    ],
@@ -1249,8 +961,8 @@
    "z": 15.0,
    "atlas": null,
    "atlasRect": [
-    2326,
-    1568,
+    3222,
+    1272,
     86,
     78
    ],
@@ -1267,8 +979,8 @@
    "z": 15.1,
    "atlas": null,
    "atlasRect": [
-    2625,
-    1568,
+    3521,
+    1272,
     54,
     59
    ],
@@ -1285,8 +997,8 @@
    "z": 15.2,
    "atlas": null,
    "atlasRect": [
-    1266,
-    1568,
+    2162,
+    1272,
     94,
     99
    ],
@@ -1303,8 +1015,8 @@
    "z": 15.3,
    "atlas": null,
    "atlasRect": [
-    2053,
-    1568,
+    2949,
+    1272,
     89,
     80
    ],
@@ -1321,8 +1033,8 @@
    "z": 15.3,
    "atlas": null,
    "atlasRect": [
-    1453,
-    1568,
+    2349,
+    1272,
     89,
     94
    ],
@@ -1339,8 +1051,8 @@
    "z": 15.3,
    "atlas": null,
    "atlasRect": [
-    2144,
-    1568,
+    3040,
+    1272,
     89,
     80
    ],
@@ -1357,8 +1069,8 @@
    "z": 15.3,
    "atlas": null,
    "atlasRect": [
-    1544,
-    1568,
+    2440,
+    1272,
     89,
     94
    ],
@@ -1375,8 +1087,8 @@
    "z": 15.3,
    "atlas": null,
    "atlasRect": [
-    2235,
-    1568,
+    3131,
+    1272,
     89,
     80
    ],
@@ -1393,8 +1105,8 @@
    "z": 15.3,
    "atlas": null,
    "atlasRect": [
-    1635,
-    1568,
+    2531,
+    1272,
     89,
     94
    ],
@@ -1411,8 +1123,8 @@
    "z": 15.5,
    "atlas": null,
    "atlasRect": [
-    2780,
-    1568,
+    3676,
+    1272,
     40,
     40
    ],
@@ -1429,8 +1141,8 @@
    "z": 15.5,
    "atlas": null,
    "atlasRect": [
-    2915,
-    1568,
+    3811,
+    1272,
     29,
     8
    ],
@@ -1447,8 +1159,8 @@
    "z": 15.6,
    "atlas": null,
    "atlasRect": [
-    2964,
-    1568,
+    3860,
+    1272,
     14,
     7
    ],
@@ -1465,8 +1177,8 @@
    "z": 15.6,
    "atlas": null,
    "atlasRect": [
-    2946,
-    1568,
+    3842,
+    1272,
     16,
     7
    ],
@@ -1483,8 +1195,8 @@
    "z": 15.6,
    "atlas": null,
    "atlasRect": [
-    2868,
-    1568,
+    3764,
+    1272,
     30,
     33
    ],
@@ -1501,8 +1213,8 @@
    "z": 15.6,
    "atlas": null,
    "atlasRect": [
-    2732,
-    1568,
+    3628,
+    1272,
     46,
     43
    ],
@@ -1519,8 +1231,8 @@
    "z": 15.6,
    "atlas": null,
    "atlasRect": [
-    2822,
-    1568,
+    3718,
+    1272,
     44,
     35
    ],
@@ -1551,10 +1263,10 @@
   }
  ],
  "textureTotal": {
-  "atlasBytes": 1949780,
+  "atlasBytes": 1651426,
   "pages": 1,
   "bytesPerPixel": 4,
-  "texMiB": 26.66,
-  "texMiBwithMipmap": 35.55
+  "texMiB": 22.59,
+  "texMiBwithMipmap": 30.12
  }
 }

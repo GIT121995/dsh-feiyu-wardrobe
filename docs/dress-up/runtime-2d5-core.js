@@ -348,7 +348,6 @@ export function drawableIdsOf(rig) {
 /** 2.5D 服装单件 → drawable 组合（与 rig 的 role 命名约定一致）。 */
 export const GARMENTS = {
 	top: {
-		sweater: { slot: 'topBody', body: 'sweater-body', sleeve: 'sweater-sleeve' },
 		hoodie: { slot: 'topBody', body: 'hoodie-body', sleeve: 'hoodie-sleeve' },
 		sailor: { slot: 'topUnder', body: 'sailor-body', sleeve: 'sailor-sleeve' },
 	},
@@ -501,10 +500,10 @@ export function resolveLook(rig, state = {}) {
 	let missing = false;
 	if (!topDef || !available.has(topDef.body)) {
 		missing = true;
-		// 缺件回退：优先同身形可用的毛衣（POC 素材最完整），否则 rig 默认套装
-		if (available.has('sweater-body') && top !== 'sweater') {
-			top = 'sweater';
-			warnings.push(`top:${state.top || '?'}→sweater`);
+		// 缺件回退：优先同身形可用的连帽卫衣（POC 素材最完整），否则 rig 默认套装
+		if (available.has('hoodie-body') && top !== 'hoodie') {
+			top = 'hoodie';
+			warnings.push(`top:${state.top || '?'}→hoodie`);
 		} else {
 			top = '';
 			warnings.push(`top:${state.top || '?'} 不可用`);
@@ -562,7 +561,7 @@ export function resolveLook(rig, state = {}) {
 
 /** @param {string} id */
 function topLabel(id) {
-	return /** @type {Record<string, string>} */ ({ sweater: '白毛衣', hoodie: '白卫衣', sailor: '水手服' })[id] || id;
+	return /** @type {Record<string, string>} */ ({ hoodie: '白卫衣', sailor: '水手服' })[id] || id;
 }
 
 /** @param {string} id */
@@ -787,12 +786,13 @@ export function normalizeDiyPack(pack, options = {}) {
  * 目标 id 是 v2.2 production rig 的部件；运行时按目标 drawable 的 slot 自动落槽。
  */
 export const LEGACY_V21_BASE_REFS = {
-	'bottom-plaid': ['sweater-plaid-skirt', 'sweater-plaid-skirt-under'],
-	'bottom-pleated': ['sweater-pleated-skirt', 'sweater-pleated-skirt-under'],
-	'sweater-body': ['sweater-plaid-torso'],
+	// v2.7.0 下架毛衣后：旧 v2.1 的毛衣/裙子引用改映射到现有连帽卫衣套（hoodie-plaid）
+	'bottom-plaid': ['hoodie-plaid-skirt', 'hoodie-plaid-skirt-under'],
+	'bottom-pleated': ['hoodie-pleated-skirt', 'hoodie-pleated-skirt-under'],
+	'sweater-body': ['hoodie-plaid-torso'],
 	'sweater-sleeve': [
-		'sweater-plaid-sleeve-upper-L', 'sweater-plaid-sleeve-upper-R',
-		'sweater-plaid-sleeve-fore-L', 'sweater-plaid-sleeve-fore-R',
+		'hoodie-plaid-sleeve-upper-L', 'hoodie-plaid-sleeve-upper-R',
+		'hoodie-plaid-sleeve-fore-L', 'hoodie-plaid-sleeve-fore-R',
 	],
 	'hoodie-body': ['hoodie-plaid-torso'],
 	'hoodie-sleeve': [
@@ -861,16 +861,15 @@ export function migrateDiyPackOutfits(outfits, drawableById = {}, ownIds = [], o
 		// 按品类自动补一套 v2.2 配对部件（存在才补），避免「光腿/裸上身」。
 		const category = String(options.category || '');
 		if (category === 'bottom') {
-			if (!(next.topBody || []).length && drawableById && drawableById['sweater-plaid-torso']) {
-				push(next, 'topBody', 'sweater-plaid-torso');
-				for (const id of ['sweater-plaid-collar']) if (drawableById[id]) push(next, 'collar', id);
-				for (const id of ['sweater-plaid-sleeve-upper-L', 'sweater-plaid-sleeve-upper-R']) if (drawableById[id]) push(next, 'sleeveUpper', id);
-				for (const id of ['sweater-plaid-sleeve-fore-L', 'sweater-plaid-sleeve-fore-R']) if (drawableById[id]) push(next, 'sleeveFore', id);
+			if (!(next.topBody || []).length && drawableById && drawableById['hoodie-plaid-torso']) {
+				push(next, 'topBody', 'hoodie-plaid-torso');
+				for (const id of ['hoodie-plaid-sleeve-upper-L', 'hoodie-plaid-sleeve-upper-R']) if (drawableById[id]) push(next, 'sleeveUpper', id);
+				for (const id of ['hoodie-plaid-sleeve-fore-L', 'hoodie-plaid-sleeve-fore-R']) if (drawableById[id]) push(next, 'sleeveFore', id);
 				warnings.push('migrated:auto-pair-top');
 			}
 		} else if (['top', 'coat', 'dress', 'outfit'].includes(category)) {
 			if (!(next.bottom || []).length && drawableById) {
-				const skirts = ['sweater-plaid-skirt', 'sweater-plaid-skirt-under'].filter((id) => drawableById[id]);
+				const skirts = ['hoodie-plaid-skirt', 'hoodie-plaid-skirt-under'].filter((id) => drawableById[id]);
 				if (skirts.length) {
 					for (const id of skirts) push(next, 'bottom', id);
 					warnings.push('migrated:auto-pair-bottom');

@@ -7,7 +7,7 @@
  *      lib/runtime.js::WardrobeRuntime，临时 state 目录）把 docs/dress-up 发出去；
  *   2. 单进程 headless Chrome（SwANGLE，无 GPU）逐身形加载页面，用 runtime 公开 API
  *      固定「静态 QA 模式」（freeze + setStatic + 固定 DPR/画质/关 mipmap），
- *      对 2 身形 × 5 造型（base/maid/sweater-plaid/hoodie-pleated/sailor-plaid）抓：
+ *      对 2 身形 × 5 造型（base/maid/hoodie-plaid/hoodie-pleated/sailor-plaid）抓：
  *        - 1x 全身画布区（675×1200，JPEG q82，合成固定背景色）
  *        - 2x 关键局部（膝/手/肩/脚/腹/发；坐标由 rig.json 骨骼/部件计算，JPEG q85）
  *   3. `--mode baseline` 写 docs/qa-baseline/（manifest.json 记录版本/资产哈希/区域/
@@ -57,7 +57,7 @@ const BASELINE_FORMAT = 'feiyu-visual-qa-baseline';
 const BASELINE_VERSION = 1;
 const BASELINE_DIR = join('docs', 'qa-baseline');
 const SHAPES = ['chibi', 'girl'];
-const OUTFITS = ['base', 'maid', 'sweater-plaid', 'hoodie-pleated', 'sailor-plaid'];
+const OUTFITS = ['base', 'maid', 'hoodie-plaid', 'hoodie-pleated', 'sailor-plaid'];
 const REGIONS = ['knee', 'hand', 'shoulder', 'foot', 'abdomen', 'hair'];
 const DESIGN = { width: 675, height: 1200 };
 const BACKGROUND = '#808a99';

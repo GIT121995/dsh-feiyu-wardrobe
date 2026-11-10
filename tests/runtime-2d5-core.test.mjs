@@ -190,7 +190,7 @@ test('desiredMouthKey：说话循环 / mouthOpen 阈值 / 覆盖', () => {
 
 /* ---------------- 换装组合解析 ---------------- */
 
-test('resolveLook：套装命中（maid / sweater-plaid / hoodie-plaid 双身形）', () => {
+test('resolveLook：套装命中（maid / hoodie-plaid / sailor-plaid 双身形）', () => {
 	for (const rig of [CHIBI, GIRL]) {
 		const maid = resolveLook(rig, { outfit: 'maid' });
 		assert.equal(maid.outfit, 'maid');
@@ -211,15 +211,22 @@ test('resolveLook：套装命中（maid / sweater-plaid / hoodie-plaid 双身形
 		assert.equal(hoodie.slots.sleeveUpper.length, 2);
 		assert.equal(hoodie.slots.sleeveFore.length, 2);
 	}
+	// production 资产：sailor 套装走 topUnder 槽位
+	for (const rig of [CHIBI, GIRL]) {
+		const sailor = resolveLook(rig, { outfit: 'sailor-plaid' });
+		assert.equal(sailor.outfit, 'sailor-plaid');
+		assert.deepEqual(sailor.slots.topUnder, ['sailor-plaid-torso']);
+		assert.ok(sailor.slots.collar.includes('sailor-plaid-collar'));
+		assert.deepEqual(sailor.slots.bottom, ['sailor-plaid-skirt', 'sailor-plaid-skirt-under']);
+		assert.equal(sailor.slots.sleeveUpper.length, 2);
+	}
 });
 
 test('resolveLook：上衣+下装动态组合（v2.2 cutout 组合套装 `<top>-<bottom>`）', () => {
 	const combos = [
-		['sweater', 'plaid', 'topBody', 'sweater-plaid-torso', 'sweater-plaid-skirt'],
-		['sweater', 'pleated', 'topBody', 'sweater-pleated-torso', 'sweater-pleated-skirt'],
-		['sailor', 'plaid', 'topUnder', 'sailor-plaid-torso', 'sailor-plaid-skirt'],
 		['hoodie', 'plaid', 'topBody', 'hoodie-plaid-torso', 'hoodie-plaid-skirt'],
 		['hoodie', 'pleated', 'topBody', 'hoodie-pleated-torso', 'hoodie-pleated-skirt'],
+		['sailor', 'plaid', 'topUnder', 'sailor-plaid-torso', 'sailor-plaid-skirt'],
 	];
 	for (const [top, bottom, slot, bodyId, bottomId] of combos) {
 		const look = resolveLook(CHIBI, { outfit: 'none', top, bottom });
@@ -241,8 +248,27 @@ test('resolveLook：未知套装/缺下装时的回退与 warnings（不抛错�
 	assert.ok(look.slots.topBody.length + look.slots.topUnder.length > 0, '应回退到可用套装');
 	assert.ok(look.warnings.length > 0);
 	// 页面只有 maid 套装 + 上衣/下装：默认 state 不应触发回退
-	const domState = { outfit: 'none', top: 'sweater', bottom: 'plaid' };
+	const domState = { outfit: 'none', top: 'hoodie', bottom: 'plaid' };
 	assert.equal(resolveLook(CHIBI, domState).warnings.length, 0);
+});
+
+test('resolveLook：旧 v2.1 rig 上衣缺件回退连帽卫衣（毛衣下架后不再回退毛衣）', () => {
+	// v2.1 generic drawable rig（无 cutout 组合套装）：未知上衣 → 回退 hoodie
+	const legacyRig = {
+		drawables: [
+			{ id: 'body-torso', slot: 'body', z: 10 },
+			{ id: 'hoodie-body', slot: 'topBody', z: 40 },
+			{ id: 'hoodie-sleeve', slot: 'sleeve', z: 60 },
+			{ id: 'bottom-plaid', slot: 'bottom', z: 30 },
+		],
+		outfits: {},
+		defaults: { outfit: 'maid' },
+	};
+	const legacy = resolveLook(legacyRig, { outfit: 'none', top: 'unknown-top', bottom: 'plaid' });
+	assert.equal(legacy.fallback, 'partial');
+	assert.deepEqual(legacy.slots.topBody, ['hoodie-body']);
+	assert.deepEqual(legacy.slots.sleeve, ['hoodie-sleeve']);
+	assert.ok(legacy.warnings.some((warning) => warning.startsWith('top:unknown-top→hoodie')), `warnings=${legacy.warnings.join(',')}`);
 });
 
 test('visibleDrawables：按 z 升序、套装/上下装/face 状态切换、补边层在 body 下', () => {
@@ -266,11 +292,11 @@ test('visibleDrawables：按 z 升序、套装/上下装/face 状态切换、补
 	const hairBackfill = open.find((entry) => entry.id === 'hair-backfill');
 	assert.ok(hairBackfill && hairBackfill.z < 10);
 	// 换装后服装 drawable 变化
-	const sweater = resolveLook(CHIBI, { outfit: 'none', top: 'sweater', bottom: 'pleated' });
-	const sweaterIds = visibleDrawables(CHIBI, sweater, { eye: 'open', mouth: 'closed' }).map((entry) => entry.id);
-	assert.ok(sweaterIds.includes('sweater-pleated-torso'));
-	assert.ok(sweaterIds.includes('sweater-pleated-skirt'));
-	assert.ok(!sweaterIds.includes('maid-torso'));
+	const hoodie = resolveLook(CHIBI, { outfit: 'none', top: 'hoodie', bottom: 'pleated' });
+	const hoodieIds = visibleDrawables(CHIBI, hoodie, { eye: 'open', mouth: 'closed' }).map((entry) => entry.id);
+	assert.ok(hoodieIds.includes('hoodie-pleated-torso'));
+	assert.ok(hoodieIds.includes('hoodie-pleated-skirt'));
+	assert.ok(!hoodieIds.includes('maid-torso'));
 });
 
 test('faceDrawableIds / faceStateKeys：rig face 部件表与兜底', () => {
@@ -320,7 +346,7 @@ test('resolveLook bare（DIY 静态贴片）：只留身体/头发/脸，不渲�
 	const ids = visibleDrawables(CHIBI, look, { eye: 'open', mouth: 'closed' }).map((entry) => entry.id);
 	assert.ok(ids.includes('body-head') || ids.includes('body-torso'));
 	assert.ok(ids.includes('hair-front-bangs'), '应保留头发');
-	assert.ok(!ids.some((id) => /maid|sweater|sailor|hoodie|bottom-/.test(id)), '不应出现任何服装层');
+	assert.ok(!ids.some((id) => /maid|sailor|hoodie|bottom-/.test(id)), '不应出现任何服装层');
 });
 
 test('BASE_CANVAS：与 DOM 分层素材同构（675×1200 9:16）', () => {

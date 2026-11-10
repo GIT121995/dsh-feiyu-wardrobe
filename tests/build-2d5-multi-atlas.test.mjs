@@ -57,7 +57,7 @@ function makeDrawable(id, slot, texture, atlas) {
 
 function makeRig(multi) {
 	const d1 = makeDrawable('body-torso', 'body', 'a.webp', multi ? 'base' : undefined);
-	const d2 = makeDrawable('sweater-body', 'topBody', 'b.webp', multi ? 'cutout' : undefined);
+	const d2 = makeDrawable('hoodie-body', 'topBody', 'b.webp', multi ? 'cutout' : undefined);
 	const rig = {
 		format: 'feiyu-test-rig', shape: 'chibi',
 		skeleton: { bones: [
@@ -68,7 +68,7 @@ function makeRig(multi) {
 		physics: [{ id: 'skirtP0', chain: ['skirtP00'], nodes: [[20, 30], [20, 40]], parent: 'hips' }],
 		slots: { body: ['body-torso'] },
 		drawables: [d1, d2],
-		outfits: { 'test-outfit': { name: '测试', topBody: ['sweater-body'] } },
+		outfits: { 'test-outfit': { name: '测试', topBody: ['hoodie-body'] } },
 	};
 	if (multi) {
 		rig.atlasPages = [{ id: 'base', file: 'atlas.webp' }, { id: 'cutout', file: 'atlas2.webp' }];
@@ -109,7 +109,7 @@ test('build_2d5.py：两页图集构建（atlasPages + drawables[].atlas）→ p
 			assert.ok(existsSync(join(out, 'chibi', atlas.file)), `缺少图集文件 ${atlas.file}`);
 		}
 		assert.equal(rig.drawables.find((d) => d.id === 'body-torso').atlas, 'base');
-		assert.equal(rig.drawables.find((d) => d.id === 'sweater-body').atlas, 'cutout');
+		assert.equal(rig.drawables.find((d) => d.id === 'hoodie-body').atlas, 'cutout');
 		assert.equal(rig.product.pages, 2);
 		const report = JSON.parse(readFileSync(join(out, 'chibi', 'build-report.json'), 'utf8'));
 		assert.equal(report.pages, 2);
@@ -120,7 +120,7 @@ test('build_2d5.py：两页图集构建（atlasPages + drawables[].atlas）→ p
 		assert.equal(normalized.ok, true, normalized.errors.join(','));
 		assert.equal(normalized.legacy, false);
 		assert.deepEqual(normalized.atlases.map((atlas) => atlas.id), ['base', 'cutout']);
-		assert.equal(resolveDrawableAtlas(rig.drawables.find((d) => d.id === 'sweater-body'), normalized.atlases), 1);
+		assert.equal(resolveDrawableAtlas(rig.drawables.find((d) => d.id === 'hoodie-body'), normalized.atlases), 1);
 	} finally {
 		rmSync(tmp, { recursive: true, force: true });
 	}

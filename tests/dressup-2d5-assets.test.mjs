@@ -11,8 +11,8 @@ const ROOT = dressUpRoot();
 const ASSET_ROOT = join(ROOT, 'art/2d5');
 const SHAPES = ['chibi', 'girl'];
 const MAX_BONES = 80;   // v2.4：65 骨 rig（59+6 legBones）；runtime shader 上限提到 80
-/** cutout production 资产：chibi 85 / girl 86 drawables（单页图集；v2.5 girl 新增 hair-arm-girl）。 */
-const EXPECTED_DRAWABLES = { chibi: 85, girl: 86 };
+/** cutout production 资产：chibi 69 / girl 70 drawables（单页图集；v2.7.0 下架毛衣 16 drawables，v2.5 girl 新增 hair-arm-girl）。 */
+const EXPECTED_DRAWABLES = { chibi: 69, girl: 70 };
 /** 旧四个 + cutout 新服装槽位（outfit 引用校验）。 */
 const OUTFIT_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar'];
 

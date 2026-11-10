@@ -23,6 +23,7 @@
 | D-013 | 素体烘焙水平细线（腕 y654–658、踝 y1000–1004、手臂 y437 色阶） | P1 | **fixed（v2.6.0）** | v2.5.0 | 1x 素体行不连续度指标归零/无可见线；2x 局部目检通过 | `visual:qa` 2x 局部 + rig QA 行指标（63.5→47.5，0 残留） | v2.6.0（母版 v3.1 + 移除 arm/hand Lab 调色） |
 | D-014 | 1x 资产高倍放大（>4x）时边缘像素噪点/发虚 | P2 | **fixed（v2.6.1）** | v2.5.0 起 | 8x 放大边缘无像素噪点（2x 资产）；DPR≥2 明显锐利；弱机回退 1x 不掉帧 | `visual:qa` DPR2 抓帧 + 用户确认；显存/首屏增量记录 | **v2.6.1 P2**：`art/2d5/{shape}-hi` 2x hi tier（AI 增强 + alpha 确定性上采样）；DPR2 lo-vs-hi 对比与指标 `.scratch/p8/2x/runtime/review/`；残余：服装仍 1x（记 D-005/P3） |
 | D-015 | chibi 素体隐藏区黑色残留：头发/手臂摆动时体侧露出黑块（2x/mm 同步可见） | P1 | **fixed（v2.6.2）** | v2.6.0（母版 v3 全量重贴图） | 任意头发摆动/头部动作/手臂抬起帧下，chibi 体侧（体侧发间、腋下）不得出现 ≥2px 连续纯黑块；lo 与 hi tier 一致 | `tests/asset-build.test.mjs`「chibi 体表近黑像素上限」断言 + DPR2 动画抓帧目检；v2.6.2 修复后 body-head 近黑 px 8,774→4,818（≤ v2.5 基线 5,010）；lo 处理 6,214px（发色外扩，非白/黑回填） | v2.6.2 修复（builder 母版隐藏区近黑处理/发色外扩；非服装绑定、非 2x 资产引入） |
+| D-017 | 白色高领毛衣高领不适配短脖子 chibi 角色（用户拍板整体下架） | P2 | **fixed（v2.7.0 下架）** | v2.2.0（cutout 起；用户 2026-11-10 反馈） | 衣柜不再出现毛衣上衣与 `sweater-plaid`/`sweater-pleated` 组合；旧存档/旧 v2.1 DIY pack 引用经兼容回退不报错、不裸上身/不光腿；production rig 不含毛衣 drawable/纹理/图标 | `npm test`（manifest v8 / runtime core / DIY 兼容断言）+ `grep -rn sweater`（仅迁移表旧键/历史文档）+ `npm run visual:qa` 新 baseline（hoodie-plaid 造型替换毛衣）PASS | v2.7.0 下架（高领与短脖子 chibi 冲突；资产 v21 / 页面 v24） |
 | D-010 | 素体皮肤整体亮度较 v2.5 提高（脚/腿/手臂统一到母版肤色） | P2 | open（v2.6.0 已知，待用户确认是否回调） | v2.6.0 | 1x 600–900px 显示下皮肤不显「发白/发灰」；如回调，视觉门禁对比通过 | 视觉门禁 1x 全身 + 用户确认；Lab 系数见 v26-art 报告 | v2.6 用户确认 / v2.6.x |
 
 ## v2.6 发版前必查
@@ -50,3 +51,4 @@
 - 2026-11-05（W0）：建表，首批登记 D-001 ~ D-009（来源：HANDOFF §17–§24 已知限制、v2.5.0 发布记录、用户反馈）。
 - 2026-11-06（v2.6.1）：D-014 改 `fixed`（hi 2x tier）；D-005 改 `fixing`（body/hair/face/tail 2x，服装 1x 待 P3）。
 - 2026-11-06（v2.6.2）：D-015 新增并改 `fixed`（chibi 母版隐藏区黑色残留，动画露黑块；用户 2026-11-06 反馈）。
+- 2026-11-10（v2.7.0）：D-017 新增并改 `fixed`（白色高领毛衣高领不适配短脖子 chibi，用户拍板整体下架；旧存档/旧 v2.1 DIY pack 引用迁移到 hoodie-plaid 部件，视觉基线换 hoodie-plaid 造型）。

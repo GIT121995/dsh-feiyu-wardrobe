@@ -19,9 +19,9 @@ import {
 	normalizeState,
 	randomOutfit,
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；加版本号让浏览器绕过旧缓存
-} from './wardrobe-core.js?v=23';
-import { createDiy } from './diy-ui.js?v=23';
-import { createDiyPacks } from './diy-packs.js?v=23';
+} from './wardrobe-core.js?v=24';
+import { createDiy } from './diy-ui.js?v=24';
+import { createDiyPacks } from './diy-packs.js?v=24';
 import {
 	ACTION_SPECS,
 	actionParams,
@@ -29,7 +29,7 @@ import {
 	hitZone,
 	moodFacePlan,
 	pickLine,
-} from './interaction-model.js?v=23';
+} from './interaction-model.js?v=24';
 
 (() => {
 	'use strict';
@@ -37,10 +37,10 @@ import {
 	const $ = (sel) => document.querySelector(sel);
 	const STORAGE_KEY = 'feiyu:outfit';
 	/** 2.5D runtime 模块（v2 唯一渲染路径；页面模块版本 v15）。 */
-	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=23';
+	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=24';
 	const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/';
 	/** 2.5D 资产版本（v2.6.2 = 20：chibi 素体隐藏区黑色残留修复；v2.6.1=19 hi 2x tier；页面模块 v23）。 */
-	const RUNTIME_2D5_ASSET_VERSION = '20';
+	const RUNTIME_2D5_ASSET_VERSION = '21';
 	const params = new URLSearchParams(location.search);
 	/**
 	 * v2.6.1 资产 tier 调试覆盖：URL `?feiyuTier=lo|hi` 优先，其次 localStorage `feiyu:tier`。
