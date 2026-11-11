@@ -31,19 +31,20 @@ node scripts/visual-qa.mjs --mode compare --out /tmp/feiyu-visual-qa-reports
 
 单进程串行：本机内存 3.6GB，脚本一次只开一个浏览器、一个页面；**运行前确认没有其他 agent 在抓帧**（脚本会在检测到已有 Chrome 进程时打印警告），跑完自动关闭浏览器并回报进程数。
 
-## 覆盖矩阵（70 张）
+## 覆盖矩阵（80 张）
 
 | 维度 | 取值 |
 |---|---|
 | 身形 | `chibi`、`girl` |
 | 造型 | `base`（素体 cutout）、`maid`、`hoodie-plaid`、`hoodie-pleated`、`sailor-plaid` |
 | 1x 全身 | 画布区 675×1200（DPR1），JPEG **q82**，合成背景 `#808a99` |
-| 2x 关键局部 | 膝 / 手 / 肩 / 脚 / 腹 / 发，DPR2 画布裁切（2x 设计像素），JPEG **q85** |
+| 2x 关键局部 | 膝 / 手 / 肩 / 脚 / 腹 / 发 / **颈**，DPR2 画布裁切（2x 设计像素），JPEG **q85** |
 
-- 2x 区域**不是写死坐标**：由各身形 `rig.json` 的骨骼关节（shin/shoulder/foot/hips/head）与部件 rect（hand-L/R、body-torso、hair-front-bangs）推导，记录在 `docs/qa-baseline/manifest.json` 的 `regions`；rig 布局变了而资产版本没升会直接 fail。
+- 2x 区域**不是写死坐标**：由各身形 `rig.json` 的骨骼关节（shin/shoulder/foot/hips/head/**neck**）与部件 rect（hand-L/R、body-torso、hair-front-bangs）推导，记录在 `docs/qa-baseline/manifest.json` 的 `regions`；rig 布局变了而资产版本没升会直接 fail。
+- `neck` 区域（v3.0 新增）：以 `neck` 骨为基准，覆盖「下巴淡影 → 领口露颈 → 锁骨上缘」；用于回归 v3.0 露颈相关的假脖子/烘入皮肤/肌腱亮条/颈脸色差（见 `QA-REGISTRY` D-018/D-019）。
 - 抓帧统一走 runtime 的「静态 QA 模式」：`freeze(true)` + `setAuto(false)` + `setQuality('high')` + `setMipmaps(false)` + `setStatic(true)`（物理回 rest）+ `setFaceOverride({eye:'open',mouth:'closed'})` + 90 tick 衰减 boot 残留的眨眼/笑眼/tap/head-follow 计时器。**不要随意改动这段顺序**，否则帧间不可复现（历史教训：boot 里随机眨眼会把「半眨眼」抓进基线，compare 出现数千像素伪差异）。
-- 基线体积硬上限 **3MiB**（当前 v2.7.0 基线 70 张 ≈2.28MiB）；超限 `--mode baseline` 直接失败。
-- 当前基线版本：**页面 v24 / 资产 v21**（v2.7.0 起 `sweater-plaid` 造型由 `hoodie-plaid` 替代，baseline 已同步重生成）。
+- 基线体积硬上限 **3MiB**（v3.0.0 基线 80 张，新增 10 张 neck 2x 局部）；超限 `--mode baseline` 直接失败。
+- 当前基线版本：**页面 v25 / 资产 v22**（v3.0.0 paper-doll 整层资产；v2.7.0 起 `sweater-plaid` 造型由 `hoodie-plaid` 替代）。
 
 ## 版本门禁（cache-bust）
 
@@ -72,12 +73,13 @@ node scripts/visual-qa.mjs --mode compare --out /tmp/feiyu-visual-qa-reports
 - [ ] **腹部/肚脐自然**：素体腹部无横切接缝、肚脐形状/位置正常；服装下腹部无破面。
 - [ ] **发层遮挡正确**：前发/后发/侧发遮住应遮的身体区域，没有发片浮在衣服前或衣服盖住头发。
 
-### 2x 关键局部（膝/手/肩/脚/腹/发）
+### 2x 关键局部（膝/手/肩/脚/腹/发/颈）
 
 - [ ] **接缝 ≤1px AA**：相邻部件（腿-膝、手-腕、袖-肩、脚-踝、发-发）接缝处只有 ≤1px 抗锯齿过渡，没有双描边/错位台阶。
 - [ ] **色差 ≤12/255**：接缝两侧相邻像素 RGB 最大通道差 ≤12（报告里 diff 阈值 10/255 的标记可作近似定位；人工量色用 4x 放大图或原图取样）。
 - [ ] **手部**：腕缝连续、手指轮廓无重影/双描边（对应 `QA-REGISTRY` 的「手部线稿粗糙」）。
 - [ ] **头发**：发束分层边缘无白色硬边、无「发色垫层」露出（对应 tail/后发相关缺陷）。
+- [ ] **领口露颈（v3.0 新增门禁）**：领口内看到的是**真实素体颈部**（不是服装上烘入的假脖子；头动时颈部随头动）；颈部无两条竖肌腱亮条/「肉须」、无重阴影；下巴下方有**极淡下巴影**保证下巴可辨（不能完全无阴影导致「没下巴」）；颈部肤色与脸/胸口连续（Lab ΔL ≤6、Δa/Δb ≤3；左右对称部位无明显色差带）。对应 `*/{all}/neck-2x` 与 `QA-REGISTRY` D-018/D-019。
 
 ### 隐藏区（姿态变化不露底 / 不穿帮）
 
@@ -117,6 +119,7 @@ node scripts/visual-qa.mjs --mode compare --out /tmp/feiyu-visual-qa-reports
 | 后发/发束分层 | `*/{all}/hair-2x` + 1x | |
 | tail 白须垫层（527px） | 1x 全身（rest 静置被遮，可能不可见） | **rest 帧覆盖不到姿态暴露**；需 ±25° 尾摆抓帧，见 `QA-REGISTRY` 回归方式 |
 | 高 DPI 发虚 / 真机未测 | 不覆盖 | 属真机项，不在 headless 像素门禁内 |
+| 露颈假脖子 / 烘入皮肤 / 肉须 / 颈脸色差（D-018/D-019） | `*/{all}/neck-2x` | v3.0 起；同时由 `tests/garment-hygiene.test.mjs` 的「服装贴图烘入皮肤=0」断言兜底 |
 
 - 新增缺陷时，请在 `QA-REGISTRY.md` 的「回归方式」列写明「`npm run visual:qa` 的哪张图 / 是否需姿态抓帧」；本文件不再重复登记。
 

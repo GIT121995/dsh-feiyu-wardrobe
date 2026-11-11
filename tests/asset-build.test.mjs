@@ -49,6 +49,18 @@ function discoverMasterConfigs() {
 const PAYLOAD_PREFIXES = ['art/', 'm4/', 'feet/', 'hands/', 'prod/', 'master/', 'hi/'];
 const sha256 = (p) => createHash('sha256').update(readFileSync(p)).digest('hex');
 
+/**
+ * v3.0 整层 outfit（paper-doll）：源包 `art/garments/{shape}/{combo}/layers/top.png`
+ * 存在 → 构建走整层路径（每套 top/skirt 两个 drawable）；不存在 → v2.7 分件路径。
+ * 源包升级到带 layers/ 的版本后，本文件的 v3 契约自动生效；旧源包继续验证旧路径。
+ */
+const V3_COMBOS = ['maid', 'hoodie-plaid', 'hoodie-pleated', 'sailor-plaid'];
+function v3LayerCombos(shape = SHAPE) {
+	return V3_COMBOS.filter((combo) =>
+		existsSync(join(SRC, 'art', 'garments', shape, combo, 'layers', 'top.png')) &&
+		existsSync(join(SRC, 'art', 'garments', shape, combo, 'layers', 'skirt.png')));
+}
+
 /** python3 + 构建依赖可用？（numpy/cv2/Pillow；缺失时跳过构建类测试） */
 function pythonBuildDeps() {
 	const r = spawnSync(PYTHON, ['-c', 'import numpy, cv2, PIL'], { encoding: 'utf8' });
@@ -153,6 +165,115 @@ test(`build_prod 确定性：${SHAPE} 双跑 rig.json + atlas.webp md5 一致（
 		assert.ok(pages.length >= 1, `${SHAPE} build-report 缺少图集页信息`);
 		for (const page of pages) assert.equal(page.pixelEqual, true, `${SHAPE} 图集 pixelEqual != true`);
 		t.diagnostic(`${SHAPE}: rig sha256 ${md5s[0]['rig.json']} / atlas sha256 ${md5s[0]['atlas.webp']}`);
+
+		// ---------------- v3.0 整层 outfit 契约（源包含 layers/ 时生效）----------------
+		// 每套 combo 只保留 2 个整层 drawable（{combo}-top z=64 / {combo}-skirt z=30），
+		// 单网格覆盖整层 alpha；旧分件（torso/collar/sleeve-*/apron/skirt-under）必须整体退役。
+		const v3Combos = v3LayerCombos();
+		if (v3Combos.length) {
+			const srcRig = JSON.parse(readFileSync(join(runs[0].work, 'assets', `${SHAPE}-cutout.feiyu.json`), 'utf8'));
+			const distRig = JSON.parse(readFileSync(join(runs[0].out, SHAPE, 'rig.json'), 'utf8'));
+			const wantIds = v3Combos.flatMap((combo) => [`${combo}-top`, `${combo}-skirt`]);
+			if (v3Combos.length === V3_COMBOS.length) {
+				assert.equal(wantIds.length, 8, `v3 整层 outfit 应有 8 个 drawable（4 套 × top/skirt），实际 ${wantIds.length}`);
+			}
+			const byId = new Map(srcRig.drawables.map((d) => [d.id, d]));
+			const CANVAS_W = 675;
+			const CANVAS_H = 1200;
+			for (const combo of v3Combos) {
+				for (const [layer, slot, z] of [['top', 'topBody', 64], ['skirt', 'bottom', 30]]) {
+					const id = `${combo}-${layer}`;
+					const d = byId.get(id);
+					assert.ok(d, `v3 rig 缺少整层 drawable ${id}`);
+					assert.equal(d.slot, slot, `${id} slot 应为 ${slot}`);
+					assert.equal(d.role, slot, `${id} role 应为 ${slot}`);
+					assert.equal(Number(d.z), z, `${id} z 应为 ${z}`);
+					assert.equal(d.texture, `${id}.png`, `${id} texture 应为全画布 ${id}.png`);
+					const mesh = d.mesh || {};
+					assert.ok(Array.isArray(mesh.positions) && mesh.positions.length >= 4, `${id} mesh.positions 为空`);
+					assert.ok(Array.isArray(mesh.indices) && mesh.indices.length > 0 && mesh.indices.length % 3 === 0,
+						`${id} mesh.indices 非空且为三角形列表`);
+					assert.equal(mesh.uvs?.length, mesh.positions.length, `${id} mesh.uvs 与 positions 数量不一致`);
+					assert.equal(mesh.bones?.length, mesh.positions.length, `${id} mesh.bones 与 positions 数量不一致`);
+					assert.equal(mesh.weights?.length, mesh.positions.length, `${id} mesh.weights 与 positions 数量不一致`);
+					assert.ok(mesh.uvs.every(([u, v]) => u >= 0 && u <= 1 && v >= 0 && v <= 1), `${id} mesh.uv 越界`);
+					assert.ok(Array.isArray(d.rect) && d.rect.length === 4, `${id} rect 非法`);
+					const [rx0, ry0, rx1, ry1] = d.rect;
+					assert.ok(rx0 >= 0 && ry0 >= 0 && rx1 <= CANVAS_W && ry1 <= CANVAS_H && rx1 > rx0 && ry1 > ry0,
+						`${id} rect 为空或越界：${JSON.stringify(d.rect)}`);
+					// 整层网格（全画布 alpha + V3_CELL=9）顶点数应远多于旧分件小件
+					assert.ok(mesh.positions.length > 100, `${id} 整层网格顶点过少（${mesh.positions.length}）`);
+				}
+				const outfit = srcRig.outfits[combo];
+				assert.ok(outfit, `v3 rig 缺少 outfit ${combo}`);
+				assert.match(String(outfit.name), new RegExp(combo), `outfit ${combo} 缺少 name 键`);
+				assert.deepEqual(outfit.topBody, [`${combo}-top`], `outfit ${combo}.topBody 应指向整层 top`);
+				assert.deepEqual(outfit.bottom, [`${combo}-skirt`], `outfit ${combo}.bottom 应指向整层 skirt`);
+				const stale = srcRig.drawables
+					.filter((d) => d.id.startsWith(`${combo}-`) && d.id !== `${combo}-top` && d.id !== `${combo}-skirt`)
+					.map((d) => d.id);
+				assert.deepEqual(stale, [], `v3 ${combo} 仍残留旧分件 drawable`);
+			}
+			// drawable 总数 = v2.7 分件基线 - 29（maid 9 + hoodie-plaid 7 + hoodie-pleated 7 + sailor-plaid 6）
+			// + 8（4 套 × 整层 top/skirt；skirt 复用旧 id 名，top 为新增）
+			const baseCount = { chibi: 69, girl: 70 }[SHAPE];
+			if (v3Combos.length === V3_COMBOS.length && baseCount) {
+				assert.equal(srcRig.drawables.length, baseCount - 29 + 8,
+					`${SHAPE} v3 drawables 总数应为 ${baseCount - 29 + 8}（基线 ${baseCount} - 旧分件 29 + 整层 8）`);
+			}
+			// 图集构建通过：整层纹理已 trim 进图集页（atlasRect/texSize 有效）且 lossless 回读一致
+			const distById = new Map(distRig.drawables.map((d) => [d.id, d]));
+			const reportPages = report.atlases ?? (report.atlas ? [report.atlas] : []);
+			assert.ok(reportPages.length >= 1, 'v3 构建缺少图集页');
+			assert.equal(reportPages.reduce((n, p) => n + (p.rects ?? 0), 0), distRig.drawables.length,
+				'图集 rects 总数应等于 drawables 数（所有 drawable 都进图集）');
+			for (const page of reportPages) assert.equal(page.pixelEqual, true, 'v3 图集 lossless 回读像素不一致');
+			for (const id of wantIds) {
+				const d = distById.get(id);
+				assert.ok(d, `dist rig 缺少 v3 drawable ${id}`);
+				assert.ok(Array.isArray(d.atlasRect) && d.atlasRect.length === 4, `${id} 缺 atlasRect（未进图集）`);
+				assert.ok(Array.isArray(d.texSize) && d.texSize[0] > 0 && d.texSize[1] > 0, `${id} texSize 非法`);
+				assert.match(String(d.texture), /^atlas.*\.webp$/, `${id} 纹理应指向图集页`);
+			}
+			t.diagnostic(`${SHAPE} v3 整层 outfit：${v3Combos.length} 套 / ${wantIds.length} drawable`
+				+ `（z top=64 skirt=30，drawables ${srcRig.drawables.length}，图集页 ${reportPages.length}）`);
+		}
+
+		// --------------- v3.0 Phase 2C 回归：素体颈部 overlay（W8）必须实际生效（lo tier）----------
+		// 用户选定 W8 方案：源包 art/body-fix/{shape}/neck-overlay.png（alpha=羽化权重、
+		// RGB=目标肤色）合成到 body-head 贴图（lo 1x / hi 2x Lanczos），且 overlay 存在时
+		// 必须跳过算法版 retouch_neck（避免双重处理）；overlay 缺失时才回退算法版。
+		const buildStatsPath = join(runs[0].work, 'assets', 'build-stats.json');
+		if (existsSync(buildStatsPath)) {
+			const buildStats = JSON.parse(readFileSync(buildStatsPath, 'utf8'))[SHAPE] || {};
+			const overlay = buildStats.neckOverlay;
+			const neck = buildStats.neckRetouch;
+			if (overlay) {
+				assert.equal(overlay.tier, 'lo', `${SHAPE} neckOverlay.tier 应为 lo`);
+				assert.match(String(overlay.path), /neck-overlay\.png$/, `${SHAPE} neckOverlay.path 非法：${overlay.path}`);
+				assert.ok(overlay.changedPx > 0, `${SHAPE} neck overlay 改动像素为 0（W8 未生效）`);
+				assert.equal(overlay.alphaInvariant, true, `${SHAPE} neck overlay 改变了 tex alpha`);
+				assert.equal(overlay.outsideRegionChanged, 0, `${SHAPE} neck overlay 改到了 alpha=0 区域`);
+				assert.ok(Number.isFinite(overlay.sourceSeed), `${SHAPE} neck overlay 缺少 sourceSeed`);
+				assert.equal(neck, undefined,
+					`${SHAPE} overlay 存在时不应再跑算法版 retouch_neck（会双重处理）`);
+				const head = overlay.perTexture && overlay.perTexture['body-head'];
+				assert.ok(head && head.changedPx > 0, `${SHAPE} neck overlay 未作用于 body-head`);
+				t.diagnostic(`${SHAPE} Phase 2C 颈部 overlay(W8)：seed=${overlay.sourceSeed} `
+					+ `changedPx=${overlay.changedPx} alphaInvariant=${overlay.alphaInvariant} `
+					+ `outsideChanged=${overlay.outsideRegionChanged}`);
+			} else {
+				// 兜底：源包无 overlay 时沿用算法版（中值去条带 + 轻度提亮）
+				assert.ok(neck, `${SHAPE} 构建缺少 stats.neckOverlay / stats.neckRetouch（W8 与兜底都未生效）`);
+				const o = neck;
+				assert.equal(o.mode, 'neck-median', `${SHAPE} 兜底颈部处理 mode 非法：${o.mode}`);
+				assert.ok(o.changedPx > 0, `${SHAPE} 兜底颈部处理改动像素为 0`);
+				assert.equal(o.outsideChangedPx, 0, `${SHAPE} 兜底颈部处理改到了区域外像素`);
+				assert.ok(o.darkPxAfter <= Math.max(10, o.darkPxBefore * 0.5),
+					`${SHAPE} 兜底颈部暗条带未清干净：${o.darkPxBefore} -> ${o.darkPxAfter}`);
+				t.diagnostic(`${SHAPE} 兜底颈部处理：${o.changedPx}px 暗条带 ${o.darkPxBefore}→${o.darkPxAfter}`);
+			}
+		}
 
 		// v2.6.2 回归（D-015）：chibi 母版隐藏区近黑残留（头发/手臂摆动时露出黑块）不得回归。
 		// 判定：lo chibi 体表纹理中「近黑且不透明」像素总数上限。v2.5 基线 ~5,000；

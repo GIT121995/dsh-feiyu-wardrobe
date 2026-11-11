@@ -117,12 +117,11 @@ test('2.5D 生产资产覆盖两身形与全部可见服装（含 chibi hoodie�
 		// cutout 素体部件（v2.2）
 		'body-head', 'body-torso', 'leg-L', 'arm-upper-L', 'arm-fore-L', 'hand-L', 'seam-fill',
 		'hair-front-bangs', 'hair-backfill',
-		// 服装部件（v2.7.0 下架毛衣后 4 个 cutout 组合：maid / hoodie-plaid / hoodie-pleated / sailor-plaid）
-		'maid-torso', 'maid-skirt', 'maid-collar', 'maid-apron',
-		'hoodie-plaid-torso', 'hoodie-plaid-skirt',
-		'hoodie-pleated-torso', 'hoodie-pleated-skirt',
-		'sailor-plaid-torso', 'sailor-plaid-skirt', 'sailor-plaid-collar',
-		'hoodie-plaid-sleeve-upper-L', 'hoodie-plaid-sleeve-fore-L',
+		// v3.0 paper-doll 整层 outfit（每套 1 个 top + 1 个 skirt，替代旧 6-9 个分件）
+		'maid-top', 'maid-skirt',
+		'hoodie-plaid-top', 'hoodie-plaid-skirt',
+		'hoodie-pleated-top', 'hoodie-pleated-skirt',
+		'sailor-plaid-top', 'sailor-plaid-skirt',
 		// face 部件
 		'face-eye-L-sclera', 'face-eye-L-iris', 'face-eye-L-lash',
 		'face-eye-L-lid-half', 'face-eye-L-lid-closed', 'face-eye-L-lid-smile',
@@ -135,12 +134,14 @@ test('2.5D 生产资产覆盖两身形与全部可见服装（含 chibi hoodie�
 		// chibi 有后发层 hair-back；girl 后发由 hair-backfill 承担（无该 id）
 		if (shape === 'chibi') assert.ok(ids.has('hair-back'), 'chibi 缺少后发层 hair-back');
 		assert.ok(ids.has('hair-backfill'), `${shape} 缺少计算式补边层 hair-backfill`);
-		// 套装入口：v2.7.0 下架毛衣组合后，production rig 只剩 4 个 cutout 组合 + maid
+		// 套装入口：v3.0 paper-doll 后 production rig 只剩 4 个整层组合（maid / hoodie-plaid / hoodie-pleated / sailor-plaid）
 		for (const outfit of ['maid', 'hoodie-plaid', 'hoodie-pleated', 'sailor-plaid']) {
 			assert.ok(rig.outfits[outfit], `${shape} 缺少套装 ${outfit}`);
 			for (const slot of ['topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar']) {
 				for (const id of rig.outfits[outfit][slot] || []) assert.ok(ids.has(id), `${shape}/${outfit}.${slot} 引用缺失 drawable ${id}`);
 			}
+			assert.deepEqual(rig.outfits[outfit].topBody, [`${outfit}-top`], `${shape}/${outfit}.topBody 应为 v3 整层`);
+			assert.deepEqual(rig.outfits[outfit].bottom, [`${outfit}-skirt`], `${shape}/${outfit}.bottom 应为 v3 整层`);
 		}
 		// 图集 + 构建报告 + 紧凑 rig 均存在
 		for (const file of ['rig.json', 'atlas.webp', 'build-report.json']) {

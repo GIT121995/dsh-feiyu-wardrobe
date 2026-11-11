@@ -1,13 +1,13 @@
 {
  "format": "feiyu-visual-qa-baseline",
  "version": 1,
- "createdAt": "2026-11-10T06:28:54.938Z",
+ "createdAt": "2026-11-11T08:25:09.982Z",
  "generatedBy": "scripts/visual-qa.mjs --mode baseline",
  "note": "headless Chrome + SwANGLE（无 GPU）；仅像素回归基线，不代表真机 FPS/显存。",
  "repoPathHint": "dsh-feiyu-wardrobe",
  "versions": {
-  "asset": 21,
-  "page": 24,
+  "asset": 22,
+  "page": 25,
   "pageFiles": [
    "docs/dress-up/app.js",
    "docs/dress-up/index.html",
@@ -17,12 +17,12 @@
  },
  "assets": {
   "chibi": {
-   "rig.json": "b5cfec02bcbe9a622250ece808bc009adca9a9760e6905b6974359ead2fd7ca6",
-   "atlas.webp": "97da96ecef642fe3d8bb4b2c105c886117d46697c7ce986e1f61cdbce750ccbf"
+   "rig.json": "26715d3b2b473c9e691c97b14956db637864c8f76eb50adafc99980b4a8125c2",
+   "atlas.webp": "869043ee0f2da97199868e65b27d280ea70210d15bcfad6bd6637e1019ad0661"
   },
   "girl": {
-   "rig.json": "8860263d090f928b0489cff6b5de7cde7ea1d4d034441888da87cf2cf11576e2",
-   "atlas.webp": "a026b742af8e6df7245a66a15e860e172c881b1e5eb2cab9322d6dc9c77a566a"
+   "rig.json": "a96b9366525b2c7934040816d0b7094acd55cba6700fa254ccf1239f0c6ac531",
+   "atlas.webp": "784f9c02deca5fdd2c5af061e24b3ba7632f77b4a368c0aa040b9ba09c19f6ae"
   }
  },
  "capture": {
@@ -43,7 +43,8 @@
    "shoulder",
    "foot",
    "abdomen",
-   "hair"
+   "hair",
+   "neck"
   ],
   "viewport": {
    "width": 900,
@@ -100,6 +101,12 @@
     43,
     361,
     300
+   ],
+   "neck": [
+    242,
+    430,
+    191,
+    220
    ]
   },
   "girl": {
@@ -138,6 +145,12 @@
     27,
     361,
     300
+   ],
+   "neck": [
+    242,
+    285,
+    191,
+    220
    ]
   }
  },
@@ -165,8 +178,8 @@
     675,
     1200
    ],
-   "bytes": 86921,
-   "sha256": "8264f14c2e8d5cf9be6e6e350b0380762d24fb8bd795e7c17042cedb7db4b7d7"
+   "bytes": 87372,
+   "sha256": "cfdbb7ed452ecf7beec900c44402222a749fc815003797ea5356f370da75479f"
   },
   {
    "id": "chibi/maid/full-1x",
@@ -179,8 +192,8 @@
     675,
     1200
    ],
-   "bytes": 113192,
-   "sha256": "f0aee5c801163760bbbdc1a5445d328336fee9a11b82f03e7a537dd1c93dfcc5"
+   "bytes": 113156,
+   "sha256": "97d351dbd31710e0c2abeb9f94e1459dc1e9884780b374850c08818247f04147"
   },
   {
    "id": "chibi/hoodie-plaid/full-1x",
@@ -193,8 +206,8 @@
     675,
     1200
    ],
-   "bytes": 100608,
-   "sha256": "035586d2dd25db11761346636fc3ca5f9609155a716dfbbf480065fc2bb6a581"
+   "bytes": 100670,
+   "sha256": "2303c492e24273de20b601d9feb436eaf93b4513cf2dc4f749942b2c984c9f5e"
   },
   {
    "id": "chibi/hoodie-pleated/full-1x",
@@ -207,8 +220,8 @@
     675,
     1200
    ],
-   "bytes": 96477,
-   "sha256": "e352b00e199aeb39b5ef3e4f918eb479b503bc4ef69756a13f3fbc3ea1479dc7"
+   "bytes": 96927,
+   "sha256": "70876320b8456438e6c44972da8b873e9f706938e292d2e46e5b9dfc66a4e48f"
   },
   {
    "id": "chibi/sailor-plaid/full-1x",
@@ -221,8 +234,8 @@
     675,
     1200
    ],
-   "bytes": 108178,
-   "sha256": "30ae079803129888df541d68f160398e4e05c58d8be50b0bc5fbff144b1865f1"
+   "bytes": 107964,
+   "sha256": "cc5b963b2c1ae89c7d9ec497fc5a1778afc9793009f840d014e906887897af54"
   },
   {
    "id": "chibi/base/knee-2x",
@@ -236,8 +249,8 @@
     494,
     300
    ],
-   "bytes": 11639,
-   "sha256": "e35ee19e839e894f75e3b30cf45e4fd6b90d541982c9500275c2ab852518fea6"
+   "bytes": 11632,
+   "sha256": "b96868141ea0641fb0201842c99b4560647d6ef0b438e49dcf81652edc0e277b"
   },
   {
    "id": "chibi/base/hand-2x",
@@ -251,8 +264,8 @@
     750,
     262
    ],
-   "bytes": 19290,
-   "sha256": "4a11a2b736dea55566c0d4808eaa118fc039daeab9ba4d88d3edef0adcd3f3fc"
+   "bytes": 19294,
+   "sha256": "e8a82b0a1f635398da5aa386470664cab7c141353b40c48f50555144aecb5b34"
   },
   {
    "id": "chibi/base/shoulder-2x",
@@ -266,8 +279,8 @@
     650,
     340
    ],
-   "bytes": 25447,
-   "sha256": "8a0d7d897f8e372c0bde9a691841823a0ea5ee5fcee8d3b2d69ff02f6b2e776d"
+   "bytes": 26218,
+   "sha256": "76aa1f7c6b1764b201ccef6a6ce71f8f3bd4ada48b3c741582503880bca7995f"
   },
   {
    "id": "chibi/base/foot-2x",
@@ -281,8 +294,8 @@
     516,
     270
    ],
-   "bytes": 10351,
-   "sha256": "d5960b03cb8157c5a2eff1e75d7a9a032fa806958b59e48c00484f7b06506105"
+   "bytes": 10359,
+   "sha256": "2bd578b8bb7c8cb5bdaa7c40731ef8ee486475e72835fb6aa06cc7669bb4de2d"
   },
   {
    "id": "chibi/base/abdomen-2x",
@@ -296,8 +309,8 @@
     460,
     340
    ],
-   "bytes": 11404,
-   "sha256": "6bcc1d5394759c922f30e145ff7385bb28716017b138ce33b970d2b989ca1169"
+   "bytes": 11402,
+   "sha256": "45563ba1bf0521eda8d8cc5e34994f677cfe812ffad3168693560dc7d810a79b"
   },
   {
    "id": "chibi/base/hair-2x",
@@ -311,8 +324,23 @@
     722,
     600
    ],
-   "bytes": 33443,
-   "sha256": "7d953f371f23a672839a0dc133adea25fb33c82601fa23258ede16515a64a26b"
+   "bytes": 33464,
+   "sha256": "ec1a2bde8e0fd8cee85984c587f66f54c437b5d6de511ead4c8ac10aca7ff2b5"
+  },
+  {
+   "id": "chibi/base/neck-2x",
+   "file": "docs/qa-baseline/chibi/base/neck-2x.jpg",
+   "shape": "chibi",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "neck",
+   "size": [
+    382,
+    440
+   ],
+   "bytes": 19951,
+   "sha256": "8e3636709b6143bea2ded79791033dd73751ad3a35600f97f2493530ebdf59b2"
   },
   {
    "id": "chibi/maid/knee-2x",
@@ -326,8 +354,8 @@
     494,
     300
    ],
-   "bytes": 23806,
-   "sha256": "0d0364cd6962cf96912495321f531fa3549bec2cea335a139959023618d7ab17"
+   "bytes": 23869,
+   "sha256": "a1e228db1d01e4d8782245f8443e4e1c451cc27db182fa5a9b3457c121a4994b"
   },
   {
    "id": "chibi/maid/hand-2x",
@@ -341,8 +369,8 @@
     750,
     262
    ],
-   "bytes": 33909,
-   "sha256": "f1440ca15a73a2e1809494e06c0111e9e0781f4503fa78e73b6b7588cbbda303"
+   "bytes": 33881,
+   "sha256": "2b5c377440dd69655c8a15b195fa387eb77568390e6fa3f86aa38b58a65a8f3d"
   },
   {
    "id": "chibi/maid/shoulder-2x",
@@ -356,8 +384,8 @@
     650,
     340
    ],
-   "bytes": 34948,
-   "sha256": "08db9c29b1ebca917636132b2a69936c3912be38e1653a10abbdacb657a8f592"
+   "bytes": 34510,
+   "sha256": "f8e7843a658900dbbbffe37c4b2ef65f381f8983d98d838931d4a6bbbae5f404"
   },
   {
    "id": "chibi/maid/foot-2x",
@@ -371,8 +399,8 @@
     516,
     270
    ],
-   "bytes": 10351,
-   "sha256": "d5960b03cb8157c5a2eff1e75d7a9a032fa806958b59e48c00484f7b06506105"
+   "bytes": 10359,
+   "sha256": "2bd578b8bb7c8cb5bdaa7c40731ef8ee486475e72835fb6aa06cc7669bb4de2d"
   },
   {
    "id": "chibi/maid/abdomen-2x",
@@ -386,8 +414,8 @@
     460,
     340
    ],
-   "bytes": 21187,
-   "sha256": "dfa8734661e0fd966d6c4c0818b58352347e4429cb15465a222c56814b95f9f5"
+   "bytes": 20125,
+   "sha256": "9ee57317779773d16925030c9ad0432d12242657e2459fe4dd4403f1a1bfab54"
   },
   {
    "id": "chibi/maid/hair-2x",
@@ -401,8 +429,23 @@
     722,
     600
    ],
-   "bytes": 33443,
-   "sha256": "7d953f371f23a672839a0dc133adea25fb33c82601fa23258ede16515a64a26b"
+   "bytes": 33464,
+   "sha256": "ec1a2bde8e0fd8cee85984c587f66f54c437b5d6de511ead4c8ac10aca7ff2b5"
+  },
+  {
+   "id": "chibi/maid/neck-2x",
+   "file": "docs/qa-baseline/chibi/maid/neck-2x.jpg",
+   "shape": "chibi",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "neck",
+   "size": [
+    382,
+    440
+   ],
+   "bytes": 26997,
+   "sha256": "f1d27aebdd256eee0c37c40e5ef102059b9f9bdf0a59f838c4177234fb8ed399"
   },
   {
    "id": "chibi/hoodie-plaid/knee-2x",
@@ -416,8 +459,8 @@
     494,
     300
    ],
-   "bytes": 18230,
-   "sha256": "554186fa8e92ac709008159922451ac696470289a30e34f23c6da4ae0e05f648"
+   "bytes": 18226,
+   "sha256": "c8ae907c22c99dfa5cb98f691158d2b616869187d5754004700bb4e598245976"
   },
   {
    "id": "chibi/hoodie-plaid/hand-2x",
@@ -431,8 +474,8 @@
     750,
     262
    ],
-   "bytes": 38301,
-   "sha256": "8495f880ccca0d98be90b6de71ad25b36de512857fa00ed515280061fb7fb6fa"
+   "bytes": 38030,
+   "sha256": "570a1c559d70ad1f40398c706ed91a413cb87d949b657741b91302a854687f39"
   },
   {
    "id": "chibi/hoodie-plaid/shoulder-2x",
@@ -446,8 +489,8 @@
     650,
     340
    ],
-   "bytes": 27935,
-   "sha256": "045d93602d73a4933d1a91fd58cf7422252807feab5fcd1af720ea0bb5f6dea7"
+   "bytes": 27415,
+   "sha256": "c126afc25ed72f800d8c182243df095822fd277d813022c5dc7dfd1ef13ec28a"
   },
   {
    "id": "chibi/hoodie-plaid/foot-2x",
@@ -461,8 +504,8 @@
     516,
     270
    ],
-   "bytes": 10351,
-   "sha256": "d5960b03cb8157c5a2eff1e75d7a9a032fa806958b59e48c00484f7b06506105"
+   "bytes": 10359,
+   "sha256": "2bd578b8bb7c8cb5bdaa7c40731ef8ee486475e72835fb6aa06cc7669bb4de2d"
   },
   {
    "id": "chibi/hoodie-plaid/abdomen-2x",
@@ -476,8 +519,8 @@
     460,
     340
    ],
-   "bytes": 22936,
-   "sha256": "4023c36d37da50cad0d6ae246a8e33ad32d225d768f444054cf1806bab172cf2"
+   "bytes": 22758,
+   "sha256": "321e9accb6e4be794278d7e4ed29a46a63bbedcd3c8175ed408ec9dc9f34bb26"
   },
   {
    "id": "chibi/hoodie-plaid/hair-2x",
@@ -491,8 +534,23 @@
     722,
     600
    ],
-   "bytes": 33443,
-   "sha256": "7d953f371f23a672839a0dc133adea25fb33c82601fa23258ede16515a64a26b"
+   "bytes": 33464,
+   "sha256": "ec1a2bde8e0fd8cee85984c587f66f54c437b5d6de511ead4c8ac10aca7ff2b5"
+  },
+  {
+   "id": "chibi/hoodie-plaid/neck-2x",
+   "file": "docs/qa-baseline/chibi/hoodie-plaid/neck-2x.jpg",
+   "shape": "chibi",
+   "outfit": "hoodie-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "neck",
+   "size": [
+    382,
+    440
+   ],
+   "bytes": 21143,
+   "sha256": "0f21d760136a0efd7179035c0486611b26aa51ea37e7a648afe746fa406ecc77"
   },
   {
    "id": "chibi/hoodie-pleated/knee-2x",
@@ -506,8 +564,8 @@
     494,
     300
    ],
-   "bytes": 16310,
-   "sha256": "f8ce1a9605d311fd08e82859a1a11401ca7fcd1006db6bf1b6f8a158450a27a1"
+   "bytes": 16581,
+   "sha256": "be7ac68738dd7c7cdcc27170bb19e420b78685415f670dd8e80feca3cd3ce1ad"
   },
   {
    "id": "chibi/hoodie-pleated/hand-2x",
@@ -521,8 +579,8 @@
     750,
     262
    ],
-   "bytes": 27732,
-   "sha256": "420e19712aa987305f2368af87622db59c1e1c135c24b6f61f47f3081b3ff27b"
+   "bytes": 28125,
+   "sha256": "193f67a39e91f4f8932ba29e9f909557a800408ba5424a874ed36661484adaf3"
   },
   {
    "id": "chibi/hoodie-pleated/shoulder-2x",
@@ -536,8 +594,8 @@
     650,
     340
    ],
-   "bytes": 27935,
-   "sha256": "48ee222e80847fca998f4bea8581bc40dfc8a0bf1ff1dce07c5718a2759c8f7e"
+   "bytes": 27435,
+   "sha256": "f34527f29bc5a1cde05476f2307d9fba16e9962d0209a26e1638d3a48b11c756"
   },
   {
    "id": "chibi/hoodie-pleated/foot-2x",
@@ -551,8 +609,8 @@
     516,
     270
    ],
-   "bytes": 10351,
-   "sha256": "d5960b03cb8157c5a2eff1e75d7a9a032fa806958b59e48c00484f7b06506105"
+   "bytes": 10359,
+   "sha256": "2bd578b8bb7c8cb5bdaa7c40731ef8ee486475e72835fb6aa06cc7669bb4de2d"
   },
   {
    "id": "chibi/hoodie-pleated/abdomen-2x",
@@ -566,8 +624,8 @@
     460,
     340
    ],
-   "bytes": 18372,
-   "sha256": "29ef5e18fb92eafc79b6db1148138a8fc985bc649df836e7671d55e9e767027a"
+   "bytes": 18829,
+   "sha256": "f110f63db6cc1fc9617d73507474fab811d7f909a3250560c79eba9d86c2a653"
   },
   {
    "id": "chibi/hoodie-pleated/hair-2x",
@@ -581,8 +639,23 @@
     722,
     600
    ],
-   "bytes": 33443,
-   "sha256": "7d953f371f23a672839a0dc133adea25fb33c82601fa23258ede16515a64a26b"
+   "bytes": 33464,
+   "sha256": "ec1a2bde8e0fd8cee85984c587f66f54c437b5d6de511ead4c8ac10aca7ff2b5"
+  },
+  {
+   "id": "chibi/hoodie-pleated/neck-2x",
+   "file": "docs/qa-baseline/chibi/hoodie-pleated/neck-2x.jpg",
+   "shape": "chibi",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "neck",
+   "size": [
+    382,
+    440
+   ],
+   "bytes": 21134,
+   "sha256": "1c79c87152c5396f89340601cb5db0064827a62c1875915461e143b30efd6395"
   },
   {
    "id": "chibi/sailor-plaid/knee-2x",
@@ -596,8 +669,8 @@
     494,
     300
    ],
-   "bytes": 18217,
-   "sha256": "8e4e4d282468eef22ad908c54ec267698cb0f0c3957c53259f2ab194f05358f0"
+   "bytes": 18226,
+   "sha256": "b28292661d41b5cde585f289d0b348d7b0beddb8638b9b9c9e51a35b34b05979"
   },
   {
    "id": "chibi/sailor-plaid/hand-2x",
@@ -611,8 +684,8 @@
     750,
     262
    ],
-   "bytes": 38140,
-   "sha256": "2f42aa89c027ec090cf349507e3be86642f4efc3f9613b67a0148c26c967a4fa"
+   "bytes": 37817,
+   "sha256": "2c76047af25f2475434b1fb103a19371ffb4473ad7dfbdf2355d7875135ae90e"
   },
   {
    "id": "chibi/sailor-plaid/shoulder-2x",
@@ -626,8 +699,8 @@
     650,
     340
    ],
-   "bytes": 37097,
-   "sha256": "0840271b9e22f9cc05c665076f549512ef2028a2fad7229adfb16f76e7aa9882"
+   "bytes": 36488,
+   "sha256": "64d4e960a8e990f424caebf6fd40aa88f2aff6b5bdcbaf19027f0644c981918f"
   },
   {
    "id": "chibi/sailor-plaid/foot-2x",
@@ -641,8 +714,8 @@
     516,
     270
    ],
-   "bytes": 10351,
-   "sha256": "d5960b03cb8157c5a2eff1e75d7a9a032fa806958b59e48c00484f7b06506105"
+   "bytes": 10359,
+   "sha256": "2bd578b8bb7c8cb5bdaa7c40731ef8ee486475e72835fb6aa06cc7669bb4de2d"
   },
   {
    "id": "chibi/sailor-plaid/abdomen-2x",
@@ -656,8 +729,8 @@
     460,
     340
    ],
-   "bytes": 32696,
-   "sha256": "07c6394e7821e67e224b268cf893199c0057e341213290a3b5e64ecb91cd509a"
+   "bytes": 32522,
+   "sha256": "88b2d3c1bf9e40aa1ef9dcf1bf81b44167f5c001a00a60e4fb115c30386207f9"
   },
   {
    "id": "chibi/sailor-plaid/hair-2x",
@@ -671,8 +744,23 @@
     722,
     600
    ],
-   "bytes": 33443,
-   "sha256": "7d953f371f23a672839a0dc133adea25fb33c82601fa23258ede16515a64a26b"
+   "bytes": 33464,
+   "sha256": "ec1a2bde8e0fd8cee85984c587f66f54c437b5d6de511ead4c8ac10aca7ff2b5"
+  },
+  {
+   "id": "chibi/sailor-plaid/neck-2x",
+   "file": "docs/qa-baseline/chibi/sailor-plaid/neck-2x.jpg",
+   "shape": "chibi",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "neck",
+   "size": [
+    382,
+    440
+   ],
+   "bytes": 25866,
+   "sha256": "43948ca21c4725d404952d0b33d640eddc16a666a8bd7dcb464ee262d7b1ef80"
   },
   {
    "id": "girl/base/full-1x",
@@ -685,8 +773,8 @@
     675,
     1200
    ],
-   "bytes": 79282,
-   "sha256": "e8fc042a05a8d7cccfd6b9778018ec319d9dc21535b5c22e84c4ad66bc6c70bd"
+   "bytes": 79676,
+   "sha256": "4555358b3d9a434b7304f82ae15c6ace4b746f24eadda81a1817cd0646317721"
   },
   {
    "id": "girl/maid/full-1x",
@@ -699,8 +787,8 @@
     675,
     1200
    ],
-   "bytes": 90640,
-   "sha256": "bf2f8702e228a03a38e9d9abf9cdd6146938142af7f0a43aec16e1068caf8830"
+   "bytes": 91340,
+   "sha256": "32eb81129d7015f868f6e584cc89b3f098b81c092b1a9e4580af4526605b89ae"
   },
   {
    "id": "girl/hoodie-plaid/full-1x",
@@ -713,8 +801,8 @@
     675,
     1200
    ],
-   "bytes": 89527,
-   "sha256": "a0853a88e88dc66c6f394a09858068e49384e00f6305cf6205c1509ec07ee9d4"
+   "bytes": 89331,
+   "sha256": "2be32f88cf4a0ffe15b8acbc2f803a0a886ded53954b22fb71fdb689f13f9490"
   },
   {
    "id": "girl/hoodie-pleated/full-1x",
@@ -727,8 +815,8 @@
     675,
     1200
    ],
-   "bytes": 84844,
-   "sha256": "f2827852cf9a7b7064c0d2e17b8003102a6fa30c31b4f6609c5eba3dfd2d5ea4"
+   "bytes": 84742,
+   "sha256": "7f7d08a54bf141ac6b2311046f2031e90a227efcbdb9ad67a55016aeb8e95110"
   },
   {
    "id": "girl/sailor-plaid/full-1x",
@@ -741,8 +829,8 @@
     675,
     1200
    ],
-   "bytes": 98577,
-   "sha256": "5cfe83cbbd4bdd6004be52d3cd4624a89a5f9fc4300a1b71ae32fae47e42a4b1"
+   "bytes": 98539,
+   "sha256": "db1d0fb44a5b4f793f1d510b139780efaa70ff006763126967f325a079a22ab7"
   },
   {
    "id": "girl/base/knee-2x",
@@ -756,8 +844,8 @@
     500,
     300
    ],
-   "bytes": 11321,
-   "sha256": "301d6afcd52415c77586477b4516772101b87bab9896beba65960ff2bdb0e48a"
+   "bytes": 11335,
+   "sha256": "8d59b44b5a82f85dacc70bf1ba4c0a63920fe095d2a54b85c83b381dfb649407"
   },
   {
    "id": "girl/base/hand-2x",
@@ -771,8 +859,8 @@
     732,
     304
    ],
-   "bytes": 24920,
-   "sha256": "6fc572f7fce022c688ff4e76ea4bd929217c3119420319f1de88b0d614efe4f4"
+   "bytes": 24942,
+   "sha256": "574db1f21c1bec8bd914f53e086c2dab8df8e2e50160ae6f4fbd846ff3f44f5a"
   },
   {
    "id": "girl/base/shoulder-2x",
@@ -786,8 +874,8 @@
     470,
     340
    ],
-   "bytes": 18665,
-   "sha256": "f76ff523c0b6d908106a9952d978722ee47eeb2f18cfd0ea12e605e71a4b5afe"
+   "bytes": 19179,
+   "sha256": "b7c4763378f106789019317823e1add684707fbffcf793931e09d32f144eba25"
   },
   {
    "id": "girl/base/foot-2x",
@@ -801,8 +889,8 @@
     524,
     284
    ],
-   "bytes": 9935,
-   "sha256": "bd18af61219afa86bd909c0f909a260f3728509f2912f0f6118968987eeed4c7"
+   "bytes": 9944,
+   "sha256": "3a13ec449b830d9aa5b0f0cb1bc8661fb7126931448e372f710c9e74d648d555"
   },
   {
    "id": "girl/base/abdomen-2x",
@@ -816,8 +904,8 @@
     462,
     340
    ],
-   "bytes": 14531,
-   "sha256": "1afab7b17d99df4bfc2d7e7b0f781cd97d951d873301f8e5ea1cc01a50f96e51"
+   "bytes": 14514,
+   "sha256": "7a0e35cc4f8377a1990a389a1e59936998e2a348075823d002672fed350a4075"
   },
   {
    "id": "girl/base/hair-2x",
@@ -831,8 +919,23 @@
     722,
     600
    ],
-   "bytes": 43686,
-   "sha256": "5a90de7490cfd0d4e8031e0c55b7d52b725166ef42bb3364f0ef450774145ca9"
+   "bytes": 43652,
+   "sha256": "7beee63e45ae4c3d29304b0c9a2f856d62bd598c5247fcb3aef2e71e4890ba2c"
+  },
+  {
+   "id": "girl/base/neck-2x",
+   "file": "docs/qa-baseline/girl/base/neck-2x.jpg",
+   "shape": "girl",
+   "outfit": "base",
+   "kind": "crop",
+   "scale": 2,
+   "region": "neck",
+   "size": [
+    382,
+    440
+   ],
+   "bytes": 22330,
+   "sha256": "df841ebc9f3fcc7a92a47e33583445dd272e950af0552b9a78d6e4b6d7fbc8be"
   },
   {
    "id": "girl/maid/knee-2x",
@@ -846,8 +949,8 @@
     500,
     300
    ],
-   "bytes": 14133,
-   "sha256": "d7d7454803e561d1779af8f4ee63d6617acbe6434a06bf7c0fdca82cf0c16ce6"
+   "bytes": 14677,
+   "sha256": "8bf9e76751e826a93703bd4c4310d80ad95136c29765ba471ac6b3afdabed7c1"
   },
   {
    "id": "girl/maid/hand-2x",
@@ -861,8 +964,8 @@
     732,
     304
    ],
-   "bytes": 28756,
-   "sha256": "3af738dba67ec475431944e42d0d4a9f0019d984c142c6b9d75907dbc5b550bb"
+   "bytes": 29977,
+   "sha256": "be7e483db5822c6bb193f1659774b15c1e036e7eacc58e219bd26c89d53d5f8c"
   },
   {
    "id": "girl/maid/shoulder-2x",
@@ -876,8 +979,8 @@
     470,
     340
    ],
-   "bytes": 25429,
-   "sha256": "881ab3f2e092c7a3b66c4738293e96d51cda124add9bba18af5070b8b6aef432"
+   "bytes": 25150,
+   "sha256": "25c53c0909f23dc3ba047835489be8830dbf9e74b0e21a05bc8f30af181e3461"
   },
   {
    "id": "girl/maid/foot-2x",
@@ -891,8 +994,8 @@
     524,
     284
    ],
-   "bytes": 9935,
-   "sha256": "bd18af61219afa86bd909c0f909a260f3728509f2912f0f6118968987eeed4c7"
+   "bytes": 9944,
+   "sha256": "3a13ec449b830d9aa5b0f0cb1bc8661fb7126931448e372f710c9e74d648d555"
   },
   {
    "id": "girl/maid/abdomen-2x",
@@ -906,8 +1009,8 @@
     462,
     340
    ],
-   "bytes": 16010,
-   "sha256": "ac6d96c284df40e2fa6d20bd0b8cef266e784f347896ccca0fd27f72709dc213"
+   "bytes": 16092,
+   "sha256": "4560294f7a2e142f35f500b1058a0b3671df01dae889f884f4b6c513df01bd5f"
   },
   {
    "id": "girl/maid/hair-2x",
@@ -921,8 +1024,23 @@
     722,
     600
    ],
-   "bytes": 43686,
-   "sha256": "5a90de7490cfd0d4e8031e0c55b7d52b725166ef42bb3364f0ef450774145ca9"
+   "bytes": 43652,
+   "sha256": "7beee63e45ae4c3d29304b0c9a2f856d62bd598c5247fcb3aef2e71e4890ba2c"
+  },
+  {
+   "id": "girl/maid/neck-2x",
+   "file": "docs/qa-baseline/girl/maid/neck-2x.jpg",
+   "shape": "girl",
+   "outfit": "maid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "neck",
+   "size": [
+    382,
+    440
+   ],
+   "bytes": 27851,
+   "sha256": "2a36a091250f7223379dd922b8d4150e49d9d58bccdece3e54bcdd5a874306da"
   },
   {
    "id": "girl/hoodie-plaid/knee-2x",
@@ -936,8 +1054,8 @@
     500,
     300
    ],
-   "bytes": 15477,
-   "sha256": "919589d0a6d97f561e926af115cb9d6ddcb37a6585f12c58fe925ac12c773d65"
+   "bytes": 15337,
+   "sha256": "8a5d4d1d27501f81c22659a4ae6cddcd4ea236b5a874853d48a131afa962ab91"
   },
   {
    "id": "girl/hoodie-plaid/hand-2x",
@@ -951,8 +1069,8 @@
     732,
     304
    ],
-   "bytes": 39777,
-   "sha256": "6e432f84935633997bae2f7ed4b714d92a75a58e8897241165ad6fe5e2ac0f7f"
+   "bytes": 39522,
+   "sha256": "408a1acc8ca7108a268b932a2bf6db5e03ef731ba2d65e2cd9319d28c59af91c"
   },
   {
    "id": "girl/hoodie-plaid/shoulder-2x",
@@ -966,8 +1084,8 @@
     470,
     340
    ],
-   "bytes": 18809,
-   "sha256": "9c4786fd322a27d5fdf3b709ba324cb25c7c0bb07f4db3cd2728b4d2bf9f1bea"
+   "bytes": 18941,
+   "sha256": "03e0dcd0fd8795d53122c96b7384461240c00757ebd88fab6bf2ed387c551114"
   },
   {
    "id": "girl/hoodie-plaid/foot-2x",
@@ -981,8 +1099,8 @@
     524,
     284
    ],
-   "bytes": 9935,
-   "sha256": "bd18af61219afa86bd909c0f909a260f3728509f2912f0f6118968987eeed4c7"
+   "bytes": 9944,
+   "sha256": "3a13ec449b830d9aa5b0f0cb1bc8661fb7126931448e372f710c9e74d648d555"
   },
   {
    "id": "girl/hoodie-plaid/abdomen-2x",
@@ -996,8 +1114,8 @@
     462,
     340
    ],
-   "bytes": 22989,
-   "sha256": "c331c5eba2ec70f588062f1e8fa84589b9530da16935a78162ef2df228abea96"
+   "bytes": 22916,
+   "sha256": "7e66c38365c456bc7d48af10b01a2690b6add3c85286cc61fe128e6be98f0dbb"
   },
   {
    "id": "girl/hoodie-plaid/hair-2x",
@@ -1011,8 +1129,23 @@
     722,
     600
    ],
-   "bytes": 43686,
-   "sha256": "5a90de7490cfd0d4e8031e0c55b7d52b725166ef42bb3364f0ef450774145ca9"
+   "bytes": 43652,
+   "sha256": "7beee63e45ae4c3d29304b0c9a2f856d62bd598c5247fcb3aef2e71e4890ba2c"
+  },
+  {
+   "id": "girl/hoodie-plaid/neck-2x",
+   "file": "docs/qa-baseline/girl/hoodie-plaid/neck-2x.jpg",
+   "shape": "girl",
+   "outfit": "hoodie-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "neck",
+   "size": [
+    382,
+    440
+   ],
+   "bytes": 22279,
+   "sha256": "f1878e7ec2cc9a339451f9948a0396d131815dc66e2d8d2c617aefef004b1183"
   },
   {
    "id": "girl/hoodie-pleated/knee-2x",
@@ -1026,8 +1159,8 @@
     500,
     300
    ],
-   "bytes": 14518,
-   "sha256": "9468bbca5c6be4c03a367839ca3915a2bfb6594f49ec6a043e73169c9cf8a5e0"
+   "bytes": 14535,
+   "sha256": "e5508d13e4e0315918db806c4135055d7912e516754211f04678c3af76339ebc"
   },
   {
    "id": "girl/hoodie-pleated/hand-2x",
@@ -1041,8 +1174,8 @@
     732,
     304
    ],
-   "bytes": 31461,
-   "sha256": "9490a63a1ea8cf711190094321047633cc21407aff3b2aebb91954d6c54aad6e"
+   "bytes": 31457,
+   "sha256": "cc5231e9aa118e77fff00bd8d7a49a4849c758d893da7e25e6089c6e0fe4209a"
   },
   {
    "id": "girl/hoodie-pleated/shoulder-2x",
@@ -1056,8 +1189,8 @@
     470,
     340
    ],
-   "bytes": 18809,
-   "sha256": "467e126b77c9d8e183533f1ba22564dd0448ec6a4ad72f3eb89ba5f4ed1e756c"
+   "bytes": 18951,
+   "sha256": "8f7727105460166b14b61e6b1cf61c01296016fd14ee6ba52c16d6d9e366bcb7"
   },
   {
    "id": "girl/hoodie-pleated/foot-2x",
@@ -1071,8 +1204,8 @@
     524,
     284
    ],
-   "bytes": 9935,
-   "sha256": "bd18af61219afa86bd909c0f909a260f3728509f2912f0f6118968987eeed4c7"
+   "bytes": 9944,
+   "sha256": "3a13ec449b830d9aa5b0f0cb1bc8661fb7126931448e372f710c9e74d648d555"
   },
   {
    "id": "girl/hoodie-pleated/abdomen-2x",
@@ -1086,8 +1219,8 @@
     462,
     340
    ],
-   "bytes": 18329,
-   "sha256": "9993b91d053161125f2680a284bb4a3baf5c44e831272120c9442ec9ed694b7c"
+   "bytes": 18487,
+   "sha256": "11d68d06ad43224a512c6707051fbb3f68745accbdee64dbc893ba140e9dd5ab"
   },
   {
    "id": "girl/hoodie-pleated/hair-2x",
@@ -1101,8 +1234,23 @@
     722,
     600
    ],
-   "bytes": 43686,
-   "sha256": "5a90de7490cfd0d4e8031e0c55b7d52b725166ef42bb3364f0ef450774145ca9"
+   "bytes": 43652,
+   "sha256": "7beee63e45ae4c3d29304b0c9a2f856d62bd598c5247fcb3aef2e71e4890ba2c"
+  },
+  {
+   "id": "girl/hoodie-pleated/neck-2x",
+   "file": "docs/qa-baseline/girl/hoodie-pleated/neck-2x.jpg",
+   "shape": "girl",
+   "outfit": "hoodie-pleated",
+   "kind": "crop",
+   "scale": 2,
+   "region": "neck",
+   "size": [
+    382,
+    440
+   ],
+   "bytes": 22329,
+   "sha256": "2ae7c6eba3b67d67fc7bc0265d3a1bada8241858599c312d4e714e6385278215"
   },
   {
    "id": "girl/sailor-plaid/knee-2x",
@@ -1116,8 +1264,8 @@
     500,
     300
    ],
-   "bytes": 15486,
-   "sha256": "7233556d5b1526d5d1349191f6d660b198430db69f0a0e7e2842fc9ad2961b7d"
+   "bytes": 15314,
+   "sha256": "7834a6c8423416acc0ec8c223ee0cfb62c5b8cb777ff905e36af432a9806ef9d"
   },
   {
    "id": "girl/sailor-plaid/hand-2x",
@@ -1131,8 +1279,8 @@
     732,
     304
    ],
-   "bytes": 42154,
-   "sha256": "a83cef228a5d0e2bc86b3ef77234b55b2d16972806f204be53fafc7235a8ab26"
+   "bytes": 41907,
+   "sha256": "d709ffdbce124115835ce8c944c2d1a10ca573525605fe2444cf0e8015530caf"
   },
   {
    "id": "girl/sailor-plaid/shoulder-2x",
@@ -1146,8 +1294,8 @@
     470,
     340
    ],
-   "bytes": 28259,
-   "sha256": "2dda42c86ef24ac8460637d03cec70fdb0cfd2d5222b143915e66b316b820483"
+   "bytes": 28119,
+   "sha256": "952d1bd3e0837f6b46f95e53407734ba65922bdfff090e7a4d6da323798d24ed"
   },
   {
    "id": "girl/sailor-plaid/foot-2x",
@@ -1161,8 +1309,8 @@
     524,
     284
    ],
-   "bytes": 9935,
-   "sha256": "bd18af61219afa86bd909c0f909a260f3728509f2912f0f6118968987eeed4c7"
+   "bytes": 9944,
+   "sha256": "3a13ec449b830d9aa5b0f0cb1bc8661fb7126931448e372f710c9e74d648d555"
   },
   {
    "id": "girl/sailor-plaid/abdomen-2x",
@@ -1176,8 +1324,8 @@
     462,
     340
    ],
-   "bytes": 33269,
-   "sha256": "e2a701cb006e55aa727d6a8c0285496bfc73312a13d4c46f7f6ebf5ef9d99956"
+   "bytes": 33053,
+   "sha256": "0edb2b79b86c0601ce019d68dc7901d970b2434674ac0810b3e3fbcfd21dcded"
   },
   {
    "id": "girl/sailor-plaid/hair-2x",
@@ -1191,12 +1339,27 @@
     722,
     600
    ],
-   "bytes": 43686,
-   "sha256": "5a90de7490cfd0d4e8031e0c55b7d52b725166ef42bb3364f0ef450774145ca9"
+   "bytes": 43652,
+   "sha256": "7beee63e45ae4c3d29304b0c9a2f856d62bd598c5247fcb3aef2e71e4890ba2c"
+  },
+  {
+   "id": "girl/sailor-plaid/neck-2x",
+   "file": "docs/qa-baseline/girl/sailor-plaid/neck-2x.jpg",
+   "shape": "girl",
+   "outfit": "sailor-plaid",
+   "kind": "crop",
+   "scale": 2,
+   "region": "neck",
+   "size": [
+    382,
+    440
+   ],
+   "bytes": 28171,
+   "sha256": "ac67db13a0dc6a4971e5fd23c62395c325d2aeec7787d6d32c157ca37693c891"
   }
  ],
  "totals": {
-  "images": 70,
-  "bytes": 2393954
+  "images": 80,
+  "bytes": 2632651
  }
 }

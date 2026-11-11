@@ -11,10 +11,12 @@ const ROOT = dressUpRoot();
 const ASSET_ROOT = join(ROOT, 'art/2d5');
 const SHAPES = ['chibi', 'girl'];
 const MAX_BONES = 80;   // v2.4：65 骨 rig（59+6 legBones）；runtime shader 上限提到 80
-/** cutout production 资产：chibi 69 / girl 70 drawables（单页图集；v2.7.0 下架毛衣 16 drawables，v2.5 girl 新增 hair-arm-girl）。 */
-const EXPECTED_DRAWABLES = { chibi: 69, girl: 70 };
-/** 旧四个 + cutout 新服装槽位（outfit 引用校验）。 */
+/** v3.0 paper-doll：chibi 48 / girl 49 drawables（单页图集；每套 outfit 2 个整层 drawable 替代 v2.7 的 6-9 个分件）。 */
+const EXPECTED_DRAWABLES = { chibi: 48, girl: 49 };
+/** 旧四个 + cutout 新服装槽位（outfit 引用校验；v3 只用 topBody/bottom）。 */
 const OUTFIT_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar'];
+/** v3 整层 outfit：每套 2 个 drawable 的 id 后缀（{combo}-top / {combo}-skirt）。 */
+const V3_OUTFITS = ['maid', 'hoodie-plaid', 'hoodie-pleated', 'sailor-plaid'];
 
 /** 读 WebP 尺寸（VP8X / VP8L / VP8 三种头）。 */
 function webpSize(file) {
@@ -208,6 +210,24 @@ test('2.5D rig：骨架/物理链/碰撞体/槽位引用闭合', () => {
 					assert.ok(drawableIds.has(id), `${shape} 套装 ${outfitId}.${slot} 引用缺失 drawable ${id}`);
 				}
 			}
+		}
+		// v3.0 paper-doll：每套只有 topBody/bottom 两个整层 drawable（z=64/30），不再有分件
+		for (const combo of V3_OUTFITS) {
+			const outfit = rig.outfits[combo];
+			assert.ok(outfit, `${shape} 缺少 v3 套装 ${combo}`);
+			assert.deepEqual(outfit.topBody, [`${combo}-top`], `${shape}/${combo}.topBody 应为整层 ${combo}-top`);
+			assert.deepEqual(outfit.bottom, [`${combo}-skirt`], `${shape}/${combo}.bottom 应为整层 ${combo}-skirt`);
+			for (const slot of ['collar', 'sleeve', 'sleeveUpper', 'sleeveFore', 'topUnder']) {
+				assert.equal((outfit[slot] || []).length, 0, `${shape}/${combo}：v3 不应再有 ${slot} 分件`);
+			}
+			const top = rig.drawables.find((d) => d.id === `${combo}-top`);
+			const skirt = rig.drawables.find((d) => d.id === `${combo}-skirt`);
+			assert.ok(top && skirt, `${shape}/${combo} 缺少整层 drawable`);
+			assert.equal(top.slot, 'topBody');
+			assert.equal(top.z, 64, `${shape}/${combo}-top z 应=64（高于 body 手臂 45/48、低于手 65）`);
+			assert.equal(skirt.slot, 'bottom');
+			assert.equal(skirt.z, 30, `${shape}/${combo}-skirt z 应=30`);
+			for (const d of [top, skirt]) assert.ok(d.mesh.indices.length > 0, `${shape}/${d.id} 网格为空`);
 		}
 		const face = rig.slots.face;
 		assert.equal(face.mode, 'parts', `${shape} face 应为 parts 模式`);

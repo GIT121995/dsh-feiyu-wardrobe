@@ -58,7 +58,7 @@ const BASELINE_VERSION = 1;
 const BASELINE_DIR = join('docs', 'qa-baseline');
 const SHAPES = ['chibi', 'girl'];
 const OUTFITS = ['base', 'maid', 'hoodie-plaid', 'hoodie-pleated', 'sailor-plaid'];
-const REGIONS = ['knee', 'hand', 'shoulder', 'foot', 'abdomen', 'hair'];
+const REGIONS = ['knee', 'hand', 'shoulder', 'foot', 'abdomen', 'hair', 'neck'];
 const DESIGN = { width: 675, height: 1200 };
 const BACKGROUND = '#808a99';
 const JPEG = { full: 0.82, crop: 0.85 };
@@ -372,6 +372,11 @@ function computeRegions(rig) {
 	const hairTop = Math.max(0, bangs[1] - 6);
 	const hairBox = box(head[0] - 180, hairTop, head[0] + 180, Math.min(hairTop + 300, DESIGN.height));
 
+	// v3.0 领口露颈：以 neck 骨为基准的颈/锁骨区域（覆盖下巴淡影→领口→锁骨上缘；
+	// 是"素体颈部色/颈线稿/肉须回归"的门禁区域，见 docs/VISUAL-QA.md）。
+	const neck = jointOf('neck');
+	const neckBox = box(neck[0] - 95, neck[1] - 145, neck[0] + 95, neck[1] + 75);
+
 	return {
 		knee: kneeBox,
 		hand: handBox,
@@ -379,6 +384,7 @@ function computeRegions(rig) {
 		foot: footBox,
 		abdomen: abdomenBox,
 		hair: hairBox,
+		neck: neckBox,
 	};
 }
 

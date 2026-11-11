@@ -49,7 +49,7 @@ import {
 	LEGACY_OUTFIT_SLOTS,
 	unregisterDiyPack,
 	visibleDrawables,
-} from './runtime-2d5-core.js?v=24';
+} from './runtime-2d5-core.js?v=25';
 
 /** 单个 spring 链节点相对 rest 的最大偏移（px，安全包络，POC 同值）。 */
 const CHAIN_OFFSET_LIMIT = 42;
@@ -444,12 +444,17 @@ function buildApi(rt) {
 			if (scene.diyPacks && scene.diyPacks.has(packId)) {
 				return { ok: true, packId, reused: true, memory: memoryInfo(rt) };
 			}
-			// v2.2 cutout 兼容：旧 pack 的 v2.1 base 引用按槽位迁移到 v2.2 现有部件（不污染 pack 原对象）
+			// v2.2 cutout 兼容：旧 pack 的 base 引用按槽位迁移到当前 rig 的服装层
+			// （v3 整层 outfit：分件 id 统一收敛到 `{combo}-top` / `{combo}-skirt`，
+			//   见 core.LEGACY_V21_BASE_REFS / LEGACY_V22_BASE_REFS；auto-pair 从 scene.outfits 动态取）。
 			const migration = migrateDiyPackOutfits(
 				normalized.outfits,
 				scene.drawableById,
 				normalized.drawables.map((drawable) => drawable.id),
-				{ category: pack && pack.category ? String(pack.category) : '' },
+				{
+					category: pack && pack.category ? String(pack.category) : '',
+					outfits: scene.outfits,
+				},
 			);
 			const normalizedForRegister = { ...normalized, outfits: migration.outfits };
 			const assetBase = typeof options.assetBase === 'string' && options.assetBase

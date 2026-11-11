@@ -345,7 +345,15 @@ export function drawableIdsOf(rig) {
 	return ids;
 }
 
-/** 2.5D 服装单件 → drawable 组合（与 rig 的 role 命名约定一致）。 */
+/**
+ * 旧 v2.1 rig 的 generic 服装单件 → drawable 组合（**仅 legacy 回退路径**用）。
+ *
+ * v3.0 paper-doll 起，页面与 production rig 走 `rig.outfits[combo]` 整层 outfit
+ * （每套 topBody/bottom 各 1 个 drawable，见 resolveLook ①/②），v3 rig 里不存在这些
+ * generic id；本表只在「旧 v2.1 rig」或「组合套装缺失但 generic drawable 仍在」时兜底
+ * （旧存档 top+bottom 动态组合的兼容路径）。v2.2–v2.7 cutout 分件装配不经过本表，
+ * 由 `rig.outfits[<top>-<bottom>]` 组合套装承担（缺省 → rig 默认套装回退）。
+ */
 export const GARMENTS = {
 	top: {
 		hoodie: { slot: 'topBody', body: 'hoodie-body', sleeve: 'hoodie-sleeve' },
@@ -446,6 +454,11 @@ export function resolveDrawableAtlas(drawable, atlases) {
 /**
  * 把换装页状态解析成 2.5D 组合：套装优先；否则「上衣 + 下装」动态组合；
  * 缺件时按「同槽位最近可用 → rig 默认套装」回退，并把原因记进 warnings。
+ *
+ * v3.0 paper-doll：`rig.outfits[combo]` 每套只有 `topBody` / `bottom` 各 1 个整层
+ * drawable（`{combo}-top` / `{combo}-skirt`），其余服装槽位不出现。本函数按
+ * OUTFIT_SLOTS 通用遍历（缺省槽位视为空数组），不假设 collar/sleeve 等分件必填；
+ * `{top}-{bottom}` 组合套装命中 `<top>-<bottom>` 整层 outfit 即可，无需分件装配。
  *
  * @param {any} rig 2.5D rig JSON
  * @param {{ outfit?: string, top?: string, bottom?: string, bare?: boolean }} state 换装页状态子集
@@ -781,41 +794,195 @@ export function normalizeDiyPack(pack, options = {}) {
 	};
 }
 
-/**
- * v2.1 → v2.2 cutout 的 base 引用迁移表（旧 DIY pack 的 pairing 引用 v2.1 generic drawable）。
- * 目标 id 是 v2.2 production rig 的部件；运行时按目标 drawable 的 slot 自动落槽。
+/* --------------------------------------- v3.0 整层 outfit / DIY 旧 pack 映射规则 ---
+ * v3.0 paper-doll（PLAN §2/§4.4）每套 outfit 只有 2 个 drawable：
+ *   `{combo}-top`（slot=topBody，z=64：领口 + 衣身 + 袖一体）
+ *   `{combo}-skirt`（slot=bottom，z=30）
+ * 每套 outfit 引用形如 `{ topBody: ['hoodie-plaid-top'], bottom: ['hoodie-plaid-skirt'] }`；
+ * collar/sleeve/sleeveUpper/sleeveFore/topUnder 在 v3 不再出现，resolveLook/visibleDrawables
+ * 按「缺省空数组」处理即可（不存在分件必填假设）。
+ *
+ * 旧 v2.1 generic drawable（hoodie-body…）与 v2.2–v2.7 cutout 分件
+ * （*-torso / *-collar / *-sleeve-upper|fore / *-skirt-under）在 v3 退役：
+ * 旧 DIY pack 的 base 引用必须统一收敛到整层 id，否则判 unmapped → 用户自绘层还在、
+ * 但 base 配对缺件（光腿/裸上身）。规则（同一整层只落一次，不重复叠加 base 分件）：
+ *   1) 同一套的旧上衣/袖/领分件 → 同一 `{combo}-top`（整层已含领口/袖）；
+ *   2) 同一套的旧裙分件（含 skirt-under）→ 同一 `{combo}-skirt`；
+ *   3) 高领毛衣 v2.7.0 已下架：沿 v2.7.0 决策映射 hoodie-plaid 上衣；
+ *      毛衣裙按 plaid/pleated 分别映射 hoodie-plaid / hoodie-pleated 裙层。
  */
-export const LEGACY_V21_BASE_REFS = {
-	// v2.7.0 下架毛衣后：旧 v2.1 的毛衣/裙子引用改映射到现有连帽卫衣套（hoodie-plaid）
-	'bottom-plaid': ['hoodie-plaid-skirt', 'hoodie-plaid-skirt-under'],
-	'bottom-pleated': ['hoodie-pleated-skirt', 'hoodie-pleated-skirt-under'],
-	'sweater-body': ['hoodie-plaid-torso'],
-	'sweater-sleeve': [
-		'hoodie-plaid-sleeve-upper-L', 'hoodie-plaid-sleeve-upper-R',
-		'hoodie-plaid-sleeve-fore-L', 'hoodie-plaid-sleeve-fore-R',
-	],
-	'hoodie-body': ['hoodie-plaid-torso'],
-	'hoodie-sleeve': [
-		'hoodie-plaid-sleeve-upper-L', 'hoodie-plaid-sleeve-upper-R',
-		'hoodie-plaid-sleeve-fore-L', 'hoodie-plaid-sleeve-fore-R',
-	],
-	'maid-body': ['maid-torso'],
-	'maid-sleeve': [
-		'maid-sleeve-upper-L', 'maid-sleeve-upper-R',
-		'maid-sleeve-fore-L', 'maid-sleeve-fore-R',
-	],
-	'sailor-body': ['sailor-plaid-torso'],
-	'sailor-sleeve': ['sailor-plaid-sleeve-upper-L', 'sailor-plaid-sleeve-upper-R'],
+
+/**
+ * v3.0 整层 outfit 图层 id 表（每套 top/skirt 各 1 个 drawable）。
+ * @type {Record<string, { top: string, skirt: string }>}
+ */
+export const V3_OUTFIT_LAYERS = {
+	maid: { top: 'maid-top', skirt: 'maid-skirt' },
+	'hoodie-plaid': { top: 'hoodie-plaid-top', skirt: 'hoodie-plaid-skirt' },
+	'hoodie-pleated': { top: 'hoodie-pleated-top', skirt: 'hoodie-pleated-skirt' },
+	'sailor-plaid': { top: 'sailor-plaid-top', skirt: 'sailor-plaid-skirt' },
 };
 
 /**
- * 旧 DIY pack 的 outfit 引用迁移：缺失的 v2.1 base id 按迁移表映射到 v2.2 现有部件；
- * 目标部件不存在则安全置空并记 unmapped（不抛错、不改 pack 原对象）。
+ * v2.1 generic base 引用 → v3.0 整层 drawable id（旧 DIY pack 的 pairing 引用 v2.1 generic drawable）。
+ * 运行时按目标 drawable 的 slot 自动落槽；同层重复引用由 migrateDiyPackOutfits 去重。
+ * @type {Record<string, string[]>}
+ */
+export const LEGACY_V21_BASE_REFS = {
+	// 连帽卫衣（衣身 + 袖 → 整层 top）
+	'hoodie-body': ['hoodie-plaid-top'],
+	'hoodie-sleeve': ['hoodie-plaid-top'],
+	// 水手服（衣身 + 袖 → 整层 top；水手领并入 top）
+	'sailor-body': ['sailor-plaid-top'],
+	'sailor-sleeve': ['sailor-plaid-top'],
+	// 女仆装（衣身 + 袖 → 整层 top；领/围裙并入 top）
+	'maid-body': ['maid-top'],
+	'maid-sleeve': ['maid-top'],
+	// v2.7.0 下架高领毛衣后的既定回退：旧毛衣衣身/袖 → hoodie-plaid 整层 top
+	'sweater-body': ['hoodie-plaid-top'],
+	'sweater-sleeve': ['hoodie-plaid-top'],
+	// v2.1 generic 下装 → v3 裙层
+	'bottom-plaid': ['hoodie-plaid-skirt'],
+	'bottom-pleated': ['hoodie-pleated-skirt'],
+};
+
+/**
+ * v2.2–v2.7 cutout 分件 id → v3.0 整层 drawable id（该时期安装的 DIY pack 直接引用 base 分件）。
+ * 同套上衣分件（torso/collar/sleeve-upper/sleeve-fore）都收敛到 `{combo}-top`；
+ * 裙内衬 `{combo}-skirt-under` 收敛到 `{combo}-skirt`。
+ * @type {Record<string, string[]>}
+ */
+export const LEGACY_V22_BASE_REFS = {
+	// 连帽卫衣 · 格纹裙
+	'hoodie-plaid-torso': ['hoodie-plaid-top'],
+	'hoodie-plaid-sleeve-upper-L': ['hoodie-plaid-top'],
+	'hoodie-plaid-sleeve-upper-R': ['hoodie-plaid-top'],
+	'hoodie-plaid-sleeve-fore-L': ['hoodie-plaid-top'],
+	'hoodie-plaid-sleeve-fore-R': ['hoodie-plaid-top'],
+	'hoodie-plaid-skirt-under': ['hoodie-plaid-skirt'],
+	// 连帽卫衣 · 深蓝裙
+	'hoodie-pleated-torso': ['hoodie-pleated-top'],
+	'hoodie-pleated-sleeve-upper-L': ['hoodie-pleated-top'],
+	'hoodie-pleated-sleeve-upper-R': ['hoodie-pleated-top'],
+	'hoodie-pleated-sleeve-fore-L': ['hoodie-pleated-top'],
+	'hoodie-pleated-sleeve-fore-R': ['hoodie-pleated-top'],
+	'hoodie-pleated-skirt-under': ['hoodie-pleated-skirt'],
+	// 水手服 · 格纹裙
+	'sailor-plaid-torso': ['sailor-plaid-top'],
+	'sailor-plaid-collar': ['sailor-plaid-top'],
+	'sailor-plaid-sleeve-upper-L': ['sailor-plaid-top'],
+	'sailor-plaid-sleeve-upper-R': ['sailor-plaid-top'],
+	'sailor-plaid-skirt-under': ['sailor-plaid-skirt'],
+	// 女仆装
+	'maid-torso': ['maid-top'],
+	'maid-collar': ['maid-top'],
+	'maid-apron': ['maid-top'],
+	'maid-sleeve-upper-L': ['maid-top'],
+	'maid-sleeve-upper-R': ['maid-top'],
+	'maid-sleeve-fore-L': ['maid-top'],
+	'maid-sleeve-fore-R': ['maid-top'],
+	'maid-skirt-under': ['maid-skirt'],
+	// 已下架高领毛衣的 v2.2–v2.6 分件（这一时期的 pack 会直接引用）
+	'sweater-plaid-torso': ['hoodie-plaid-top'],
+	'sweater-plaid-collar': ['hoodie-plaid-top'],
+	'sweater-plaid-sleeve-upper-L': ['hoodie-plaid-top'],
+	'sweater-plaid-sleeve-upper-R': ['hoodie-plaid-top'],
+	'sweater-plaid-sleeve-fore-L': ['hoodie-plaid-top'],
+	'sweater-plaid-sleeve-fore-R': ['hoodie-plaid-top'],
+	'sweater-plaid-skirt': ['hoodie-plaid-skirt'],
+	'sweater-plaid-skirt-under': ['hoodie-plaid-skirt'],
+	'sweater-pleated-torso': ['hoodie-plaid-top'],
+	'sweater-pleated-collar': ['hoodie-plaid-top'],
+	'sweater-pleated-sleeve-upper-L': ['hoodie-plaid-top'],
+	'sweater-pleated-sleeve-upper-R': ['hoodie-plaid-top'],
+	'sweater-pleated-sleeve-fore-L': ['hoodie-plaid-top'],
+	'sweater-pleated-sleeve-fore-R': ['hoodie-plaid-top'],
+	'sweater-pleated-skirt': ['hoodie-pleated-skirt'],
+	'sweater-pleated-skirt-under': ['hoodie-pleated-skirt'],
+};
+
+/**
+ * 旧 base 引用（v2.1 generic 或 v2.2–v2.7 分件）→ v3 整层 drawable 列表；未知返回 null。
+ * @param {string} ref
+ * @returns {string[] | null}
+ */
+export function legacyBaseRefTargets(ref) {
+	if (!ref || typeof ref !== 'string') return null;
+	const v21 = LEGACY_V21_BASE_REFS[/** @type {keyof typeof LEGACY_V21_BASE_REFS} */ (ref)];
+	if (v21) return v21;
+	return LEGACY_V22_BASE_REFS[/** @type {keyof typeof LEGACY_V22_BASE_REFS} */ (ref)] || null;
+}
+
+/** DIY 自动配对（auto-pair）参考套装顺序（v3/v2.2 都有；hoodie-plaid 优先）。 */
+export const DIY_AUTO_PAIR_OUTFITS = ['hoodie-plaid', 'hoodie-pleated', 'maid', 'sailor-plaid'];
+
+/** auto-pair「上衣组」取的槽位（组内按顺序合并；v3 只有 topBody，v2.2–v2.7 有 collar/sleeve 分件）。 */
+const AUTO_PAIR_TOP_SLOTS = ['topBody', 'topUnder', 'collar', 'sleeveUpper', 'sleeveFore', 'sleeve'];
+/** auto-pair「下装组」取的槽位。 */
+const AUTO_PAIR_BOTTOM_SLOTS = ['bottom'];
+
+/** 调用方未传 rig.outfits 时的静态兜底候选（同时覆盖 v3 整层 id 与 v2.2 分件 id）。 */
+const AUTO_PAIR_TOP_FALLBACK = [
+	'hoodie-plaid-top',
+	'hoodie-plaid-torso',
+	'hoodie-plaid-sleeve-upper-L', 'hoodie-plaid-sleeve-upper-R',
+	'hoodie-plaid-sleeve-fore-L', 'hoodie-plaid-sleeve-fore-R',
+];
+const AUTO_PAIR_BOTTOM_FALLBACK = ['hoodie-plaid-skirt', 'hoodie-plaid-skirt-under'];
+
+/**
+ * 从当前场景 base outfits 动态取 auto-pair 引用（不在代码里写死分件 id）：
+ * - v3 rig：每套 topBody/bottom 各 1 个整层 drawable → 配对只加 1 层；
+ * - v2.2–v2.7 rig：同一 outfit 的 torso/collar/sleeveUpper/sleeveFore 分件 → 保持旧观感。
+ * 参考套装全部没有可用引用时回退静态候选（兼容未传 outfits 的旧调用）。
+ *
+ * @param {Record<string, any>} drawableById
+ * @param {Record<string, any> | null | undefined} outfits
+ * @param {'top' | 'bottom'} group `top` = 取配对下装；`bottom` = 取配对上衣
+ * @returns {string[]}
+ */
+function autoPairRefs(drawableById, outfits, group) {
+	/** @type {string[]} */
+	const picked = [];
+	const take = (/** @type {string} */ id) => {
+		if (typeof id === 'string' && drawableById && drawableById[id] && !picked.includes(id)) picked.push(id);
+	};
+	/** @type {string[]} */
+	const outfitIds = [];
+	for (const id of DIY_AUTO_PAIR_OUTFITS) if (outfits && outfits[id]) outfitIds.push(id);
+	for (const id of Object.keys(outfits || {})) if (!outfitIds.includes(id)) outfitIds.push(id);
+	const slots = group === 'bottom' ? AUTO_PAIR_TOP_SLOTS : AUTO_PAIR_BOTTOM_SLOTS;
+	for (const outfitId of outfitIds) {
+		const outfit = (outfits && outfits[outfitId]) || {};
+		/** @type {string[]} */
+		const groupRefs = [];
+		for (const slot of slots) {
+			for (const id of outfit[slot] || []) {
+				if (typeof id === 'string' && drawableById && drawableById[id] && !groupRefs.includes(id)) groupRefs.push(id);
+			}
+		}
+		if (groupRefs.length) return groupRefs;
+	}
+	for (const id of group === 'bottom' ? AUTO_PAIR_TOP_FALLBACK : AUTO_PAIR_BOTTOM_FALLBACK) take(id);
+	return picked;
+}
+
+/**
+ * 旧 DIY pack 的 outfit 引用迁移：缺失的 v2.1/v2.2–v2.7 base id 按映射表收敛到 v3 整层 drawable；
+ * 目标不存在则安全置空并记 unmapped（不抛错、不改 pack 原对象、不丢 pack 自带 drawable）。
+ *
+ * 兼容策略：
+ * - 用户自绘层（ownIds）原样保留，不因 v3 分件消失而丢失；
+ * - 只迁移 base 引用，同一整层只落一次（旧 collar/sleeve/torso 引用收敛成一个 top 层，
+ *   不重复叠加多份 base 服装）；
+ * - auto-pair 从当前 rig.outfits 动态取参考套装（v3 单层 / v2.2 分件都成立），
+ *   未传 options.outfits 时用静态候选兜底。
  *
  * @param {Record<string, any>} outfits
  * @param {Record<string, any>} drawableById 当前场景的 drawable 表（id → {slot}）
  * @param {string[]} [ownIds] 当前 pack 自带的 drawable id（注册前尚未进场景，需保留）
- * @param {{ category?: string }} [options] pack 品类（用于「空配对自动补齐」，如旧 dress/outfit pack 无下装）
+ * @param {{ category?: string, outfits?: Record<string, any> }} [options]
+ *   category：pack 品类（「空配对自动补齐」用）；outfits：当前场景 base rig.outfits（auto-pair 参考套装）
  * @returns {{ outfits: Record<string, any>, warnings: string[], unmapped: string[] }}
  */
 export function migrateDiyPackOutfits(outfits, drawableById = {}, ownIds = [], options = {}) {
@@ -840,39 +1007,44 @@ export function migrateDiyPackOutfits(outfits, drawableById = {}, ownIds = [], o
 					push(next, slot, ref);
 					continue;
 				}
-				const targets = LEGACY_V21_BASE_REFS[/** @type {keyof typeof LEGACY_V21_BASE_REFS} */ (ref)] || null;
+				const targets = legacyBaseRefTargets(ref);
 				if (!targets) {
 					unmapped.push(`${outfitId}.${slot}:${ref}`);
 					continue;
 				}
-				let mapped = 0;
+				const mappedIds = [];
 				for (const target of targets) {
 					const drawable = drawableById ? drawableById[target] : null;
 					if (!drawable) continue;
 					const targetSlot = OUTFIT_SLOTS.includes(drawable.slot) ? drawable.slot : slot;
 					push(next, targetSlot, target);
-					mapped += 1;
+					mappedIds.push(target);
 				}
-				if (mapped > 0) warnings.push(`migrated:${ref}→${mapped}`);
+				if (mappedIds.length > 0) warnings.push(`migrated:${ref}→${mappedIds.join('+')}`);
 				else unmapped.push(`${outfitId}.${slot}:${ref}@missing-target`);
 			}
 		}
 		// 旧 pack 的 pairing 可能整体为空（v2.1 dress/outfit 本来不带下装；bottom 可缺上衣）：
-		// 按品类自动补一套 v2.2 配对部件（存在才补），避免「光腿/裸上身」。
+		// 按品类自动补一套 base 配对层（存在才补），避免「光腿/裸上身」。
+		// 参考套装从当前场景 outfits 动态取：v3 整层 rig → 单层 top/skirt；v2.2–v2.7 → 分件（保持旧观感）。
 		const category = String(options.category || '');
 		if (category === 'bottom') {
-			if (!(next.topBody || []).length && drawableById && drawableById['hoodie-plaid-torso']) {
-				push(next, 'topBody', 'hoodie-plaid-torso');
-				for (const id of ['hoodie-plaid-sleeve-upper-L', 'hoodie-plaid-sleeve-upper-R']) if (drawableById[id]) push(next, 'sleeveUpper', id);
-				for (const id of ['hoodie-plaid-sleeve-fore-L', 'hoodie-plaid-sleeve-fore-R']) if (drawableById[id]) push(next, 'sleeveFore', id);
-				warnings.push('migrated:auto-pair-top');
+			if (!(next.topBody || []).length && !(next.topUnder || []).length) {
+				const topRefs = autoPairRefs(drawableById, options.outfits, 'bottom');
+				if (topRefs.length) {
+					for (const id of topRefs) {
+						const targetSlot = OUTFIT_SLOTS.includes(drawableById[id].slot) ? drawableById[id].slot : 'topBody';
+						push(next, targetSlot, id);
+					}
+					warnings.push(`migrated:auto-pair-top:${topRefs.join('+')}`);
+				}
 			}
 		} else if (['top', 'coat', 'dress', 'outfit'].includes(category)) {
-			if (!(next.bottom || []).length && drawableById) {
-				const skirts = ['hoodie-plaid-skirt', 'hoodie-plaid-skirt-under'].filter((id) => drawableById[id]);
-				if (skirts.length) {
-					for (const id of skirts) push(next, 'bottom', id);
-					warnings.push('migrated:auto-pair-bottom');
+			if (!(next.bottom || []).length) {
+				const skirtRefs = autoPairRefs(drawableById, options.outfits, 'top');
+				if (skirtRefs.length) {
+					for (const id of skirtRefs) push(next, 'bottom', id);
+					warnings.push(`migrated:auto-pair-bottom:${skirtRefs.join('+')}`);
 				}
 			}
 		}

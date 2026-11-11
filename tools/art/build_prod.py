@@ -25,6 +25,23 @@ v2.5 口径相对 P3（v2.4.0）的改动（T1 + T2 合并，见 W0 REPORT §构
     feather），union mask 同步套两张纹理。
   * 65 骨不变，chibi 契约不变（85 drawables）。
 
+v3.0 paper-doll 增量（`.scratch/p8/v3-paperdoll/PLAN.md` §4）：
+  * 源包 `art/garments/{shape}/{combo}/layers/{top,skirt}.png` 存在时，该套行走
+    「整层 outfit」路径：每套 2 个 drawable（top slot=topBody z=64 / skirt
+    slot=bottom z=30，各 1 张 675×1200 全画布纹理 + 1 个 build_mesh 单网格，
+    cell=9，uv=x/W,y/H）；outfits[combo] = {name, topBody:[{combo}-top],
+    bottom:[{combo}-skirt]}。
+  * 整层资产已是最终授权层（无烘焙身体/假脖子）→ seam_extend / port_rest_colors /
+    clean_garment_skin 全部跳过（V3_IDS 过滤，避免把身体色/内壁色打回服装层）；
+    仅做 color_bleed 2px RGB 外扩（alpha 不变）。
+  * 没有 layers/ 的源包完全保持 v2.7 分件路径（已实测逐字节复现官方 v2.7.0 dist）。
+  * hi tier 不变：服装仍 1x，走 lo 页图集。
+  * Phase 2C（用户选定 W8 方案）：源包 `art/body-fix/{shape}/neck-overlay.png`
+    （675×1200 RGBA，alpha=羽化权重、RGB=目标肤色，含 neck-overlay.json 元数据）存在时，
+    构建期把 overlay alpha 合成到 body-head 贴图（lo 1x；hi Lanczos 2x 到 1350×2400），
+    tex alpha 不变、overlay alpha=0 区域逐字节不变，并**跳过**算法版 retouch_neck。
+    overlay 缺失时才回退算法版（G1 修复：颈部中值去条带 + 轻度提亮，见 retouch_neck()）。
+
 构建说明：
   * 输入路径全部相对 `--src`（默认 <repo>/.cache/assets-src）解析；`--outdir`
     默认 <repo>/tools/art/dist；中间产物写 `--workdir`（默认 <repo>/.cache/build，
@@ -97,6 +114,44 @@ OPTS = {
     'hands_2x': False,      # --hands-2x: experimental 2x hand textures (T2 refined2x)
     'clean_garment_skin': False,  # --clean-garment-skin: v2.6.1 baked skin/palm cleanup
     'outdir': OUTDIR,       # --outdir PATH: default <repo>/tools/art/dist
+}
+# ---- v3.0 paper-doll: 整层 outfit（layer PNG → 单网格）----
+# 源包 art/garments/{shape}/{combo}/layers/{top,skirt}.png 存在时，该套装走
+# v3 整层路径：每套只有 2 个 drawable（top z=64 / skirt z=30，各 1 张 675×1200
+# 全画布纹理 + 1 个整层网格），替代 v2.7 的 6-9 个分件。没有 layers/ 的旧源包
+# 完全保持 v2.7 分件路径（Phase 3 回退能力）。
+#   * top z=64：高于 body 手臂（armUpper 45 / armFore 48）、手（hand 65）之下、
+#     hairFront（70）之下（见 .scratch/p8/v3-paperdoll/PROGRESS.md Phase 2 注意）；
+#   * skirt z=30：与原 bottom 槽位一致（body 10-11 之上、topBody 之下）。
+V3_LAYERS = (('top', 'topBody', 64.0), ('skirt', 'bottom', 30.0))
+V3_CELL = 9                       # 整层网格密度（px/格；比旧分件 14 细，衣摆变形更平滑）
+V3_IDS = set()                    # build_shape 填充；补丁步骤（seam-extend/rest-port/skin-clean）跳过整层
+NECK_BODY_IDS = ('body-head', 'body-torso')
+NECK_ALPHA = 240                # 可处理像素 alpha 下限（皮肤区实际 255）
+NECK_TARGET_HALF_W = 100.0      # 胸口参考带半宽（lo 坐标）
+# v3.0 G1#4：收敛方案 =「中值去条带 + 轻度提亮」（Lead 离线原型 med70 验证）：
+#   1) mask = 区域内 & alpha>240 & 皮肤/皮肤阴影（R−B>6、L255>90、非蓝发 B>R+14），
+#      dilate 1px 覆盖线稿/AA 边；区域边界羽化 10-14px；
+#   2) 中值去条带：cv2.medianBlur(RGB, median_k)(lo=11 / hi=21) 只在 mask×区域权重 w
+#      处混合：out = rgb*(1−w) + median*w → 颈侧竖条/肌腱线/钩痕被局部中值抹掉，
+#      宽阴影（下巴投影、锁骨）保留；
+#   3) 轻度提亮：转 LAB 后向胸口皮肤中位 LAB（SkinRule，含 alpha>240）混合 lighten*w
+#      （0.7，lo/hi 同参数；hi 目标色从 2x 贴图自身测）；
+#   4) alpha/网格/区域外 0 改动。
+# 该调整对 v3 与旧分件回退 rig 都生效（同一 body 贴图），只影响露颈区域，可接受。
+NECK_RETOUCH = {
+    'chibi': {'cx': 337.5, 'jaw': 515.0, 'y0': 509.0, 'y1': 568.0,
+              'half_w': 112.0, 'fade_x': 14.0, 'fade_in': 10.0, 'fade_out': 14.0,
+              'median_k': 11, 'lighten': 0.7,
+              'face_band': (425.0, 470.0), 'face_half_w': 80.0,
+              'chest_band': (610.0, 820.0), 'chest_fallback_rgb': (252, 237, 227),
+              'face_fallback_L': 243.0},
+    'girl': {'cx': 337.5, 'jaw': 344.0, 'y0': 326.0, 'y1': 452.0,
+             'half_w': 112.0, 'fade_x': 14.0, 'fade_in': 10.0, 'fade_out': 14.0,
+             'median_k': 11, 'lighten': 0.7,
+             'face_band': (245.0, 300.0), 'face_half_w': 80.0,
+             'chest_band': (560.0, 700.0), 'chest_fallback_rgb': (245, 226, 215),
+             'face_fallback_L': 233.0},
 }
 # ---- T1 v2.5 girl full hair split constants ----
 HAIR_SLOTS_ALL = ('hairBack', 'strands', 'hairFront', 'face')
@@ -1041,6 +1096,10 @@ def seam_extend(drawables, texdir, base_ids):
     later), so the overlap is invisible and the seam disappears."""
     combos = {}
     for d in drawables:
+        # v3 整层 outfit 是单一授权资产：没有分件接缝，也不允许向脖子/手方向外扩 alpha
+        # （会填掉领口露颈区）→ 完全跳过。
+        if d['id'] in V3_IDS:
+            continue
         if d['slot'] in PORT_SLOTS:
             prefix = d['id'].split('-')[0]
             key = prefix
@@ -1118,6 +1177,11 @@ def port_rest_colors(shape, drawables, outfits, texdir):
         for slot, ids in outfit.items():
             if isinstance(ids, list) and slot in PORT_SLOTS:
                 part_ids.update(ids)
+        # v3 整层 outfit 是最终授权资产（领口/袖口/下摆颜色已定稿），不吃 look ref 的
+        # 可见区颜色（ref 里带烘焙身体/假脖子像素，会把它们重新拷回服装层）。
+        part_ids -= V3_IDS
+        if not part_ids:
+            continue
         vis = [d for d in drawables if d['id'] in base_ids or d['id'] in part_ids]
         vis.sort(key=lambda d: d['z'])
         # Port the production rest colour to EVERY pixel of every garment part
@@ -1128,7 +1192,7 @@ def port_rest_colors(shape, drawables, outfits, texdir):
         # composite, so the seam is invisible at rest. Hidden/overlap pixels get
         # the production colour of what is above them (plausible under motion).
         for d in vis:
-            if d['slot'] not in PORT_SLOTS:
+            if d['id'] in V3_IDS or d['slot'] not in PORT_SLOTS:
                 continue
             tex = np.array(Image.open(os.path.join(texdir, d['texture'])).convert('RGBA'))
             m = (tex[:, :, 3] > 0) & (ref_a > 0)
@@ -1821,7 +1885,8 @@ def clean_garment_skin(shape, drawables, texdir, outfits, stats):
     total = 0
     out_per = {}
     for combo in [c for c in outfits if c != 'base']:
-        gds = [d for d in garment_ids if d['id'].startswith(combo + '-')]
+        gds = [d for d in garment_ids
+               if d['id'].startswith(combo + '-') and d['id'] not in V3_IDS]
         if not gds:
             continue
         gds.sort(key=lambda x: x.get('z', 0))
@@ -2033,6 +2098,18 @@ def build_hi_tier(shape, rig_path, texdir, stats, hi_outdir, hi_src):
         hi_stats[pid] = {'texSize': d['texSize'], 'hiSource': art is not None,
                          'hiSrc': os.path.basename(hi_p) if hi_p else None,
                          'bodyMaster2x': bool(is_body and master2 is not None)}
+    # v3.0 Phase 2C: hi tier 同样合成颈部 overlay（W8；overlay Lanczos 2x 到 1350×2400）。
+    # 只处理由 master-2x 派生的 body 贴图：Lanczos 降级路径的输入是「已合成 overlay 的
+    # lo 贴图」，重复合成会二次叠加。overlay 缺失时回退算法版 retouch_neck。
+    hi_neck_ids = [pid for pid in NECK_BODY_IDS
+                   if hi_stats.get(pid, {}).get('bodyMaster2x')]
+    hi_overlay = None
+    hi_neck = None
+    if 'body-head' in hi_neck_ids:
+        hi_overlay = apply_neck_overlay(shape, tex_hi, ids=('body-head',),
+                                        scale=2, tag='hi')
+    if hi_overlay is None:
+        hi_neck = retouch_neck(shape, tex_hi, ids=hi_neck_ids, scale=2, tag='hi')
     hi_art = sum(1 for v in hi_stats.values() if v['hiSource'])
     hi_canvas = sum(1 for v in hi_stats.values() if v['bodyMaster2x'])
     hi_placeholder = sum(1 for v in hi_stats.values()
@@ -2079,12 +2156,370 @@ def build_hi_tier(shape, rig_path, texdir, stats, hi_outdir, hi_src):
            'hiSource': {'layersFromArt': hi_art, 'bodyFromMaster2x': hi_canvas,
                         'placeholder': hi_placeholder, 'master2xFrom': master2_from,
                         'residueProtectedPx': hi_residue_protected, 'root': hi_src},
+           'neckOverlay': hi_overlay,
+           'neckRetouch': hi_neck,
            'hiTex': hi_stats}
     log(f'[{shape}] hi tier -> {dst_dir}: pages {out["pages"]} '
         f'{out["pageSizes"]} pxEqual={out["pixelEqual"]} rig={out["rigBytes"]}B '
         f'tex={out["texMiB"]}MiB (2x {len(hi_ids)} / 1x {len(lo_ids)}; '
         f'art {hi_art} layers + {hi_canvas} body-master2x, placeholder {hi_placeholder})')
     return out
+
+
+# ------------------------------------- v3.0: 整层 outfit（paper-doll）---------
+def v3_layers_dir(shape, combo):
+    """v3 整层 outfit 源目录：<src>/art/garments/{shape}/{combo}/layers/。"""
+    return os.path.join(M2, 'garments', shape, combo, 'layers')
+
+
+def has_v3_layers(shape, combo):
+    """该套装是否有 v3 整层源（layers/top.png + layers/skirt.png 同时存在）。
+
+    缺一只时视为源包损坏（不允许退化成半层构建）→ SystemExit，避免静默产出坏 rig。
+    """
+    ldir = v3_layers_dir(shape, combo)
+    has_top = os.path.isfile(os.path.join(ldir, 'top.png'))
+    has_skirt = os.path.isfile(os.path.join(ldir, 'skirt.png'))
+    if has_top != has_skirt:
+        raise SystemExit(f'v3 outfit layers incomplete: {ldir} '
+                         f'(top.png={has_top}, skirt.png={has_skirt})')
+    return has_top
+
+
+def _alpha_bbox(alpha_u8):
+    """alpha>8 像素的全画布 bbox [x0,y0,x1,y1]（右下开区间，与 parts-index rect 同语义）。"""
+    ys, xs = np.where(alpha_u8 > 8)
+    if len(xs) == 0:
+        raise SystemExit('v3 outfit layer is fully transparent')
+    return [int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1]
+
+
+def build_v3_outfit(shape, combo, rig, drawables, texdir, stats):
+    """v3.0 整层 outfit 路径：top/skirt 各 1 个全画布纹理 + 单网格 drawable。
+
+    与 v2.7 分件路径的差异：
+      * 图层已经是最终授权资产（无烘焙身体/手/腿/假脖子，领口闭合）→ 不跑
+        seam-extend / rest-color porting / baked-skin cleanup（V3_IDS 过滤）；
+      * 只做 mipmap 边缘 RGB 外扩（color_bleed 2px，alpha 不变），避免双线性/
+        mipmap 采样到透明黑像素产生暗边；
+      * 网格用 build_mesh 全画布 alpha + V3_CELL，uv 仍为 x/W,y/H（build_2d5
+        的 --trim-alpha 会按 alpha bbox 裁剪并重映射 uv）。
+
+    返回 outfit 条目（name + topBody=[{combo}-top] + bottom=[{combo}-skirt]）。
+    """
+    outfit = {'name': combo + '（cutout）'}
+    ldir = v3_layers_dir(shape, combo)
+    for layer, slot, z in V3_LAYERS:
+        pid = f'{combo}-{layer}'
+        path = os.path.join(ldir, layer + '.png')
+        tex = load_rgba(path)
+        if tex.shape[:2] != (H, W):
+            raise SystemExit(f'v3 outfit layer {path} is {tex.shape[1]}x{tex.shape[0]}, '
+                             f'expected full canvas {W}x{H}')
+        tex = color_bleed(tex)
+        Image.fromarray(tex, 'RGBA').save(os.path.join(texdir, pid + '.png'))
+        alpha_u8 = tex[:, :, 3]
+        alpha = alpha_u8.astype(np.float32) / 255.0
+        rect = _alpha_bbox(alpha_u8)
+        mesh = build_mesh(alpha, rig, pid, slot, combo, V3_CELL)
+        drawables.append({'id': pid, 'slot': slot, 'z': z, 'role': slot,
+                          'texture': pid + '.png', 'mesh': mesh,
+                          'rect': rect, 'mask': []})
+        outfit.setdefault(slot, []).append(pid)
+        # 整层资产不走 restore_source（无阴影带修复）→ bandRows 记 0，保持 provenance 字段完整
+        stats['bandRows'][pid] = 0
+        stats['parts'][pid] = {'px': int((alpha_u8 > 8).sum()), 'rect': rect,
+                               'z': z, 'slot': slot, 'combo': combo,
+                               'v3Layer': layer}
+        log(f'[{shape}] v3 outfit {combo}/{layer}: {pid} slot={slot} z={z} '
+            f'px={stats["parts"][pid]["px"]} rect={rect} '
+            f'verts={len(mesh["positions"])}')
+        V3_IDS.add(pid)
+    return outfit
+
+
+def _neck_chest_skin(rgba):
+    """胸口参考色取样口径 SkinRule（同 `.scratch/.../audit/AUDIT.md`）+ 邻域支撑过滤。
+
+    仅用于「胸口皮肤中位色/脸颊参考 L」取样（提供暖色 a/b 与面部 L 参考）；
+    去条带 mask 见 _neck_strip_mask。
+    """
+    R = rgba[:, :, 0].astype(int)
+    G = rgba[:, :, 1].astype(int)
+    B = rgba[:, :, 2].astype(int)
+    m = ((rgba[:, :, 3] > NECK_ALPHA) & (R >= 190) & (G >= 135)
+         & (R - G >= 6) & (R - G <= 65) & (G - B >= 2) & (G - B <= 25))
+    cnt = cv2.filter2D(m.astype(np.uint8), -1, np.ones((3, 3), np.uint8),
+                       borderType=cv2.BORDER_REPLICATE)
+    return m & (cnt >= 4)
+
+
+def _neck_face_L(shape, texdir, scale=1):
+    """脸颊肤色参考 L（L255 口径；G1 验收窗口 [face_L−20, face_L] 用）。
+
+    从同身形 body-head 贴图脸颊带（chibi y425-470 / girl y245-300，x cx±80）取
+    SkinRule 像素的 median L（OpenCV 0..255）。样本不足时退回 face_fallback_L。
+    """
+    cfg = NECK_RETOUCH[shape]
+    p = os.path.join(texdir, 'body-head.png')
+    if not os.path.exists(p):
+        return float(cfg['face_fallback_L']), 0
+    tex = load_rgba(p)
+    m = _neck_chest_skin(tex)
+    y0 = max(0, int(round(cfg['face_band'][0] * scale)))
+    y1 = min(m.shape[0], int(round(cfg['face_band'][1] * scale)) + 1)
+    x0 = max(0, int(round((cfg['cx'] - cfg['face_half_w']) * scale)))
+    x1 = min(m.shape[1], int(round((cfg['cx'] + cfg['face_half_w']) * scale)) + 1)
+    band = np.zeros_like(m)
+    band[y0:y1, x0:x1] = True
+    sel = m & band
+    n = int(sel.sum())
+    if n < 200 * scale * scale:
+        return float(cfg['face_fallback_L']), n
+    L = cv2.cvtColor(tex[:, :, :3].astype(np.uint8), cv2.COLOR_RGB2LAB)[:, :, 0]
+    return float(np.median(L[sel])), n
+
+
+def _neck_strip_mask(rgba):
+    """颈部去条带 mask（Lead G1#4 口径）：alpha>240 & 皮肤/皮肤阴影 & 非蓝发。
+
+    R−B>6（暖肤色/暗红肌腱线的 R−B 也大，全部覆盖）& L255>90（排除深描边/纯黑线）
+    & 非蓝发（B>R+14 剔除）。
+    """
+    R = rgba[:, :, 0].astype(int)
+    B = rgba[:, :, 2].astype(int)
+    L255 = cv2.cvtColor(rgba[:, :, :3].astype(np.uint8), cv2.COLOR_RGB2LAB)[:, :, 0]
+    return ((rgba[:, :, 3] > NECK_ALPHA) & (R - B > 6) & (L255 > 90)
+            & ~(B > R + 14))
+
+
+def _rgb_u8_to_lab(rgb):
+    """RGB uint8（H,W,3 或 N,3）→ float32 CIE LAB（OpenCV 口径，L∈[0,100]）。"""
+    arr = rgb.astype(np.float32) / 255.0
+    if arr.ndim == 2:
+        arr = arr[None, ...]
+    return cv2.cvtColor(arr, cv2.COLOR_RGB2LAB)
+
+
+def _lab_to_rgb_u8(lab):
+    """float32 LAB → RGB uint8（clip + 四舍五入，确定性）。"""
+    rgb = cv2.cvtColor(lab.astype(np.float32), cv2.COLOR_LAB2RGB)
+    return np.clip(np.rint(rgb * 255.0), 0, 255).astype(np.uint8)
+
+
+def _neck_chest_target(shape, texdir, scale=1):
+    """同身形 body-torso 胸口带 SkinRule 像素的中位色 LAB（提亮目标）。
+
+    返回 (lab_L100 float32[3], source 'measured'|'fallback', 样本像素数)。
+    """
+    cfg = NECK_RETOUCH[shape]
+    p = os.path.join(texdir, 'body-torso.png')
+    fallback = _rgb_u8_to_lab(np.array([[cfg['chest_fallback_rgb']]], np.uint8))[0, 0].copy()
+    if not os.path.exists(p):
+        return fallback, 'fallback', 0
+    tex = load_rgba(p)
+    m = _neck_chest_skin(tex)
+    x0 = max(0, int(round((cfg['cx'] - NECK_TARGET_HALF_W) * scale)))
+    x1 = min(m.shape[1], int(round((cfg['cx'] + NECK_TARGET_HALF_W) * scale)) + 1)
+    y0 = max(0, int(round(cfg['chest_band'][0] * scale)))
+    y1 = min(m.shape[0], int(round(cfg['chest_band'][1] * scale)) + 1)
+    band = np.zeros_like(m)
+    band[y0:y1, x0:x1] = True
+    sel = m & band
+    n = int(sel.sum())
+    if n < 100 * scale * scale:
+        return fallback, 'fallback', n
+    lab = _rgb_u8_to_lab(tex[sel][:, :3]).reshape(-1, 3)
+    return np.median(lab, axis=0).astype(np.float32), 'measured', n
+
+
+# ---- v3.0 Phase 2C: 素体颈部 overlay 补丁（W8；源包 art/body-fix/{shape}/neck-overlay.png）----
+# 用户选定 W8 颈部方案后，Lead 把结果固化为素体资产补丁：675×1200 RGBA，
+# alpha=羽化权重（0-255）、RGB=目标肤色；同目录 neck-overlay.json 记录 region/seed/method。
+# builder 行为：overlay 存在时对 body-head 贴图做 alpha 合成（lo 1x / hi 2x Lanczos），
+# 并跳过算法版 retouch_neck（避免双重处理）；overlay 缺失时 retouch_neck 作为兜底。
+NECK_OVERLAY_REL = ('body-fix', 'neck-overlay.png')
+
+
+def neck_overlay_path(shape):
+    """源包内的素体颈部 overlay 路径（<src>/art/body-fix/{shape}/neck-overlay.png）。"""
+    return os.path.join(M2, NECK_OVERLAY_REL[0], shape, NECK_OVERLAY_REL[1])
+
+
+def apply_neck_overlay(shape, texdir, ids=('body-head',), scale=1, tag='lo'):
+    """把素体颈部 overlay（W8）alpha 合成到最终 body 贴图上（确定性）。
+
+    lo：overlay 原尺寸 675×1200；hi：overlay Lanczos 放大到 1350×2400（scale=2）。
+    out = tex·(1−w) + overlayRGB·w（w=overlay alpha/255），只对 tex alpha>240 像素生效；
+    tex 的 alpha 通道不变；overlay alpha==0 区域逐字节不变（函数内断言）。
+    返回 build-stats 用的统计字典；overlay 不存在时返回 None（调用方走 retouch_neck 兜底）。
+    """
+    path = neck_overlay_path(shape)
+    if not os.path.isfile(path):
+        return None
+    meta_path = os.path.join(os.path.dirname(path), 'neck-overlay.json')
+    meta = {}
+    if os.path.isfile(meta_path):
+        try:
+            meta = json.load(open(meta_path))
+        except (ValueError, OSError):
+            meta = {}
+    base = load_rgba(path)
+    if base.shape[:2] != (H, W):
+        raise SystemExit(f'neck overlay {path} is {base.shape[1]}x{base.shape[0]}, '
+                         f'expected {W}x{H}')
+    ovr = base if scale == 1 else cv2.resize(
+        base, (W * scale, H * scale), interpolation=cv2.INTER_LANCZOS4)
+    ovr_rgb = ovr[:, :, :3].astype(np.float32)
+    ovr_w = ovr[:, :, 3].astype(np.float32) / 255.0
+    info = {'path': path, 'shape': shape, 'tier': tag, 'scale': scale,
+            'sourceSeed': meta.get('seed'), 'method': meta.get('method'),
+            'changedPx': 0, 'alphaInvariant': True, 'outsideRegionChanged': 0,
+            'overlayAlphaPx': int((ovr[:, :, 3] > 0).sum()),
+            'overlayFullWeightPx': int((ovr[:, :, 3] == 255).sum()),
+            'perTexture': {}}
+    total = 0
+    outside_total = 0
+    for pid in ids:
+        tp = os.path.join(texdir, pid + '.png')
+        if not os.path.exists(tp):
+            continue
+        tex = load_rgba(tp)
+        if tex.shape[:2] != (H * scale, W * scale):
+            raise SystemExit(f'neck overlay: {tp} is {tex.shape[1]}x{tex.shape[0]}, '
+                             f'expected {W * scale}x{H * scale} (scale={scale})')
+        opaque = tex[:, :, 3] > 240
+        w = ovr_w * opaque
+        rgb = tex[:, :, :3].astype(np.float32) * (1.0 - w[:, :, None]) \
+            + ovr_rgb * w[:, :, None]
+        new_rgb = np.clip(np.rint(rgb), 0, 255).astype(np.uint8)
+        changed = (w > 0) & (new_rgb != tex[:, :, :3]).any(axis=2)
+        outside = changed & (ovr[:, :, 3] == 0)
+        outside_total += int(outside.sum())
+        tex[:, :, :3] = np.where(w[:, :, None] > 0, new_rgb, tex[:, :, :3])
+        alpha_before = tex[:, :, 3].copy()
+        Image.fromarray(tex, 'RGBA').save(tp)
+        reloaded = load_rgba(tp)
+        alpha_invariant = bool(np.array_equal(alpha_before, reloaded[:, :, 3]))
+        n = int(changed.sum())
+        total += n
+        info['perTexture'][pid] = {'changedPx': n,
+                                   'weightedPx': int((w > 0).sum()),
+                                   'alphaInvariant': alpha_invariant}
+        if not alpha_invariant:
+            raise SystemExit(f'neck overlay: {pid} alpha changed (must stay invariant)')
+    if outside_total:   # overlay alpha==0 区域必须逐字节不变
+        raise SystemExit(f'neck overlay: {outside_total}px changed outside overlay alpha>0')
+    info['changedPx'] = total
+    info['outsideRegionChanged'] = outside_total
+    log(f'[{shape}] {tag} neck overlay (W8): {os.path.basename(path)} '
+        f'seed={info["sourceSeed"]} scale={scale} · changed {total}px · '
+        f'alphaInvariant={info["alphaInvariant"]} outsideChanged={outside_total}px')
+    return info
+
+
+def retouch_neck(shape, texdir, ids=NECK_BODY_IDS, scale=1, tag='lo'):
+    """v3.0 G1#4：body 颈部「中值去条带 + 轻度提亮」（确定性；lo + hi tier 共用）。
+
+    在最终 texdir 贴图上：
+      1) median = cv2.medianBlur(RGB, k)（k=median_k for lo；2·median_k−1 for hi 2x）；
+      2) 在 mask×区域羽化权重 w 处混合去条带结果：out = rgb·(1−w) + median·w；
+      3) 转 LAB 后向胸口皮肤中位 LAB 混合 lighten·w（轻度提亮/回暖）；
+    窄的颈侧竖条/肌腱线/钩痕被局部中值抹掉，宽阴影（下巴投影/锁骨）保留。
+    alpha/网格完全不动；区域外 0 改动（函数内断言）。
+
+    scale=1 → lo tier 675×1200；scale=2 → hi tier 1350×2400（区域/kernel 均 ×2 量级，
+    lighten 参数不变）。无有效改动返回 None。
+    """
+    ids = tuple(ids or ())
+    if not ids:
+        return None
+    cfg = NECK_RETOUCH[shape]
+    lighten = float(cfg['lighten'])
+    k = float(scale)
+    wn, hn = W * scale, H * scale
+    med_k = int(cfg['median_k']) if scale == 1 else int(cfg['median_k']) * 2 - 1
+    chest_lab, chest_src, chest_n = _neck_chest_target(shape, texdir, scale=scale)
+    face_L, face_n = _neck_face_L(shape, texdir, scale=scale)
+    chest_rgb = [int(v) for v in _lab_to_rgb_u8(chest_lab[None, None, :])[0, 0]]
+    # --- 区域羽化权重（全画布 2D） ---
+    xs = np.arange(wn, dtype=np.float32)
+    ys = np.arange(hn, dtype=np.float32)
+    cx = cfg['cx'] * k
+    y0 = cfg['y0'] * k
+    y1 = cfg['y1'] * k
+    half_w = cfg['half_w'] * k
+    dx = np.abs(xs - cx)
+    wx = np.clip((half_w - dx) / (cfg['fade_x'] * k), 0.0, 1.0)
+    wy = (np.clip((ys - y0) / (cfg['fade_in'] * k), 0.0, 1.0)
+          * np.clip((y1 - ys) / (cfg['fade_out'] * k), 0.0, 1.0)).astype(np.float32)
+    region = (wy[:, None] > 0) & (wx[None, :] > 0)
+    Wr = (wy[:, None] * wx[None, :]).astype(np.float32)
+    info = {'shape': shape, 'tier': tag, 'mode': 'neck-median', 'scale': scale,
+            'lighten': lighten, 'medianKernel': med_k,
+            'faceL255': round(face_L, 1), 'facePx': face_n,
+            'faceBand': list(cfg['face_band']),
+            'targetRGB': chest_rgb,
+            'targetLAB': [round(float(v), 2) for v in chest_lab],
+            'targetSource': chest_src, 'targetPx': chest_n,
+            'region': {'x': [round(float(cfg['cx'] - cfg['half_w']), 1),
+                             round(float(cfg['cx'] + cfg['half_w']), 1)],
+                       'y': [round(float(cfg['y0']), 1), round(float(cfg['y1']), 1)]},
+            'perTexture': {}, 'outsideChangedPx': 0}
+    for pid in ids:
+        path = os.path.join(texdir, pid + '.png')
+        if not os.path.exists(path):
+            continue
+        tex = load_rgba(path)
+        if tex.shape[:2] != (hn, wn):
+            raise SystemExit(f'neck-retouch: {path} is {tex.shape[1]}x{tex.shape[0]}, '
+                             f'expected {wn}x{hn} (scale={scale})')
+        R = tex[:, :, 0].astype(int)
+        B = tex[:, :, 2].astype(int)
+        mask = _neck_strip_mask(tex) & region
+        if not mask.any():
+            continue
+        # mask dilate 1px 覆盖线稿/AA 边，再 1px 高斯软化过渡
+        md = cv2.dilate(mask.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+        md &= (tex[:, :, 3] > NECK_ALPHA) & ~(B > R + 14)
+        mask_soft = cv2.GaussianBlur(md.astype(np.float32), (3, 3), 0.7)
+        w = np.clip(Wr * mask_soft, 0.0, 1.0)
+        changed = w > 0.02
+        outside = changed & ~region
+        if outside.any():               # 不变量：区域外 0 改动
+            raise SystemExit(f'neck-retouch: {pid} would change {int(outside.sum())}px '
+                             f'outside neck region')
+        rgb = tex[:, :, :3].astype(np.float32)
+        median = cv2.medianBlur(tex[:, :, :3], med_k).astype(np.float32)
+        w3 = w[:, :, None]
+        striped = rgb * (1.0 - w3) + median * w3
+        L255_before = cv2.cvtColor(tex[:, :, :3].astype(np.uint8), cv2.COLOR_RGB2LAB)[:, :, 0]
+        lab = _rgb_u8_to_lab(striped.astype(np.uint8))
+        wl = np.clip(w * lighten, 0.0, 1.0)[:, :, None]
+        new_lab = lab + (chest_lab[None, None, :] - lab) * wl
+        out_rgb = _lab_to_rgb_u8(new_lab)
+        tex[:, :, :3] = np.where(changed[:, :, None], out_rgb, tex[:, :, :3])
+        Image.fromarray(tex, 'RGBA').save(path)
+        L255_after = cv2.cvtColor(tex[:, :, :3].astype(np.uint8), cv2.COLOR_RGB2LAB)[:, :, 0]
+        info['perTexture'][pid] = {
+            'changedPx': int(changed.sum()),
+            'maskPx': int(mask.sum()),
+            'darkPxBefore': int(((L255_before < 160) & md & region).sum()),
+            'darkPxAfter': int(((L255_after < 160) & md & region).sum()),
+            'neckLBefore255': round(float(np.median(L255_before[mask])), 1),
+            'neckLAfter255': round(float(np.median(L255_after[mask])), 1),
+        }
+    if not info['perTexture']:
+        return None
+    info['changedPx'] = sum(v['changedPx'] for v in info['perTexture'].values())
+    info['darkPxBefore'] = sum(v['darkPxBefore'] for v in info['perTexture'].values())
+    info['darkPxAfter'] = sum(v['darkPxAfter'] for v in info['perTexture'].values())
+    log(f'[{shape}] {tag} neck median (G1#4): face_L255={face_L:.1f} chest rgb{tuple(chest_rgb)} '
+        f'medK={med_k} lighten={lighten} · {info["changedPx"]}px · '
+        f'dark {info["darkPxBefore"]}→{info["darkPxAfter"]}px · '
+        + '; '.join(f'{p} neckL {v["neckLBefore255"]}→{v["neckLAfter255"]}'
+                    for p, v in info['perTexture'].items()))
+    return info
 
 
 def build_shape(shape, page_split='base'):
@@ -2094,7 +2529,8 @@ def build_shape(shape, page_split='base'):
     os.makedirs(texdir, exist_ok=True)
     drawables = []
     COLOR_BLEED_COUNT['px'] = 0
-    stats = {'colorBleed': {}, 'bandRows': {}, 'parts': {}}
+    V3_IDS.clear()
+    stats = {'colorBleed': {}, 'bandRows': {}, 'parts': {}, 'v3Outfits': []}
     # ---------------- base body parts ----------------
     body_parts = {'body': load_rgba(os.path.join(M4, 'assets', 'art-v2', shape, 'body.png'))}
     base_idx = json.load(open(os.path.join(M2, 'base', shape, 'parts-index.json')))
@@ -2213,10 +2649,15 @@ def build_shape(shape, page_split='base'):
     if not OPTS['skip_hands']:
         overlay_refined_hands(shape, drawables, texdir, stats)
     # ---------------- garment parts (4 combos; v2.7.0 下架毛衣) ----------------
+    # v3.0：有 layers/ 的套行走整层路径（每套 2 drawable），否则保持 v2.7 分件路径。
     outfits = {'base': {'name': '素体（cutout）'}}
     combos = ['maid', 'hoodie-plaid',
               'hoodie-pleated', 'sailor-plaid']
     for combo in combos:
+        if has_v3_layers(shape, combo):
+            outfits[combo] = build_v3_outfit(shape, combo, rig, drawables, texdir, stats)
+            stats['v3Outfits'].append(combo)
+            continue
         gi = json.load(open(os.path.join(M2, 'garments', shape, combo, 'parts-index.json')))
         outfit = {'name': combo + '（cutout）'}
         for p in gi['parts']:
@@ -2260,10 +2701,20 @@ def build_shape(shape, page_split='base'):
     finalize_girl_hair_hook(shape, drawables, texdir, rig, stats)
     # ---------------- v2.6 body master retexture (MUST be after T1, see fn) --------
     apply_master_retexture(shape, drawables, texdir, stats)
+    # ---------------- v3.0 Phase 2C: 素体颈部 overlay 补丁（W8，lo tier） ----------------
+    # 放在 master retexture 之后（改最终 texdir 贴图，alpha/网格不变）。overlay 存在时
+    # 只用 overlay（用户选定的 W8 方案）并跳过算法版 retouch_neck；overlay 缺失才兜底。
+    stats['neckOverlay'] = apply_neck_overlay(shape, texdir, tag='lo')
+    if not stats['neckOverlay']:
+        stats['neckRetouch'] = retouch_neck(shape, texdir, tag='lo')
     # ---------------- seam extension + mesh rebuild ----------------
     seam_px = seam_extend(drawables, texdir,
                           [d['id'] for d in drawables if d['slot'] in BASE_DRAW_SLOTS])
     for d in drawables:
+        # v3 整层网格在 build_v3_outfit 里已按 V3_CELL 建好；seam-extend/porting 都不
+        # 改它的 alpha，所以保留原网格（不要用旧分件 cell=14 重建）。
+        if d['id'] in V3_IDS:
+            continue
         if d['slot'] not in BASE_DRAW_SLOTS and d['slot'] not in PORT_SLOTS:
             continue
         tex = np.array(Image.open(os.path.join(texdir, d['texture'])).convert('RGBA'))

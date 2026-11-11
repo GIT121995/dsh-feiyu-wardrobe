@@ -143,6 +143,23 @@ test('diyLayerUrls：贴片按 bottom → topBody → sleeve 顺序，缺层跳�
 	assert.deepEqual(diyLayerUrls(top, 'girl'), []);
 });
 
+test('v3 单层 outfit 兼容：DIY 静态贴片仍「只取用户自绘层，不叠加 base 服装」', () => {
+	// v3.0 把每套 base outfit 收敛成 top/skirt 整层，但 DIY 上传贴片的槽位契约不变：
+	// 顶层/套装 = topBody（+可选 sleeve），下装 = bottom；页面仍先 setLook({bare:true})
+	// 隐藏全部 base 服装层，再叠用户自绘贴片（策略沿用，见 v2-page 回归断言）。
+	assert.deepEqual(DIY_LAYER_SLOTS, {
+		top: { slot: 'topBody', sleeve: true },
+		bottom: { slot: 'bottom', sleeve: false },
+		dress: { slot: 'topBody', sleeve: true },
+		coat: { slot: 'topBody', sleeve: true },
+		outfit: { slot: 'topBody', sleeve: true },
+	});
+	const top = diyRecordToItem(makeRecord(), { body: 'blob:body', sleeve: 'blob:sleeve' });
+	const urls = diyLayerUrls(top, 'chibi');
+	assert.deepEqual(urls, ['blob:body', 'blob:sleeve'], '静态贴片只包含用户自绘层');
+	for (const url of urls) assert.match(url, /^blob:/, '不应混入 base 服装/图集路径');
+});
+
 /* ---------------- 本地衣柜 LRU / 配额 ---------------- */
 
 test('selectDiyEvictions：未超限不淘汰；超条目/超字节按最久未穿淘汰；keepId 受保护', () => {

@@ -6,7 +6,7 @@
 
 > 把 DSH 的 token 账单，变成一条鱼的衣柜。
 
-当前版本：`2.7.0`（v2.7.0 **下架白色高领毛衣**（高领不适配短脖子 chibi，用户拍板）：上衣只剩卫衣/水手服、组合移除 sweater-plaid/sweater-pleated，旧存档经 normalizeState 回退 hoodie、旧 v2.1 DIY pack 引用映射到 hoodie-plaid 部件，资产 v21 / 页面 v24；此前 v2.6.1 高 DPI 2x 资产 hi tier（DPR≥2 设备自动改用 2x 素体/发/脸/尾纹理，弱机回退 1x，资产 v20 / 页面 v23）、v2.6.2 修复 chibi 素体隐藏区黑色残留（动画露黑块）；叠加 2.5D cutout + 素体母版 v3 + 腿骨 + girl 全量拆发 + 双手精修 + DIY 全链路；变更见 [CHANGELOG](CHANGELOG.md)）
+当前版本：`3.0.0`（v3.0.0 **2.5D paper-doll 资产重做**：8 套服装由 6–9 个分件改为 **2 个整层 drawable**（top z=64 / skirt z=30、全画布 675×1200 单网格），rig drawables chibi **69→48** / girl **70→49**；服装上烘入的「假脖子」皮肤全部清除，领口露出真实素体颈部（素体资产一次性颈部重绘 W8：AI 局部重绘 + 保留淡下巴影 + 颈部色相向脸对齐 85%，lo/hi 双 tier 构建期合成，仅改 body-head RGB、alpha 不变）；旧存档 / 旧 DIY pack 的旧分件引用自动映射到整层 id、自绘层不丢；视觉门禁新增 `neck` 局部区域（80 张 baseline）；资产 v22 / 页面 v25；此前 v2.7.0 下架高领毛衣（资产 v21 / 页面 v24）、v2.6.1 高 DPI 2x hi tier、v2.6.2 修 chibi 隐藏区黑块；变更见 [CHANGELOG](CHANGELOG.md)）
 
 **🆕 v2.0.0（2.5D-only，破坏性变更）**：装好插件后，DSH 侧边栏会出现 **🎀 换装间**，点开即玩——**左边舞台 + 右边衣柜**的经典换装布局；角色是**自研 WebGL2 2.5D 动态看板娘**（65 骨 / 15 弹簧链、LBS 蒙皮、头部跟随 / 歪头 / 点头、呼吸、发丝与裙摆物理、眨眼 / 笑眼 / 口型、双身形在线切换），**不再有 DOM 分层纸娃娃**（旧 DOM 渲染路径已按用户拍板删除）；**Q版 / 少女版双身形**，上衣 2（卫衣 / 水手服）× 下装 2（格纹 / 深蓝百褶）任意混搭 + 经典女仆长裙，另有 6 张场景背景、4 种粒子特效。养女儿向互动保留：摸摸头、喂食（消耗鱼粮）、心情、亲密度、每日问候、待机台词，与鱼粮经济联动。**需要浏览器支持 WebGL2**；不支持时换装间只显示文字提示（不做静态人物兜底），详见 `docs/dress-up/2.5D-RUNTIME.md`。**真机性能未测。**
 
@@ -101,7 +101,7 @@ dsh --profile web
 素材管线（全部可复现；详细说明见 [`tools/art/README.md`](tools/art/README.md)，运行时资产契约见 [`docs/dress-up/2.5D-RUNTIME.md`](docs/dress-up/2.5D-RUNTIME.md)）：
 
 ```sh
-npm run fetch:sources    # 下载构建源素材（GitHub Release asset `assets-v1`）→ .cache/assets-src/，sha256 + 逐文件校验
+npm run fetch:sources    # 下载构建源素材（GitHub Release asset `assets-v3`）→ .cache/assets-src/，sha256 + 逐文件校验
 npm run build:assets     # 确定性重建：源素材 → 拆件/绑定 → 图集打包 → tools/art/dist/{chibi,girl}/（约 5 分钟）
 npm run verify:full      # 构建契约 + 与仓库内 docs/dress-up/art/2d5 逐字节比对
 ```
@@ -225,7 +225,7 @@ npm run verify
 ## 质量门禁（1x / 2x 视觉）
 
 - **1x 全身**：页面默认舞台尺寸（600–900px 高）下，角色无肉眼可见的接缝、双色块、白线；关节处允许 AA 过渡。
-- **2x 关键局部**：膝 / 手 / 肩 / 脚 / 腹 / 发等区域 2x 放大截图允许 ≤1px AA，不允许 ≥2px 连续白线/接缝/露底；隐藏区 ±25° 转头/歪头不得露出背景洞。
+- **2x 关键局部**：膝 / 手 / 肩 / 脚 / 腹 / 发 / 颈等区域 2x 放大截图允许 ≤1px AA，不允许 ≥2px 连续白线/接缝/露底；领口露颈区域必须是真实素体颈部（无假脖子/肌腱亮条/重阴影，保留淡下巴影）；隐藏区 ±25° 转头/歪头不得露出背景洞。
 - **视觉门禁**（v2.7.0 起随版本发布生效）：`npm run visual:qa -- --mode compare` 与 `docs/qa-baseline/` 基线做像素对比，超阈值即失败；`--mode baseline` 生成/更新基线。验收清单、baseline 更新流程与缺陷联动见 [`docs/VISUAL-QA.md`](docs/VISUAL-QA.md)。
 - **已知缺陷**登记在 [`docs/QA-REGISTRY.md`](docs/QA-REGISTRY.md)（D-001 起，含 1x/2x 验收标准与回归方式）；视觉门禁通过 ≠ 已知缺陷已关闭。
 
@@ -237,7 +237,8 @@ npm run verify
 - **v2.6.1**：**高 DPI 2x 资产 hi tier**（DPR≥2 且设备达标自动启用 2x 素体/发/脸/尾 + 两页图集；弱机/DPR1 保持 1x；lo tier 像素零变化；资产 v19 / 页面 v23；量化：DPR2 脸/发/膝/手/腹 Laplacian 锐度 ×2.3–5.9、轮廓 IoU ≥0.997、显存 26→65MiB）
 - **v2.6.2**：修复 chibi 素体隐藏区黑色残留（母版去发残留被写进 body-head/body-torso，发丝摆动/手臂动作时露出黑块；builder 增加隐藏区近黑保护 + 回归测试）
 - **v2.7.0**：**下架白色高领毛衣**（高领不适配短脖子 chibi，用户拍板；上衣项 + `sweater-plaid`/`sweater-pleated` 两组合整体移除，production 组合降为 maid/hoodie-plaid/hoodie-pleated/sailor-plaid，rig drawables 69/70；旧存档 `top=sweater` 经 `normalizeState` 回退 `hoodie`，旧 v2.1 DIY pack 毛衣/裙子引用改映射 hoodie-plaid 部件；资产 v21 / 页面 v24）
-- **下一步 · v2.8.0（规划）**：槽位体系（配饰层：头饰 / 鞋子 / 手持复用 drawable slot）+ 服装件全量 2x（P3）+ 真机性能矩阵（D-008）；遗留 D-002（服装 2x 拼缝）、D-003（手部线稿）、D-004（tail 垫层）见 [QA 登记表](docs/QA-REGISTRY.md)
+- **v3.0.0**：**2.5D paper-doll 资产重做**（每套服装 2 个整层 drawable：top z=64 / skirt z=30、全画布单网格；rig drawables chibi 69→48 / girl 70→49；清除服装烘入假脖子、领口露真实素体颈；素体颈部一次性重绘 overlay（W8）lo/hi 双 tier 合成；旧存档/旧 DIY pack 旧分件→整层 id 映射；视觉门禁新增 neck 区域 80 张 baseline；资产 v22 / 页面 v25）
+- **下一步 · v3.1.0（规划）**：槽位体系（配饰层：头饰 / 鞋子 / 手持复用 drawable slot）+ 服装件全量 2x（P3）+ 真机性能矩阵（D-008）；遗留 D-002（服装 2x 拼缝）、D-003（手部线稿）、D-004（tail 垫层）见 [QA 登记表](docs/QA-REGISTRY.md)
 - **之后**：皮肤包社区交换码、DIY 图像分类器补强
 - 更远：多鱼塘（多会话鱼）、每日小任务；把 `dsh-memory-gate` 的记忆做成「鱼记得你说过什么」，但依然只读聚合摘要
 

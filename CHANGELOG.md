@@ -2,6 +2,36 @@
 
 > 文档路径说明（W0，2026-11-05）：下文历史条目中的 `docs/dress-up/LAYER-ARCHITECTURE.md`、`LAYER-MODEL.md`、`PROMPTS.md`、`PLAN-2.5D-RIG.md`、`RENDERING-EFFECT-EVALUATION.md`、`DIY-UPLOAD.md` 均已归档到 [`docs/archive/`](docs/archive/README.md)（原因与现行替代见该索引）。历史条目原文保留不改，仅作当时发布记录。
 
+## 3.0.0 — 2026-11-11
+
+「2.5D paper-doll 资产重做 + 领口露真实素体颈（资产 v22 / 页面 v25）」
+
+### 核心变更
+- **服装整层化（paper-doll）**：8 套服装由 6–9 个分件（torso/skirt/collar/apron/sleeve…）改为 **2 个整层 drawable**：`{combo}-top`（slot `topBody`、z **64**，位于手臂 z45/48 之上、手 z65 之下）与 `{combo}-skirt`（slot `bottom`、z **30**）。每层 675×1200 全画布 RGBA 纹理 + 单网格（cell=9），顶点/权重由既有 rig 自动绑定；不再有分件拼缝与 collar/sleeve 槽位。
+- **契约变化**：production rig drawables chibi **69→48** / girl **70→49**；`outfits[combo] = {name, topBody:[combo-top], bottom:[combo-skirt]}`；单页图集重新打包（chibi 4052×1279 / girl 4086×1237）；65 骨、骨架/物理/碰撞、face/hair 部件不变。资产版本 **v21→v22**（`?v=22`）、页面模块 **v24→v25**。
+- **假脖子清除**：Phase 0 审计发现 8/8 服装层都烘入了「假脖子」皮肤（头动时颈不动：irises 动 37–49px 而假颈 91–98% 静止）。改造后服装贴图 **烘入皮肤像素 = 0**（`tests/garment-hygiene.test.mjs` 断言），领口内显示的是真实素体颈部。
+
+### 素体颈部修复（G1 用户验收）
+- 露出真实素体颈后，原画颈部有重阴影 + 两条肌腱亮条（用户反馈「太黑 / 两根肉须 / 没下巴 / 与脸色差」）。经 4 轮 G1 对比，用户选定 **W8**：AI 局部重绘颈部（Seedream，seed 4502/4602）+ 保留 W4 自然明暗 + 颈部色相向脸肤色对齐 85%，下巴下方保留极淡投影（完全无阴影档已否决：会丢下巴）。
+- 固化为素体一次性资产补丁 `art/body-fix/{shape}/neck-overlay.png`（675×1200 RGBA，alpha=羽化权重）；builder `apply_neck_overlay()` 在 lo（原尺寸）/ hi（Lanczos 2x → 1350×2400）对 `body-head` 贴图确定性合成：仅改 RGB、tex alpha 与 overlay 外像素逐字节不变（changedPx chibi 10,358 / girl 19,607；hi 41,321 / 75,103）。运行时与参考图颈部 RGB 平均差 0.23–0.68/255、p95 1–3/255；hi/lo 颈 L 差 ≤0.6。
+
+### 运行时 / DIY 兼容
+- `resolveLook` 天然支持单层 outfit（topBody/bottom 各 1 项）；旧存档（旧分件 state）与旧 v2.1 / v2.2–2.7 DIY pack 引用经 `LEGACY_V21_BASE_REFS` / 新 `LEGACY_V22_BASE_REFS` 映射到整层 id，自绘层不丢、不裸身；DIY 自动配对改用整层引用。
+
+### 视觉门禁 / 回归
+- `scripts/visual-qa.mjs` 新增 **neck** 2x 局部区域（以 neck 骨为基准，覆盖下巴影→领口→锁骨上缘）：baseline **70→80 张**，覆盖 2 身形 × 5 造型；`--mode compare` PASS。
+- `tests/garment-hygiene.test.mjs`（新增）：v3 dist 结构（每套 2 层、z 64/30、无分件）、服装贴图 SkinRule 烘入皮肤=0、alpha 孔洞（袖口/领口功能性开口白名单 + 缺陷洞注入验证）。
+- 其它测试同步：`dressup-2d5-assets`（48/49 + 整层断言）、`manifest-v8`（requiredDrawables→整层 id）、`runtime-2d5-core` / `diy-v22-compat` / `diy-manifest` / `v2-page`（版本 v25/v22）。`npm run verify:full` 全绿（官方 dist 逐字节一致性 + hi tier 确定性）。
+- 视觉登记：D-018（服装烘入假脖子）与 D-019（露颈重阴影/肉须/没下巴/色差）均 **fixed v3.0.0**。
+
+### 可复现
+- 源包重打包为 **assets-v3**（`assets-src-v3.tar.zst`，291 文件，135.7MB → 压缩 92.5MB，sha256 `5152bb7b2d1023b5dd67d9ce1f0491babdd891f84be737bdc7d6b8749ac4e2a6`），新增 `art/body-fix/` 颈部 overlay 源；`npm run fetch:sources` 默认拉取 assets-v3 并校验 sha256。两身形 lo+hi dist 由 `npm run build:assets:v26` / `npm run build:assets:hi` 重建。
+
+### 已知限制
+- 真机未测（D-008）；hi tier 服装仍 1x（整层服装在 lo 页，DPR2 下上采样；D-005/P3 残留）。
+- 素体颈部为一次性 AI 重绘补丁（seed 4502/4602 + 后处理参数固定）；后续如需再调需重新生成 overlay 并重跑门禁。
+- 旧分件回退构建（无 `layers/` 源）仍可用，但产物不再与 v2.7.0 官方 dist 逐字节一致（body 颈部 RGB 变了）。
+
 ## 2.7.0 — 2026-11-10
 
 「下架白色高领毛衣：上衣项 + `sweater-plaid` / `sweater-pleated` 两个组合整体移除（高领不适配短脖子 chibi 角色，用户拍板）（资产 v21 / 页面 v24）」
