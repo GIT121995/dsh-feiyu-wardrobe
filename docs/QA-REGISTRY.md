@@ -26,7 +26,7 @@
 | D-017 | 白色高领毛衣高领不适配短脖子 chibi 角色（用户拍板整体下架） | P2 | **fixed（v2.7.0 下架）** | v2.2.0（cutout 起；用户 2026-11-10 反馈） | 衣柜不再出现毛衣上衣与 `sweater-plaid`/`sweater-pleated` 组合；旧存档/旧 v2.1 DIY pack 引用经兼容回退不报错、不裸上身/不光腿；production rig 不含毛衣 drawable/纹理/图标 | `npm test`（manifest v8 / runtime core / DIY 兼容断言）+ `grep -rn sweater`（仅迁移表旧键/历史文档）+ `npm run visual:qa` 新 baseline（hoodie-plaid 造型替换毛衣）PASS | v2.7.0 下架（高领与短脖子 chibi 冲突；资产 v21 / 页面 v24） |
 | D-010 | 素体皮肤整体亮度较 v2.5 提高（脚/腿/手臂统一到母版肤色） | P2 | open（v2.6.0 已知，待用户确认是否回调） | v2.6.0 | 1x 600–900px 显示下皮肤不显「发白/发灰」；如回调，视觉门禁对比通过 | 视觉门禁 1x 全身 + 用户确认；Lab 系数见 v26-art 报告 | v2.6 用户确认 / v2.6.x |
 | D-018 | 领口露出的「脖子」是服装上烘入的假脖子皮肤（头动时颈不随头；真素体颈不可见） | P1 | **fixed（v3.0.0）** | v2.2.0–v2.7.0（cutout 分件起） | 全部 8 套服装贴图（top/bottom）烘入皮肤像素=0；运行时头动 ±20° 下颈部随头动（owner=body-head）；领口内可见真实素体颈部与锁骨；`visual:qa` `neck-2x` 无假脖子边界/双色块 | `tests/garment-hygiene.test.mjs`（v3 dist 结构 + 贴图 SkinRule 像素=0 + alpha 孔洞）、`npm run visual:qa` neck-2x、runtime 颈部 owner 图检查 | v3.0.0 paper-doll 整层重构（Phase 0/1；8 套裁切重绘、假脖子清除） |
-| D-019 | 露真实素体颈部后原画重阴影+肌腱亮条，用户反馈「太黑 / 两根肉须 / 没下巴 / 与脸色差」 | P1 | **fixed（v3.0.0）** | v3.0 开发期（G1 反馈） | 颈部无肌腱竖条/肉须/重阴影；保留下巴下方极淡投影（能看出下巴）；颈肤色与脸连续（Lab ΔL≤6、Δa/Δb≤3）；完全无阴影档（w6）已否决（丢下巴）；lo/hi 双 tier 一致 | `visual:qa` `neck-2x` 基线与 compare；`tests/garment-hygiene.test.mjs`；素体资产补丁 `art/body-fix/{shape}/neck-overlay.png`（W8：AI 局部重绘 + 色相匹配脸 85%） | v3.0.0 素体颈部 overlay（Lead 选定 W8；seed 4502/4602） |
+| D-019 | 露真实素体颈部后原画重阴影+肌腱亮条，用户反馈「太黑 / 两根肉须 / 没下巴 / 与脸色差」 | P1 | **fixed（v3.0.0）** | v3.0 开发期（G1 反馈） | 颈部无肌腱竖条/肉须/重阴影；下巴用**细线稿**定义（不加投影带；线沿原画下巴轮廓、两端渐隐）；颈肤色与脸连续（Lab ΔL≤6、Δa/Δb≤3）；完全无阴影档（w6）已否决（丢下巴）；lo/hi 双 tier 一致 | `visual:qa` `neck-2x` 基线与 compare；`tests/garment-hygiene.test.mjs`；素体资产补丁 `art/body-fix/{shape}/neck-overlay.png`（W8：AI 局部重绘 + 色相匹配脸 85%） | v3.0.0 素体颈部 overlay（Lead 选定 W8；seed 4502/4602） |
 
 ## v2.6 发版前必查
 
@@ -37,7 +37,7 @@
 
 ## v3.0.0 发版前必查
 
-1. **D-018 / D-019**：`visual:qa` 新增 `neck-2x` 基线与 compare 全绿；`garment-hygiene` 断言 v3 dist 贴图烘入皮肤=0；G1 用户已选定 W8 颈部方案（AI 局部重绘 + 色相匹配脸 85%）。
+1. **D-018 / D-019**：`visual:qa` 新增 `neck-2x` 基线与 compare 全绿；`garment-hygiene` 断言 v3 dist 贴图烘入皮肤=0；G1 用户已选定 W8 颈部方案（AI 局部重绘 + 色相匹配脸 85%）+ 下巴细线稿（无投影）。
 2. **D-005 / D-014 残留**：v3 服装整层仍走 1x lo（hi tier 只覆盖素体/头发/脸/尾等既有 2x 部件，服装为 lo 页 1x 上采样）——发布说明保留「服装仍 1x」。
 3. **D-008**：真机数据仍未回，发布说明保留「真机未测」。
 4. 发版时把本表「状态 + 修复版本」同步到 CHANGELOG 的「已知限制」小节。

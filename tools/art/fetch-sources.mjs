@@ -25,7 +25,7 @@ const REPO = resolve(import.meta.dirname, '..', '..');
 const DEFAULT_URL = 'https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v3/assets-src-v3.tar.zst';
 // 官方 assets-v3 包固定 sha256（pack-sources.mjs 打印；v3.0.0 起含 art/body-fix/ 素体颈部 overlay 源）；发布者可用 --sha256/env 覆盖。
 // 留 placeholder 时仍会执行 manifest 逐文件校验，并打印警告。
-const PINNED_SHA256 = '5152bb7b2d1023b5dd67d9ce1f0491babdd891f84be737bdc7d6b8749ac4e2a6';
+const PINNED_SHA256 = '5c0e942e85738b248d9b65ac05df063c187cc8d076ac70ffa0d21f52990cba02';
 const ARCHIVE_ROOT = 'assets-src-v3';
 
 function parseArgs(argv) {

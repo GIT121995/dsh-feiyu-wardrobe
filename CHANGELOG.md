@@ -12,7 +12,7 @@
 - **假脖子清除**：Phase 0 审计发现 8/8 服装层都烘入了「假脖子」皮肤（头动时颈不动：irises 动 37–49px 而假颈 91–98% 静止）。改造后服装贴图 **烘入皮肤像素 = 0**（`tests/garment-hygiene.test.mjs` 断言），领口内显示的是真实素体颈部。
 
 ### 素体颈部修复（G1 用户验收）
-- 露出真实素体颈后，原画颈部有重阴影 + 两条肌腱亮条（用户反馈「太黑 / 两根肉须 / 没下巴 / 与脸色差」）。经 4 轮 G1 对比，用户选定 **W8**：AI 局部重绘颈部（Seedream，seed 4502/4602）+ 保留 W4 自然明暗 + 颈部色相向脸肤色对齐 85%，下巴下方保留极淡投影（完全无阴影档已否决：会丢下巴）。
+- 露出真实素体颈后，原画颈部有重阴影 + 两条肌腱亮条（用户反馈「太黑 / 两根肉须 / 没下巴 / 与脸色差」）。经 G1 多轮对比，用户选定 **W8 + 下巴细线稿**：AI 局部重绘颈部（Seedream，seed 4502/4602）+ 保留 W4 自然明暗 + 颈部色相向脸肤色对齐 85%；下巴区域最终采用**只加细线稿、不加投影**（沿原 v2.7 body 下巴轮廓自动提取并二次拟合的曲线，线色=肤色 L−35、σ1.3px、α0.75、两端渐隐），保证下巴可辨又不出现阴影带；完全无阴影/无下巴线档均已否决（丢下巴）。
 - 固化为素体一次性资产补丁 `art/body-fix/{shape}/neck-overlay.png`（675×1200 RGBA，alpha=羽化权重）；builder `apply_neck_overlay()` 在 lo（原尺寸）/ hi（Lanczos 2x → 1350×2400）对 `body-head` 贴图确定性合成：仅改 RGB、tex alpha 与 overlay 外像素逐字节不变（changedPx chibi 10,358 / girl 19,607；hi 41,321 / 75,103）。运行时与参考图颈部 RGB 平均差 0.23–0.68/255、p95 1–3/255；hi/lo 颈 L 差 ≤0.6。
 
 ### 运行时 / DIY 兼容
@@ -25,7 +25,7 @@
 - 视觉登记：D-018（服装烘入假脖子）与 D-019（露颈重阴影/肉须/没下巴/色差）均 **fixed v3.0.0**。
 
 ### 可复现
-- 源包重打包为 **assets-v3**（`assets-src-v3.tar.zst`，291 文件，135.7MB → 压缩 92.5MB，sha256 `5152bb7b2d1023b5dd67d9ce1f0491babdd891f84be737bdc7d6b8749ac4e2a6`），新增 `art/body-fix/` 颈部 overlay 源；`npm run fetch:sources` 默认拉取 assets-v3 并校验 sha256。两身形 lo+hi dist 由 `npm run build:assets:v26` / `npm run build:assets:hi` 重建。
+- 源包重打包为 **assets-v3**（`assets-src-v3.tar.zst`，291 文件，135.7MB → 压缩 92.5MB，sha256 `5c0e942e85738b248d9b65ac05df063c187cc8d076ac70ffa0d21f52990cba02`），新增 `art/body-fix/` 颈部 overlay 源；`npm run fetch:sources` 默认拉取 assets-v3 并校验 sha256。两身形 lo+hi dist 由 `npm run build:assets:v26` / `npm run build:assets:hi` 重建。
 
 ### 已知限制
 - 真机未测（D-008）；hi tier 服装仍 1x（整层服装在 lo 页，DPR2 下上采样；D-005/P3 残留）。
