@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 /**
- * 大肥鱼衣橱 · 构建源素材获取器（assets-src-v3）
+ * 大肥鱼衣橱 · 构建源素材获取器（assets-src-v4）
  *
- * 从 GitHub Release asset（tag `assets-v2`）下载 `assets-src-v2.tar.zst`，
+ * 从 GitHub Release asset（tag `assets-v4`）下载 `assets-src-v4.tar.zst`，
  * 校验 sha256 后解到 `<repo>/.cache/assets-src/`（gitignored），并按包内
  * `manifest.json` 逐文件校验 size/sha256。也支持 `--from <local tar.zst>`（离线/CI）。
  *
- * 源包不入 git：发布流程 = `npm run pack:sources` → 上传 GitHub Release(tag assets-v1)
+ * 源包不入 git：发布流程 = `npm run pack:sources` → 上传 GitHub Release(tag assets-v4)
  * → 用户/CI `npm run fetch:sources` → `npm run build:assets`。
  *
  * 用法：
  *   node tools/art/fetch-sources.mjs                     # 下载官方 release asset
- *   node tools/art/fetch-sources.mjs --from /path/assets-src-v1.tar.zst
+ *   node tools/art/fetch-sources.mjs --from /path/assets-src-v4.tar.zst
  *   node tools/art/fetch-sources.mjs --url <url> --sha256 <hex> --dest <dir> --force
  */
 import { createHash } from 'node:crypto';
@@ -22,11 +22,11 @@ import {
 import { dirname, join, resolve } from 'node:path';
 
 const REPO = resolve(import.meta.dirname, '..', '..');
-const DEFAULT_URL = 'https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v3/assets-src-v3.tar.zst';
-// 官方 assets-v3 包固定 sha256（pack-sources.mjs 打印；v3.0.0 起含 art/body-fix/ 素体颈部 overlay 源）；发布者可用 --sha256/env 覆盖。
+const DEFAULT_URL = 'https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v4/assets-src-v4.tar.zst';
+// 官方 assets-v4 包固定 sha256（pack-sources.mjs 打印；v3.0.1 artfix：含修复后的颈部 overlay 与服装 layers）；发布者可用 --sha256/env 覆盖。
 // 留 placeholder 时仍会执行 manifest 逐文件校验，并打印警告。
-const PINNED_SHA256 = '5c0e942e85738b248d9b65ac05df063c187cc8d076ac70ffa0d21f52990cba02';
-const ARCHIVE_ROOT = 'assets-src-v3';
+const PINNED_SHA256 = '010478969dbfab19833d69cff4a6f5ddb0aa482566ed7d338baa6853d284da7e';
+const ARCHIVE_ROOT = 'assets-src-v4';
 
 function parseArgs(argv) {
   const out = {

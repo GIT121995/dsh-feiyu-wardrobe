@@ -44,7 +44,7 @@ node scripts/visual-qa.mjs --mode compare --out /tmp/feiyu-visual-qa-reports
 - `neck` 区域（v3.0 新增）：以 `neck` 骨为基准，覆盖「下巴淡影 → 领口露颈 → 锁骨上缘」；用于回归 v3.0 露颈相关的假脖子/烘入皮肤/肌腱亮条/颈脸色差（见 `QA-REGISTRY` D-018/D-019）。
 - 抓帧统一走 runtime 的「静态 QA 模式」：`freeze(true)` + `setAuto(false)` + `setQuality('high')` + `setMipmaps(false)` + `setStatic(true)`（物理回 rest）+ `setFaceOverride({eye:'open',mouth:'closed'})` + 90 tick 衰减 boot 残留的眨眼/笑眼/tap/head-follow 计时器。**不要随意改动这段顺序**，否则帧间不可复现（历史教训：boot 里随机眨眼会把「半眨眼」抓进基线，compare 出现数千像素伪差异）。
 - 基线体积硬上限 **3MiB**（v3.0.0 基线 80 张，新增 10 张 neck 2x 局部）；超限 `--mode baseline` 直接失败。
-- 当前基线版本：**页面 v25 / 资产 v22**（v3.0.0 paper-doll 整层资产；v2.7.0 起 `sweater-plaid` 造型由 `hoodie-plaid` 替代）。
+- 当前基线版本：**页面 v26 / 资产 v23**（v3.0.0 paper-doll 整层资产；v2.7.0 起 `sweater-plaid` 造型由 `hoodie-plaid` 替代）。
 
 ## 版本门禁（cache-bust）
 

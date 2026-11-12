@@ -2,6 +2,34 @@
 
 > 文档路径说明（W0，2026-11-05）：下文历史条目中的 `docs/dress-up/LAYER-ARCHITECTURE.md`、`LAYER-MODEL.md`、`PROMPTS.md`、`PLAN-2.5D-RIG.md`、`RENDERING-EFFECT-EVALUATION.md`、`DIY-UPLOAD.md` 均已归档到 [`docs/archive/`](docs/archive/README.md)（原因与现行替代见该索引）。历史条目原文保留不改，仅作当时发布记录。
 
+## 3.1.0 — 2026-11-12
+
+「首屏加载体验 + 用户反馈三缺陷修复（加载态/lo 先出图、颈部/下巴、服装手心残留）」
+
+> 版本说明：本次含**首屏 tier 策略行为变更**（自动 hi 设备改为 lo 先出帧 + hi 后台升级），按发版纪律升次版本号；QA 工作流内部代号为 `v3.0.1 runtimefix`。
+
+### 首屏加载（v3.0.0 线上问题：进入换装间「卡着加载不出来」）
+- **根因**：v3.0.0 在自动 tier 判定为 hi 的设备（DPR≥2）首屏直接加载 hi tier——`rig.json` 1.66MB + `atlas.webp` 3.05MB + `atlas-2.webp` 0.53MB 才出首帧（headless 实测 firstDraw≈4.0s），且加载期间 figure 区没有任何加载提示。
+- **修复**：runtime 首屏渐进 tier——自动 hi 设备先加载 **lo** 立刻出首帧、hi 在后台加载完成后热切换无损升级（`progressiveTier`，显式 `?feiyuTier` override 视为固定 tier 不升级）；页面静态加载态（「正在加载角色…」+ 阶段进度，FCP 后可见）；`index.html` 按 shape/tier 提前 `preload` rig/图集；版本化静态资源返回 `immutable` 长缓存；`client-config.json` 下发版本化资产清单供宿主后台 prefetch。
+- **门禁**：`scripts/qa-load-timeline.mjs`（加载提示可见/首帧/ready/结构契约，`--assert`）+ `tests/load-timeline.test.mjs`（判定逻辑；v3.0.0 实测数据必须 FAIL）。
+- **实测（headless SwANGLE，本机 2 核、load≈2）**：v3.0.0 `chibi DPR2 hi` firstDraw 3994ms / ready 4019ms、**无加载提示**；v3.0.1 auto 实测加载提示 **0.2–0.3s 可见**、首帧 `tierAtFirstFrame='lo'`（hi 后台升级已启动）、ready 2.8–3.7s。墙钟阈值按该环境实测复标（normal 6000ms sanity）；回归判别靠结构契约（加载提示可见 + `tierAtFirstFrame='lo'` + ready 不劣化 >25%）。真机阈值待 D-008。
+
+### 颈部/下巴（用户反馈「下巴跟脸连不上」）
+- artfix：`art/body-fix/<shape>/neck-overlay.png` 收窄到真实颈轮廓（core=0.90/0.92×素体颈宽、feather 8px、从 `jaw+8/+11` 起过渡）；girl 额外 +8 L 提亮并用 `sigmaY=3.0` 高斯软化下颌线。
+- 门禁：`tests/neck-art.test.mjs`。实测 chibi 宽度比 1.35→1.13、girl 1.19→1.08；girl ΔL 16→8、下颌逐列 max|ΔL| p90 63→36、色度比 0.88。
+
+### 服装手心残留（用户反馈「穿模」）
+- artfix：8 套服装 16 层 `layers/{top,skirt}.png` 的手/前臂掩罩内旧渲染残留（皮肤色/手描边/手影）清除——镜像补色 → 块匹配拷贝 → 顽固像素中性化；alpha 不变，不重建 mesh。
+- 门禁：`tests/garment-residue.test.mjs`。v3.0.0 实测残留（chibi sailor-plaid/skirt 826px、hoodie-plaid/skirt 431px 等）修复后全部 0px。
+
+### 源包 / 构建 / 版本
+- 源包 **assets-v4**（`assets-src-v4.tar.zst`，含 artfix 后的 `art/garments/**/layers` 与 `art/body-fix/*/neck-overlay.png`）；`npm run fetch:sources` 默认切到 v4 + 新 sha256；`npm run artfix:v301` 仅历史源包（assets-v3 及更早）需要。
+- 资产版本 **v22→v23**（rig/atlas 内容变更，页面模块 **v25→v26**）；视觉门禁 baseline 重生成（页面 v26 / 资产 v23）。
+- 门禁：`npm run verify` / `verify:full` / `visual:qa --mode compare` / `qa-load-timeline --assert` 全绿。
+
+### 已知限制
+- 真机未测（D-008）；hi tier 服装仍 1x（D-005/P3 残留）等限制同 v3.0.0。
+
 ## 3.0.0 — 2026-11-11
 
 「2.5D paper-doll 资产重做 + 领口露真实素体颈（资产 v22 / 页面 v25）」

@@ -44,9 +44,9 @@ npm run verify:full
 
 高 DPI/真机视觉门禁见 `docs/VISUAL-QA.md` 与 `npm run visual:qa`；发版检查见 `npm run release:prepare`。
 
-## 源素材包（assets-src-v1）
+## 源素材包（assets-src-v4）
 
-官方包：GitHub Release `assets-v2` 的 `assets-src-v2.tar.zst`（`https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v2/assets-src-v2.tar.zst`）。
+官方包：GitHub Release `assets-v4` 的 `assets-src-v4.tar.zst`（`https://github.com/GIT121995/dsh-feiyu-wardrobe/releases/download/assets-v4/assets-src-v4.tar.zst`，sha256 `01047896…4da7e`；v3.0.1 artfix 后）。
 
 | 包内路径 | 内容 | 来源（历史工程） |
 |---|---|---|
@@ -213,3 +213,16 @@ python3 tools/art/build_prod.py --build-atlas --src .cache/assets-src \
 验收：重建 `atlas.webp` 的 md5 应与仓库 `docs/dress-up/art/2d5/{shape}/atlas.webp` 一致
 （`rig.json` 在 v2.6 与 v2.5 逐字节相同）；双跑确定性由 `npm run verify:full` 校验。
 v2.5 及以前的重建 = 不传 `--master-config`（历史源包 assets-v1 亦可）。
+
+## v3.1.0 artfix（源包一次性修复；QA 内部代号 v3.0.1）
+
+v3.1.0（内部代号 v3.0.1）在**源包层**修复两类像素缺陷（不重建 mesh、alpha 不变）：
+
+```bash
+npm run artfix:v301     # 仅 assets-v3 及更早源包需要；assets-v4 起源包已包含修复
+node --test tests/neck-art.test.mjs tests/garment-residue.test.mjs
+```
+
+- `art/body-fix/<shape>/neck-overlay.png`：收窄到真实颈轮廓（core=0.90/0.92×素体颈宽、feather 8px），girl 提亮 +8 L 并软化下颌线；元数据写 `neck-overlay.json::v301`。
+- `art/garments/<shape>/<combo>/layers/{top,skirt}.png`：手/前臂掩罩内旧渲染残留（皮肤/手描边/手影）清除（镜像补色→块匹配→中性化）。
+- 脚本：`tools/art/v301_artfix.py`（对 pristine 源包跑一次；检测到 `v301` 标记会跳过）。

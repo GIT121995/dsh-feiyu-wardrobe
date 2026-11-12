@@ -23,6 +23,10 @@ import {
 	normalizeDiyPack,
 	registerDiyPack,
 	unregisterDiyPack,
+	carryDiyPacks,
+	resolveTierPlan,
+	tierLoadPlan,
+	tierUpgradeSettled,
 	faceStateKeys,
 	headFollowParams,
 	pickQualityTier,
@@ -624,4 +628,81 @@ test('assetDirForTier：lo=art/2d5/{shape}，hi=art/2d5/{shape}-hi（默认/空�
 	assert.equal(assetDirForTier('chibi'), 'chibi', '默认 lo');
 	assert.equal(assetDirForTier('', 'hi'), 'chibi-hi', '空 shape 兜底 chibi');
 	assert.equal(assetDirForTier('girl', 'bogus'), 'girl', '未知 tier 按 lo');
+});
+
+/* ---------------- v3.0.1 首屏：tier 渐进升级计划（纯函数） ---------------- */
+
+test('resolveTierPlan：自动 hi → lo 先出图 + 后台升级；显式 override/关闭渐进 → 固定 tier', () => {
+	const strong = resolveAssetTier({ device: { deviceMemory: 8, hardwareConcurrency: 8 }, dpr: 2, maxTextureSize: 8192 });
+	assert.equal(strong.tier, 'hi');
+	assert.deepEqual(resolveTierPlan({ resolution: strong }), {
+		targetTier: 'hi', initialTier: 'lo', upgrade: true, reason: 'auto:lo-first',
+	});
+	// 显式 override（?feiyuTier=lo|hi / localStorage）视为固定最终 tier：不做后台升级
+	const forcedHi = resolveAssetTier({ device: {}, dpr: 1, override: 'hi', overrideSource: 'url' });
+	assert.deepEqual(resolveTierPlan({ resolution: forcedHi }), {
+		targetTier: 'hi', initialTier: 'hi', upgrade: false, reason: 'override:fixed',
+	});
+	const forcedLo = resolveAssetTier({ device: { deviceMemory: 8, hardwareConcurrency: 8 }, dpr: 2, maxTextureSize: 8192, override: 'lo', overrideSource: 'storage' });
+	assert.equal(resolveTierPlan({ resolution: forcedLo }).initialTier, 'lo');
+	assert.equal(resolveTierPlan({ resolution: forcedLo }).upgrade, false);
+	// 调用方关闭渐进（QA/调试）→ 直接按目标 tier 加载
+	const disabled = resolveTierPlan({ resolution: strong, progressive: false });
+	assert.deepEqual(disabled, { targetTier: 'hi', initialTier: 'hi', upgrade: false, reason: 'fixed:hi' });
+	// 弱机/DPR1 自动 lo：本来就不升级
+	const weak = resolveAssetTier({ device: {}, dpr: 1 });
+	assert.deepEqual(resolveTierPlan({ resolution: weak }), {
+		targetTier: 'lo', initialTier: 'lo', upgrade: false, reason: 'fixed:lo',
+	});
+	// 容错：空/非法 resolution 按 lo
+	assert.equal(resolveTierPlan({}).targetTier, 'lo');
+	assert.equal(resolveTierPlan({ resolution: null }).initialTier, 'lo');
+});
+
+test('tierUpgradeSettled：终态判定（waitForTierUpgrade 何时 resolve）', () => {
+	for (const settled of ['none', 'ready', 'failed', 'skipped', 'cancelled', 'disabled']) {
+		assert.equal(tierUpgradeSettled(settled), true, `${settled} 应为终态`);
+	}
+	for (const pending of ['pending', 'loading', '', null, undefined, 'bogus']) {
+		assert.equal(tierUpgradeSettled(pending), false, `${String(pending)} 应为进行中`);
+	}
+});
+
+test('tierLoadPlan：lo=rig/mesh/atlas1/ready，hi 多一页图集；总阶段数与进度条对齐', () => {
+	assert.deepEqual(tierLoadPlan('lo'), { tier: 'lo', pages: 1, stages: ['rig', 'mesh', 'atlas1', 'ready'], total: 4 });
+	assert.deepEqual(tierLoadPlan('hi'), { tier: 'hi', pages: 2, stages: ['rig', 'mesh', 'atlas1', 'atlas2', 'ready'], total: 5 });
+	assert.equal(tierLoadPlan('bogus').tier, 'lo');
+	assert.equal(tierLoadPlan(undefined).pages, 1);
+});
+
+test('carryDiyPacks：lo→hi 热升级迁移 DIY pack（drawable/outfits/diyPacks/统计）且不改原场景', () => {
+	const drawable = { id: 'diy-x-layer', diy: true, vboBytes: 100, verts: 10, tris: 4, image: { naturalWidth: 10, naturalHeight: 20 } };
+	const entry = { packId: 'diy-x', drawableIds: ['diy-x-layer'], drawables: [drawable], outfitIds: ['diy-x'], textures: ['diy-x.png'] };
+	const from = {
+		drawables: [drawable], drawableById: { 'diy-x-layer': drawable },
+		outfits: { 'diy-x': { topBody: ['diy-x-layer'] } },
+		diyPacks: new Map([['diy-x', entry]]),
+		stats: { texBytes: 800, vboBytes: 100, verts: 10, tris: 4 },
+	};
+	const to = {
+		drawables: [], drawableById: {}, outfits: { maid: { topBody: ['maid-top'] } },
+		diyPacks: new Map(), stats: { texBytes: 0, vboBytes: 0, verts: 0, tris: 0 },
+	};
+	const result = carryDiyPacks(from, to);
+	assert.deepEqual(result.carried, ['diy-x']);
+	assert.equal(to.drawables.length, 1);
+	assert.equal(to.drawableById['diy-x-layer'], drawable);
+	assert.deepEqual(to.outfits['diy-x'], { topBody: ['diy-x-layer'] });
+	assert.equal(to.diyPacks.get('diy-x'), entry);
+	assert.equal(to.stats.texBytes, 800, '纹理字节按图像尺寸计入新场景');
+	assert.equal(to.stats.vboBytes, 100);
+	assert.equal(from.drawables.length, 1, '不修改原场景（旧场景由 runtime keepDiy 释放跳过）');
+	// 幂等：重复迁移不重复挂载
+	const again = carryDiyPacks(from, to);
+	assert.deepEqual(again.carried, []);
+	assert.deepEqual(again.skipped, ['diy-x']);
+	assert.equal(to.drawables.length, 1);
+	// 空场景容错
+	assert.deepEqual(carryDiyPacks(null, to), { carried: [], packIds: [], skipped: [] });
+	assert.deepEqual(carryDiyPacks(from, null), { carried: [], packIds: [], skipped: [] });
 });

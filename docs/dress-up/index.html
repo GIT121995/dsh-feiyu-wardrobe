@@ -6,7 +6,126 @@
 <title>大肥鱼衣橱 · 换装间</title>
 <meta name="description" content="陪大肥鱼换衣服、一起过日子：2.5D 动态角色（WebGL2），自由搭配、切换 Q版/少女版、换背景和特效——开源免费。">
 <meta name="theme-color" content="#f6ecff">
-<link rel="stylesheet" href="style.css?v=25">
+<!-- v3.0.1 首屏资产版本（与 app.js RUNTIME_2D5_ASSET_VERSION 一致；供 head 内提前 preload 用） -->
+<meta name="feiyu-asset-version" content="23">
+<style>
+  /* v3.0.1 首屏加载态：静态标记 + 内联样式，脚本/外部 CSS 就绪前即可见（暗色舞台风格） */
+  #figureLoading {
+    position: absolute; inset: 0; z-index: 19;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 11px; padding: 24px 18px; text-align: center;
+    color: rgba(255, 255, 255, .94); pointer-events: none;
+    background:
+      radial-gradient(58% 44% at 50% 48%, rgba(40, 27, 78, .5), rgba(20, 14, 42, .12) 70%, transparent 100%);
+    transition: opacity .26s ease;
+  }
+  #figureLoading[hidden] { display: none !important; }
+  #figureLoading.fl-hidden { opacity: 0; }
+  #figureLoading .fl-spinner {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 3px solid rgba(255, 255, 255, .18); border-top-color: #c9b8ff;
+    box-shadow: 0 0 20px rgba(165, 139, 255, .35);
+    animation: feiyu-fl-spin .9s linear infinite;
+  }
+  @keyframes feiyu-fl-spin { to { transform: rotate(360deg); } }
+  #figureLoading .fl-text {
+    margin: 0; font-size: 12.5px; font-weight: 700; letter-spacing: .02em;
+    color: rgba(255, 255, 255, .92); text-shadow: 0 1px 6px rgba(0, 0, 0, .45);
+  }
+  #figureLoading .fl-bar {
+    width: min(178px, 66%); height: 4px; border-radius: 999px;
+    background: rgba(255, 255, 255, .18); overflow: hidden;
+  }
+  #figureLoading .fl-fill {
+    width: 6%; height: 100%; border-radius: 999px;
+    background: linear-gradient(90deg, #a58bff, #6fc8ff);
+    box-shadow: 0 0 10px rgba(165, 139, 255, .5);
+    transition: width .3s ease;
+  }
+  #figureLoading .fl-pct {
+    font-size: 10.5px; color: rgba(255, 255, 255, .62);
+    font-variant-numeric: tabular-nums; letter-spacing: .06em;
+  }
+  @media (max-width: 820px) {
+    #figureLoading { gap: 9px; padding: 18px 14px; }
+    #figureLoading .fl-spinner { width: 30px; height: 30px; border-width: 2.5px; }
+    #figureLoading .fl-text { font-size: 12px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #figureLoading { transition: none; }
+    #figureLoading .fl-spinner { animation: none; }
+    #figureLoading .fl-fill { transition: none; }
+  }
+</style>
+<script>
+/* v3.0.1 首屏：记录启动/FCP 时间 + 按「即将加载的 shape 与 tier」尽早 preload rig/图集。
+   资产版本来自上面的 meta（与 app.js 常量一致，node test 守住一致性）；URL 用 searchParams
+   拼接（不写字面量 ?v=），避免与页面模块 ?v=<page> 的版本门禁混淆。 */
+(() => {
+  'use strict';
+  window.__feiyuBootStart = performance.now();
+  try {
+    if (typeof PerformanceObserver === 'function') {
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          if (entry.name === 'first-contentful-paint' && !window.__feiyuFcpAt) window.__feiyuFcpAt = entry.startTime;
+        }
+      }).observe({ type: 'paint', buffered: true });
+    }
+  } catch (error) { /* ignore */ }
+  function shapeForPreload() {
+    try {
+      const params = new URLSearchParams(location.search);
+      const fromUrl = String(params.get('shape') || '').trim();
+      if (fromUrl === 'chibi' || fromUrl === 'girl') return fromUrl;
+      const saved = JSON.parse(localStorage.getItem('feiyu:outfit') || 'null');
+      if (saved && (saved.shape === 'chibi' || saved.shape === 'girl')) return saved.shape;
+    } catch (error) { /* 隐私模式/存储禁用时忽略 */ }
+    return 'chibi';
+  }
+  function tierForPreload() {
+    try {
+      const params = new URLSearchParams(location.search);
+      const fromUrl = String(params.get('feiyuTier') || '').trim().toLowerCase();
+      if (fromUrl === 'lo' || fromUrl === 'hi') return fromUrl;
+      const stored = String(localStorage.getItem('feiyu:tier') || '').trim().toLowerCase();
+      if (stored === 'lo' || stored === 'hi') return stored;
+    } catch (error) { /* ignore */ }
+    return 'auto';
+  }
+  try {
+    const meta = document.querySelector('meta[name="feiyu-asset-version"]');
+    const assetVersion = meta && meta.content ? String(meta.content).trim() : '';
+    if (!/^\d+$/.test(assetVersion)) return;
+    const shape = shapeForPreload();
+    const forcedTier = tierForPreload();
+    // 默认（auto）= 首帧 lo 路径：只 preload lo rig+atlas（体积小、首帧最快）；
+    // 显式 ?feiyuTier=hi 固定 hi 时 preload hi rig+两页图集。
+    const hi = forcedTier === 'hi';
+    const files = hi ? ['rig.json', 'atlas.webp', 'atlas-2.webp'] : ['rig.json', 'atlas.webp'];
+    const head = document.head || document.documentElement;
+    for (const file of files) {
+      const url = new URL('art/2d5/' + shape + (hi ? '-hi/' : '/') + file, location.href);
+      url.searchParams.set('v', assetVersion);
+      const link = document.createElement('link');
+      link.rel = 'preload';
+      link.href = url.href;
+      if (file === 'rig.json') {
+        link.as = 'fetch';
+        link.crossOrigin = 'anonymous';
+        link.setAttribute('fetchpriority', 'high');
+      } else {
+        link.as = 'image';
+        // 图集是首帧关键路径（lo 1.25MB / hi 3.05MB+0.53MB）：与 rig 同优先级尽早开始下载，
+        // 与运行时 `new Image()` 请求共用 preload 条目（不会重复下载）
+        link.setAttribute('fetchpriority', 'high');
+      }
+      head.appendChild(link);
+    }
+  } catch (error) { /* preload 失败不影响正常加载 */ }
+})();
+</script>
+<link rel="stylesheet" href="style.css?v=26">
 </head>
 <body>
 <main class="app">
@@ -22,6 +141,14 @@
         <button id="retryBtn" class="btn" type="button">重试</button>
       </div>
       <div class="diy-static-note" id="diyNote" hidden>DIY 造型为静态，不支持骨骼动画</div>
+    </div>
+
+    <!-- v3.0.1 首屏加载态：进入 figure 区立即可见，runtime 首帧后平滑移除；失败时隐藏并显示 fallbackNotice -->
+    <div class="figure-loading" id="figureLoading" data-feiyu-loading role="status" aria-live="polite" aria-label="正在加载换装角色">
+      <div class="fl-spinner" aria-hidden="true"></div>
+      <p class="fl-text" id="figureLoadingText">正在加载角色…</p>
+      <div class="fl-bar" aria-hidden="true"><div class="fl-fill" id="figureLoadingFill"></div></div>
+      <span class="fl-pct" id="figureLoadingPct" aria-hidden="true"></span>
     </div>
 
     <canvas class="fx" id="fx" aria-hidden="true"></canvas>
@@ -85,6 +212,6 @@
   </div>
 </main>
 <canvas id="exportCanvas" width="900" height="1350" hidden></canvas>
-<script type="module" src="app.js?v=25"></script>
+<script type="module" src="app.js?v=26"></script>
 </body>
 </html>

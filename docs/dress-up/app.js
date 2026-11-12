@@ -19,9 +19,9 @@ import {
 	normalizeState,
 	randomOutfit,
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；加版本号让浏览器绕过旧缓存
-} from './wardrobe-core.js?v=25';
-import { createDiy } from './diy-ui.js?v=25';
-import { createDiyPacks } from './diy-packs.js?v=25';
+} from './wardrobe-core.js?v=26';
+import { createDiy } from './diy-ui.js?v=26';
+import { createDiyPacks } from './diy-packs.js?v=26';
 import {
 	ACTION_SPECS,
 	actionParams,
@@ -29,7 +29,7 @@ import {
 	hitZone,
 	moodFacePlan,
 	pickLine,
-} from './interaction-model.js?v=25';
+} from './interaction-model.js?v=26';
 
 (() => {
 	'use strict';
@@ -37,11 +37,82 @@ import {
 	const $ = (sel) => document.querySelector(sel);
 	const STORAGE_KEY = 'feiyu:outfit';
 	/** 2.5D runtime 模块（v2 唯一渲染路径；页面模块版本 v25）。 */
-	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=25';
+	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=26';
 	const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/';
-	/** 2.5D 资产版本（v3.0 = 22：整层 outfit 资产契约，页面模块 v25）。 */
-	const RUNTIME_2D5_ASSET_VERSION = '22';
+	/** 2.5D 资产版本（v3.0.1 = 23：整层 outfit 资产 + 颈部/服装手心残留 artfix，页面模块 v26）。 */
+	const RUNTIME_2D5_ASSET_VERSION = '23';
 	const params = new URLSearchParams(location.search);
+
+	/* ---------------- 首屏加载时间线（v3.0.1） ---------------- */
+
+	/** 页面脚本开始执行时间（performance.now 口径；index.html 内联脚本更早记录，优先用它）。 */
+	const BOOT_START_AT = typeof window.__feiyuBootStart === 'number' && window.__feiyuBootStart >= 0
+		? window.__feiyuBootStart
+		: performance.now();
+	/** 加载态可见时间 = 首屏第一次内容绘制（FCP；加载态是首屏 HTML 的一部分）。 */
+	function firstPaintAt() {
+		try {
+			const entry = performance.getEntriesByName('first-contentful-paint')[0]
+				|| performance.getEntriesByType('paint').find((item) => item.name === 'first-contentful-paint');
+			if (entry && Number.isFinite(entry.startTime)) return entry.startTime;
+		} catch { /* ignore */ }
+		const legacy = window.__feiyuFcpAt;
+		return Number.isFinite(legacy) ? legacy : BOOT_START_AT;
+	}
+	/**
+	 * 等「加载态已被浏览器真正绘制」再开始 3D 初始化（v3.0.1 首屏关键）：
+	 * SwiftShader/弱 GPU 上 createRuntime2D5 首次建 WebGL2 上下文+编译 shader 是 1–3s 的同步长任务，
+	 * 会阻塞首帧提交，导致加载态迟迟不可见。这里以 first-contentful-paint 为信号（index.html
+	 * 内联脚本用 PerformanceObserver 记录到 window.__feiyuFcpAt），拿不到 paint 信号时 400ms 兜底，
+	 * 保证任何环境都不会卡住启动。
+	 * @returns {Promise<void>}
+	 */
+	function waitForFirstPaint() {
+		return new Promise((resolve) => {
+			if (Number.isFinite(window.__feiyuFcpAt)) { resolve(); return; }
+			let done = false;
+			/** @type {PerformanceObserver | null} */
+			let observer = null;
+			const finish = () => {
+				if (done) return;
+				done = true;
+				try { if (observer) observer.disconnect(); } catch { /* ignore */ }
+				resolve();
+			};
+			try {
+				if (typeof PerformanceObserver === 'function') {
+					observer = new PerformanceObserver(() => {
+						if (Number.isFinite(window.__feiyuFcpAt)) finish();
+					});
+					observer.observe({ type: 'paint', buffered: true });
+				}
+			} catch { /* 无 paint timing 的环境走兜底 */ }
+			setTimeout(finish, 1000);
+		});
+	}
+
+	/** performance mark（失败静默：老浏览器/隐私模式）。 */
+	function perfMark(name, startTime) {
+		try {
+			if (Number.isFinite(startTime)) performance.mark(name, { startTime });
+			else performance.mark(name);
+		} catch { /* ignore */ }
+	}
+	perfMark('feiyu:boot', BOOT_START_AT);
+	/**
+	 * 加载态/首屏时间线（E2E/QA 契约：__feiyu2d5.timeline()）。
+	 * @type {{ firstFrameAt: number, readyAt: number, loadingHiddenAt: number, tierAtFirstFrame: string, targetTier: string, hidden: boolean, hideTimer: number, progress: number }}
+	 */
+	const loadingTimeline = {
+		firstFrameAt: 0,
+		readyAt: 0,
+		loadingHiddenAt: 0,
+		tierAtFirstFrame: '',
+		targetTier: '',
+		hidden: false,
+		hideTimer: 0,
+		progress: 0,
+	};
 	/**
 	 * v2.6.1 资产 tier 调试覆盖：URL `?feiyuTier=lo|hi` 优先，其次 localStorage `feiyu:tier`。
 	 * 无覆盖时 runtime 按 DPR/内存/核数/纹理上限自动决策（弱机/DPR1 → lo）。
@@ -81,6 +152,10 @@ import {
 		scene: $('#scene'),
 		figureWrap: $('#figureWrap'),
 		figureShadow: $('#figureShadow'),
+		figureLoading: $('#figureLoading'),
+		figureLoadingText: $('#figureLoadingText'),
+		figureLoadingFill: $('#figureLoadingFill'),
+		figureLoadingPct: $('#figureLoadingPct'),
 		fallbackNotice: $('#fallbackNotice'),
 		retryBtn: $('#retryBtn'),
 		diyNote: $('#diyNote'),
@@ -337,6 +412,142 @@ import {
 
 	/* ---------------- 2.5D runtime 启动 / 失败提示 / 同步 ---------------- */
 
+	/** 加载态文案（要求：可见文案始终含「加载」，让用户明确知道正在加载而非卡死）。 */
+	const LOADING_LABELS = {
+		boot: '正在打开换装间…',
+		engine: '正在加载 3D 引擎…',
+		rig: '正在加载角色数据…',
+		mesh: '正在加载角色数据…',
+		atlas1: '正在加载角色贴图…',
+		atlas2: '正在加载高清贴图…',
+		ready: '正在加载最后一点…',
+		'upgrade-start': '正在加载高清贴图…',
+		'upgrade-ready': '高清贴图已就绪',
+	};
+
+	function reducedMotion() {
+		return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+	}
+
+	/** 显示加载态（首次由 index.html 静态标记直接可见；重试时重新打开）。 */
+	function showLoadingState() {
+		const el = els.figureLoading;
+		if (!el) return;
+		clearTimeout(loadingTimeline.hideTimer);
+		loadingTimeline.hidden = false;
+		loadingTimeline.loadingHiddenAt = 0;
+		loadingTimeline.progress = 0;
+		el.hidden = false;
+		el.dataset.state = 'loading';
+		el.classList.remove('fl-hidden');
+		if (els.figureLoadingFill) els.figureLoadingFill.style.width = '6%';
+		if (els.figureLoadingPct) els.figureLoadingPct.textContent = '';
+		if (els.figureLoadingText) els.figureLoadingText.textContent = LOADING_LABELS.boot;
+	}
+
+	/**
+	 * 更新加载进度/阶段（阶段式百分比：1 个引擎初始化阶段 + runtime 资源阶段）。
+	 * @param {string} phase
+	 * @param {number} [index] 已完成阶段数（runtime onLoadProgress）
+	 * @param {number} [total] 总阶段数
+	 */
+	function updateLoadingProgress(phase, index = 0, total = 0) {
+		if (loadingTimeline.hidden) return;
+		const label = LOADING_LABELS[phase] || LOADING_LABELS.boot;
+		let percent;
+		if (phase === 'ready') {
+			percent = 100;
+		} else if (phase === 'boot' || total <= 0) {
+			percent = Math.max(loadingTimeline.progress, phase === 'boot' ? 6 : Math.max(6, loadingTimeline.progress));
+		} else {
+			const completed = Math.min(total + 1, 1 + Math.max(0, index));
+			percent = Math.max(loadingTimeline.progress, Math.min(99, Math.round((completed / (total + 1)) * 100)));
+		}
+		loadingTimeline.progress = percent;
+		if (els.figureLoadingText) els.figureLoadingText.textContent = label;
+		if (els.figureLoadingPct) els.figureLoadingPct.textContent = `${percent}%`;
+		if (els.figureLoadingFill) els.figureLoadingFill.style.width = `${Math.max(6, percent)}%`;
+	}
+
+	/** runtime 加载进度回调（engine/资源阶段 → 加载态进度）。 */
+	function onRuntimeLoadProgress(event) {
+		if (!event) return;
+		// hi 后台升级发生在首帧/加载态移除之后：不再打扰用户（失败也只是保持 lo，无提示）
+		if (event.upgrade) {
+			if (!loadingTimeline.hidden) updateLoadingProgress('upgrade-start');
+			return;
+		}
+		updateLoadingProgress(event.phase, event.index, event.total);
+	}
+
+	/** 首帧（人物像素）时间线：runtime.renderFrame() 之后调用。 */
+	function markFirstFrame() {
+		if (loadingTimeline.firstFrameAt) return;
+		const runtimeTimeline = runtime && typeof runtime.getTimeline === 'function' ? runtime.getTimeline() : null;
+		const tier = runtime && typeof runtime.getTier === 'function' ? runtime.getTier() : null;
+		loadingTimeline.firstFrameAt = (runtimeTimeline && runtimeTimeline.firstFrameAt) || performance.now();
+		loadingTimeline.tierAtFirstFrame = tier ? tier.tier : '';
+		loadingTimeline.targetTier = tier ? tier.target : '';
+		perfMark('feiyu:first-frame', loadingTimeline.firstFrameAt);
+	}
+
+	/** 加载流程结束（runtime 已开始播放）时间线。 */
+	function markReady() {
+		if (loadingTimeline.readyAt) return;
+		loadingTimeline.readyAt = performance.now();
+		perfMark('feiyu:ready');
+	}
+
+	/**
+	 * 平滑移除加载态：先等一个合成帧（首帧人物已上屏）再淡出，避免出现一瞬空白。
+	 * @param {boolean} [immediate] 失败/重试场景立即移除（不淡出）
+	 */
+	function hideLoadingState(immediate) {
+		const el = els.figureLoading;
+		if (!el || loadingTimeline.hidden) return;
+		loadingTimeline.hidden = true;
+		clearTimeout(loadingTimeline.hideTimer);
+		el.dataset.state = 'hidden';
+		el.classList.add('fl-hidden');
+		const delay = immediate || reducedMotion() ? 0 : 280;
+		const finish = () => {
+			if (!loadingTimeline.hidden) return;
+			el.hidden = true;
+			if (!loadingTimeline.loadingHiddenAt) {
+				loadingTimeline.loadingHiddenAt = performance.now();
+				perfMark('feiyu:loading-hidden');
+			}
+		};
+		if (delay === 0) finish();
+		else loadingTimeline.hideTimer = setTimeout(finish, delay);
+	}
+
+	/** 首帧后再等 2 个 rAF（等浏览器把人物帧合成上屏）再淡出加载态。 */
+	function scheduleHideLoadingState() {
+		requestAnimationFrame(() => {
+			requestAnimationFrame(() => hideLoadingState(false));
+		});
+	}
+
+	/** E2E/QA：加载态 + tier 合并时间线（performance.now 口径，全部相对页面导航开始）。 */
+	function loadingTimelineSnapshot() {
+		const tier = runtime && typeof runtime.getTier === 'function' ? runtime.getTier() : null;
+		const runtimeTimeline = runtime && typeof runtime.getTimeline === 'function' ? runtime.getTimeline() : {};
+		return {
+			bootStartAt: Math.round(BOOT_START_AT),
+			loadingShownAt: Math.round(firstPaintAt()),
+			firstFrameAt: loadingTimeline.firstFrameAt ? Math.round(loadingTimeline.firstFrameAt) : 0,
+			readyAt: loadingTimeline.readyAt ? Math.round(loadingTimeline.readyAt) : 0,
+			loadingHiddenAt: loadingTimeline.loadingHiddenAt ? Math.round(loadingTimeline.loadingHiddenAt) : 0,
+			loadingVisible: !!(els.figureLoading && !els.figureLoading.hidden),
+			tierAtFirstFrame: loadingTimeline.tierAtFirstFrame,
+			targetTier: loadingTimeline.targetTier || (tier ? tier.target : ''),
+			tierReadyAt: runtimeTimeline.tierReadyAt ? Math.round(runtimeTimeline.tierReadyAt) : 0,
+			currentTier: tier ? tier.tier : '',
+			upgrade: tier ? tier.upgrade : null,
+		};
+	}
+
 	function renderDeviceInfo() {
 		return {
 			deviceMemory: Number(navigator.deviceMemory) || null,
@@ -348,6 +559,7 @@ import {
 	function showRuntimeUnavailable(reason) {
 		runtimeFailure = reason instanceof Error ? reason.message : String(reason || 'WebGL2 unavailable');
 		console.warn('[衣橱] 2.5D 不可用：', runtimeFailure);
+		hideLoadingState(true);
 		if (runtime) {
 			try { runtime.destroy(); } catch { /* ignore */ }
 			runtime = null;
@@ -375,7 +587,9 @@ import {
 		if (runtimeStarting) return runtimeStarting;
 		runtimeStarting = (async () => {
 			const tierOverride = resolveTierOverride();
+			updateLoadingProgress('engine');
 			const module = await import(RUNTIME_2D5_MODULE);
+			perfMark('feiyu:runtime-module');
 			if (!runtimeCanvas) {
 				runtimeCanvas = document.createElement('canvas');
 				runtimeCanvas.className = 'figure-2d5';
@@ -391,11 +605,18 @@ import {
 				devicePixelRatio: window.devicePixelRatio || 1,
 				tierOverride: tierOverride ? tierOverride.tier : null,
 				tierOverrideSource: tierOverride ? tierOverride.source : null,
+				// v3.0.1：自动 hi 设备先 lo 出首帧，hi 后台无损升级（显式 tier override 固定 tier 不升级）
+				progressiveTier: true,
+				onLoadProgress: onRuntimeLoadProgress,
+				onTierChange: (event) => {
+					if (event && event.status === 'ready') perfMark('feiyu:tier-ready');
+				},
 				onContextLost: () => {
 					if (runtime !== rt) return; // 启动失败主动 destroy 触发的 lost 不重复处理
 					showRuntimeUnavailable('webglcontextlost');
 				},
 			});
+			perfMark('feiyu:runtime-gl');
 			runtime = rt;
 			document.addEventListener('visibilitychange', () => {
 				if (runtime) runtime.setPaused(document.hidden);
@@ -411,21 +632,31 @@ import {
 		return runtimeStarting;
 	}
 
-	/** 启动/重试 2.5D：失败 → 纯文本提示（可重试）。 */
+	/** 启动/重试 2.5D：失败 → 纯文本提示（可重试）。首帧（lo）出图后平滑移除加载态。 */
+	let runtimeBootSeq = 0;
 	async function bootRuntime() {
+		const seq = (runtimeBootSeq += 1);
 		try {
-			await ensureRuntime();
+			showLoadingState();
 			hideRuntimeUnavailable();
-			await runtime.setShape(state.shape);
+			const rt = await ensureRuntime();
+			if (seq !== runtimeBootSeq) return;
+			await rt.setShape(state.shape);
+			perfMark('feiyu:shape-ready');
+			if (seq !== runtimeBootSeq) return;
 			runtime.setLook({ outfit: state.outfit, top: state.top, bottom: state.bottom });
 			runtime.freeze(false);
 			applyReducedMotionPreference();
 			applyDiyStatic();
 			runtime.renderFrame();
+			markFirstFrame();
 			runtime.start();
+			markReady();
 			lastPersistKey = '';
 			applyState();
+			scheduleHideLoadingState();
 		} catch (err) {
+			if (seq !== runtimeBootSeq) return;
 			showRuntimeUnavailable(err);
 		}
 	}
@@ -1430,8 +1661,12 @@ import {
 
 	async function boot() {
 		if (params.has('embed')) document.body.classList.add('embed');
+		// v3.0.1 首屏：先确认加载态已经真正上屏，再开始 manifest/GL 等长任务
+		await waitForFirstPaint();
+		perfMark('feiyu:paint-yield');
 		const res = await fetch('manifest.json', { cache: 'no-cache' });
 		manifest = await res.json();
+		perfMark('feiyu:manifest-ready');
 		// DIY 本地衣柜（默认关闭）：开启过才从 IndexedDB 读记录并注入 manifest.items。
 		diy = createDiy({ manifest });
 		try {
@@ -1462,6 +1697,7 @@ import {
 		layoutFigure(true);
 
 		bind();
+		perfMark('feiyu:skeleton-ready');
 		// 2.5D 是唯一渲染路径：boot 即尝试；失败 → 纯文本提示（可重试）
 		await bootRuntime();
 		const hostConfig = await readHostConfig();
@@ -1540,6 +1776,22 @@ import {
 			getMemory: () => (runtime ? runtime.getMemory() : null),
 			getAssetInfo: () => (runtime ? runtime.getAssetInfo() : null),
 			getTier: () => (runtime ? runtime.getTier() : null),
+			/**
+			 * 首屏加载/升级时间线（E2E/QA 契约）：performance.now 口径。
+			 * bootStartAt / loadingShownAt(FCP) / firstFrameAt / readyAt / loadingHiddenAt /
+			 * tierAtFirstFrame / targetTier / tierReadyAt / currentTier / upgrade。
+			 */
+			timeline: () => loadingTimelineSnapshot(),
+			/** 等 lo→hi 后台升级落定（无升级立即 resolve；返回最终 getTier()）。 */
+			waitForTierUpgrade: () => {
+				if (runtime && typeof runtime.waitForTierUpgrade === 'function') return runtime.waitForTierUpgrade();
+				return Promise.resolve(runtime && typeof runtime.getTier === 'function' ? runtime.getTier() : null);
+			},
+			/** 允许/禁止 lo→hi 后台渐进升级（QA 静态模式确定性用；关闭会取消未完成升级）。 */
+			setProgressiveUpgrade: (enabled) => (runtime && typeof runtime.setProgressiveUpgrade === 'function' ? runtime.setProgressiveUpgrade(enabled) : null),
+			/** 加载态当前是否可见（QA 断言；也可直接看 #figureLoading[hidden]）。 */
+			loadingVisible: () => !!(els.figureLoading && !els.figureLoading.hidden),
+			loadingProgress: () => loadingTimeline.progress,
 			diyMode: () => diyStatic,
 			diyOverlayVisible: () => !!(diyOverlay && diyOverlay.classList.contains('on')),
 			/** E2E 预置：模拟选中一个 DIY 贴片（url 为 675×1200 透明到底图）。 */
@@ -1575,6 +1827,7 @@ import {
 
 	boot().catch((err) => {
 		console.error(err);
+		hideLoadingState(true);
 		els.lookName.textContent = '加载失败';
 		els.lookDesc.textContent = '素材没加载出来，刷新页面试试';
 	});

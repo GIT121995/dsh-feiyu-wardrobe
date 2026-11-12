@@ -1,5 +1,5 @@
 /**
- * v2 宿主配置/端点：client-config.json 仅含 interaction（无 render 开关）；gzip 仍生效。
+ * v3 宿主配置/端点：client-config.json = interaction（无 render 开关）+ 版本化资产清单；gzip 仍生效。
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -68,21 +68,30 @@ test('config.dressUp 不再有 render 字段（v2 2.5D-only）', () => {
 
 /* ---------------- client-config 端点 ---------------- */
 
-test('client-config：版本 2 + 仅 interaction（无 render 字段）+ no-store', async () => {
+test('client-config：版本 3 + interaction（无 render 字段）+ 版本化资产清单 + no-store', async () => {
 	assert.equal(DRESS_UP_CLIENT_CONFIG, `${DRESS_UP_ENTRY}client-config.json`);
-	assert.equal(DRESS_UP_CONFIG_VERSION, 2);
+	assert.equal(DRESS_UP_CONFIG_VERSION, 3);
 	const handler = makeHandler();
 	const res = await hit(handler, DRESS_UP_CLIENT_CONFIG);
 	assert.equal(res.statusCode, 200);
 	assert.match(res.headers['content-type'], /application\/json/);
 	assert.equal(res.headers['cache-control'], 'no-store');
 	const body = JSON.parse(String(res.body));
-	assert.equal(body.version, 2);
-	assert.equal('render' in body, false, 'v2 不应再下发渲染模式');
+	assert.equal(body.version, 3);
+	assert.equal('render' in body, false, 'v2 起不再下发渲染模式');
 	assert.deepEqual(body.interaction, {
 		enabled: true,
 		stateUrl: DRESS_UP_INTERACTION_STATE,
 		actionUrl: DRESS_UP_INTERACTION_ACTION,
+	});
+	// v3.0.1：客户端后台 prefetch 用资产清单（version 来自 app.js 单一真相，shapes 来自 manifest）
+	const appSource = readFileSync(join(ROOT, 'app.js'), 'utf8');
+	const expectedAsset = appSource.match(/RUNTIME_2D5_ASSET_VERSION\s*=\s*'(\d+)'/)[1];
+	assert.deepEqual(body.assets, {
+		version: expectedAsset,
+		base: `${DRESS_UP_ENTRY}art/2d5/`,
+		shapes: ['chibi', 'girl'],
+		files: { lo: ['rig.json', 'atlas.webp'], hi: ['rig.json', 'atlas.webp', 'atlas-2.webp'] },
 	});
 });
 

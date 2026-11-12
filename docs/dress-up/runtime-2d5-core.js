@@ -183,6 +183,106 @@ export function resolveAssetTier(options = {}) {
 	return { tier: 'hi', reason: 'auto:capable', override: null, signals };
 }
 
+/* --------------------------------------------- 资产 tier 渐进升级（lo → hi） -- */
+
+/**
+ * 资产 tier 加载计划（v3.0.1 首屏体验，纯函数）：
+ *  - 显式 override（`?feiyuTier=lo|hi` / localStorage `feiyu:tier`）视为**固定最终 tier**：
+ *    直接按该 tier 加载，不做后台升级（QA 静态模式可完全复现与请求路径自洽）；
+ *  - 自动决策为 hi 且允许渐进时：先加载 lo 立刻出首帧，hi 在后台加载完成后热切换无损升级；
+ *  - 其余（自动 lo / 调用方关闭渐进）直接按目标 tier 加载。
+ *
+ * @param {{
+ *   resolution?: ReturnType<typeof resolveAssetTier>,
+ *   progressive?: boolean,
+ * }} [options]
+ * @returns {{ targetTier: 'lo'|'hi', initialTier: 'lo'|'hi', upgrade: boolean, reason: string }}
+ */
+export function resolveTierPlan(options = {}) {
+	const resolution = options.resolution && typeof options.resolution === 'object' ? options.resolution : {};
+	const targetTier = resolution.tier === 'hi' ? 'hi' : 'lo';
+	const progressive = options.progressive !== false;
+	const hasOverride = !!(resolution.override && ASSET_TIERS.includes(resolution.override.tier));
+	const upgrade = targetTier === 'hi' && progressive && !hasOverride;
+	return {
+		targetTier,
+		initialTier: upgrade ? 'lo' : targetTier,
+		upgrade,
+		reason: hasOverride ? 'override:fixed' : upgrade ? 'auto:lo-first' : `fixed:${targetTier}`,
+	};
+}
+
+/**
+ * 渐进升级终态（waitForTierUpgrade 可 resolve 的状态）。
+ * @param {unknown} status
+ * @returns {boolean}
+ */
+export function tierUpgradeSettled(status) {
+	return status === 'none' || status === 'ready' || status === 'failed'
+		|| status === 'skipped' || status === 'cancelled' || status === 'disabled';
+}
+
+/**
+ * 按 tier 计算加载阶段名（进度条用；与 runtime `onLoadProgress` 的 phase/total 对齐）。
+ * lo：rig → mesh → atlas1 → ready；hi：rig → mesh → atlas1 → atlas2 → ready。
+ * @param {'lo'|'hi'|string} tier
+ * @returns {{ tier: 'lo'|'hi', pages: number, stages: string[], total: number }}
+ */
+export function tierLoadPlan(tier) {
+	const resolved = tier === 'hi' ? 'hi' : 'lo';
+	const pages = resolved === 'hi' ? 2 : 1;
+	const stages = ['rig', 'mesh'];
+	for (let index = 1; index <= pages; index += 1) stages.push(`atlas${index}`);
+	stages.push('ready');
+	return { tier: resolved, pages, stages, total: stages.length };
+}
+
+/**
+ * 把旧场景的 DIY 增量 pack 迁移到新场景（lo→hi 热升级用；纯数据、不碰 GL）。
+ *
+ * 为什么需要：DIY pack 注册在「当前 scene」上（drawable/outfits/diyPacks），
+ * lo→hi 升级换了 scene 后若不迁移，已穿着的 DIY 造型会静默回退。迁移只复制引用，
+ * 纹理/VAO 句柄继续由 runtime 持有；旧场景释放时必须跳过这些 drawable（runtime keepDiy）。
+ *
+ * @param {any} fromScene
+ * @param {any} toScene
+ * @returns {{ carried: string[], packIds: string[], skipped: string[] }}
+ */
+export function carryDiyPacks(fromScene, toScene) {
+	/** @type {string[]} */
+	const carried = [];
+	/** @type {string[]} */
+	const skipped = [];
+	if (!fromScene || !toScene || !(fromScene.diyPacks instanceof Map) || fromScene.diyPacks.size === 0) {
+		return { carried, packIds: carried, skipped };
+	}
+	if (!toScene.diyPacks) toScene.diyPacks = new Map();
+	if (!toScene.outfits) toScene.outfits = {};
+	if (!toScene.drawableById) toScene.drawableById = {};
+	if (!toScene.stats) toScene.stats = { texBytes: 0, vboBytes: 0, verts: 0, tris: 0 };
+	for (const [packId, entry] of fromScene.diyPacks) {
+		if (!entry || toScene.diyPacks.has(packId)) { skipped.push(packId); continue; }
+		const drawables = Array.isArray(entry.drawables) ? entry.drawables : [];
+		if (drawables.some((drawable) => drawable && toScene.drawableById[drawable.id])) { skipped.push(packId); continue; }
+		for (const drawable of drawables) {
+			if (!drawable) continue;
+			toScene.drawables.push(drawable);
+			toScene.drawableById[drawable.id] = drawable;
+			const image = drawable.image;
+			if (image && image.naturalWidth && image.naturalHeight) toScene.stats.texBytes += image.naturalWidth * image.naturalHeight * 4;
+			toScene.stats.vboBytes += drawable.vboBytes || 0;
+			toScene.stats.verts += drawable.verts || 0;
+			toScene.stats.tris += drawable.tris || 0;
+		}
+		for (const outfitId of entry.outfitIds || []) {
+			if (fromScene.outfits && fromScene.outfits[outfitId]) toScene.outfits[outfitId] = fromScene.outfits[outfitId];
+		}
+		toScene.diyPacks.set(packId, entry);
+		carried.push(packId);
+	}
+	return { carried, packIds: carried, skipped };
+}
+
 /** @param {unknown} value @param {number} min @param {number} max @returns {number} */
 function clampNumber(value, min, max) {
 	const number = Number(value);

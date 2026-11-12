@@ -8,10 +8,14 @@
  *   - 每身形 1–2 张 lossless WebP 图集（`tools/art/build_2d5.py` 构建；v2.2 cutout 支持多图集，
  *     每 drawable 用 `atlas` 指定归属；旧单图集 rig 向后兼容）；
  *   - 全部纯逻辑（换装组合/可视列表/参数/固定步长/face 状态机）走 runtime-2d5-core.js（node 单测覆盖）；
+ *   - v3.0.1 首屏渐进 tier：自动决策 hi 的设备先加载 lo 立刻出首帧，hi 在后台加载完成
+ *     后热切换无损升级（显式 `?feiyuTier` override 视为固定 tier，不升级；`progressiveTier:false`
+ *     或 `setProgressiveUpgrade(false)` 可关闭；`waitForTierUpgrade()` 供 E2E/QA 等最终 tier）；
  *   - 对外 API：setShape / setLook / addOutfitPack / removeOutfitPack / getOutfitPacks / setParams /
  *     setHeadFollow / triggerBlink / triggerSmile /
  *     setTalking / tap / setQuality / setDPR / setPhysicsHz / setMaskPass / setMipmaps /
- *     freeze / step / advance / renderFrame / renderToCanvas / toDataURL / getMemory / getState /
+ *     freeze / setStatic / step / advance / renderFrame / renderToCanvas / toDataURL / getMemory / getState /
+ *     getTier / getAssetInfo / waitForTierUpgrade / setProgressiveUpgrade / getTimeline /
  *     destroy；固定 60Hz 物理步进 + 降级开关 + 按需加载/释放（复用 POC 逻辑）。
  *
  * 渲染约定：逻辑画布 675×1200（9:16，与 DOM 分层素材同坐标），透明底，
@@ -44,12 +48,16 @@ import {
 	resolveDrawableAtlas,
 	resolveLook,
 	resolveQuality,
+	resolveTierPlan,
 	summarizeInitialPayload,
+	tierLoadPlan,
+	tierUpgradeSettled,
+	carryDiyPacks,
 	CUTOUT_SLOTS,
 	LEGACY_OUTFIT_SLOTS,
 	unregisterDiyPack,
 	visibleDrawables,
-} from './runtime-2d5-core.js?v=25';
+} from './runtime-2d5-core.js?v=26';
 
 /** 单个 spring 链节点相对 rest 的最大偏移（px，安全包络，POC 同值）。 */
 const CHAIN_OFFSET_LIMIT = 42;
@@ -199,6 +207,9 @@ function makeMaskFBO(gl, width, height) {
  *   devicePixelRatio?: number,
  *   tierOverride?: 'lo'|'hi'|string|null,
  *   tierOverrideSource?: 'url'|'storage'|'api'|string,
+ *   progressiveTier?: boolean,
+ *   onLoadProgress?: (event: { shape: string, tier: 'lo'|'hi', phase: string, index: number, total: number, upgrade: boolean }) => void,
+ *   onTierChange?: (event: { tier: 'lo'|'hi', targetTier: 'lo'|'hi', shape: string, status: string, fallback?: any }) => void,
  *   maxDpr?: number,
  *   onContextLost?: (info: { reason: string }) => void,
  * }} options
@@ -238,6 +249,11 @@ export async function createRuntime2D5(options) {
 		override: options.tierOverride,
 		overrideSource: options.tierOverrideSource,
 	});
+	// v3.0.1 首屏体验：自动 hi 设备先 lo 出首帧、后台升级 hi；显式 override 固定 tier 不升级。
+	const tierPlan = resolveTierPlan({
+		resolution: tierResolution,
+		progressive: options.progressiveTier !== false,
+	});
 
 	/** @type {any} */
 	const rt = {
@@ -249,9 +265,35 @@ export async function createRuntime2D5(options) {
 		assetVersion: typeof options.assetVersion === 'string' && options.assetVersion ? options.assetVersion : '',
 		device: options.device || {},
 		/** 当前会话实际使用的资产 tier（hi 加载失败回退后变 lo）。 */
-		assetTier: tierResolution.tier,
-		/** tier 决策/覆盖/回退信息（getTier()/getAssetInfo() 暴露）。 */
-		tierInfo: { ...tierResolution, fallback: null },
+		assetTier: tierPlan.initialTier,
+		/** 最终目标 tier（自动 hi 设备 = hi；显式 override/弱机 = lo）。 */
+		targetTier: tierPlan.targetTier,
+		/** tier 决策/覆盖/回退/渐进计划信息（getTier()/getAssetInfo() 暴露）。 */
+		tierInfo: { ...tierResolution, fallback: null, plan: tierPlan },
+		/** 是否允许 lo→hi 后台渐进升级（setProgressiveUpgrade 可改）。 */
+		progressiveUpgrade: tierPlan.upgrade,
+		/** lo→hi 后台升级状态机（getTier().upgrade / waitForTierUpgrade 暴露）。 */
+		upgrade: {
+			status: tierPlan.upgrade ? 'pending' : 'none',
+			shape: '', targetTier: tierPlan.targetTier,
+			startedAt: 0, doneAt: 0, error: '', fallback: null,
+		},
+		upgradeGeneration: 0,
+		upgradeWaiters: [],
+		upgradeWantedShape: '',
+		/** 首屏/升级时间线（performance.now 口径；页面 timeline() 合并展示）。 */
+		timeline: {
+			moduleReadyAt: performance.now(),
+			firstTierReadyAt: 0,
+			firstFrameAt: 0,
+			tierReadyAt: 0,
+			upgradeStartedAt: 0,
+			upgradeDoneAt: 0,
+		},
+		/** 当前加载进度（onLoadProgress 的最近一次事件）。 */
+		loadProgress: { shape: '', tier: tierPlan.initialTier, phase: '', index: 0, total: 0, upgrade: false },
+		onLoadProgress: typeof options.onLoadProgress === 'function' ? options.onLoadProgress : null,
+		onTierChange: typeof options.onTierChange === 'function' ? options.onTierChange : null,
 		baseW: BASE_CANVAS.width,
 		baseH: BASE_CANVAS.height,
 		camera: { x: 0, y: 0, w: BASE_CANVAS.width, h: BASE_CANVAS.height },
@@ -343,6 +385,10 @@ export async function createRuntime2D5(options) {
 	canvas.addEventListener('webglcontextlost', (event) => {
 		event.preventDefault();
 		rt.contextLost = true;
+		rt.upgradeGeneration += 1;
+		rt.upgradeWantedShape = '';
+		if (rt.upgrade.status === 'loading' || rt.upgrade.status === 'pending') rt.upgrade = { ...rt.upgrade, status: 'cancelled', doneAt: performance.now() };
+		resolveUpgradeWaiters(rt);
 		stop(rt);
 		if (rt.onContextLost) rt.onContextLost({ reason: 'webglcontextlost' });
 	}, false);
@@ -369,8 +415,10 @@ function buildApi(rt) {
 
 		/**
 		 * 按需加载并切换身形（先加载目标 → 激活 → 释放旧身形；参数/时间/物理链状态保留）。
+		 * 自动 hi 设备首帧用 lo 资产（立即出图），返回后 hi 资产在后台加载并热切换升级
+		 * （不阻塞本 Promise；用 waitForTierUpgrade() 等最终 tier）。
 		 * @param {string} shape
-		 * @returns {Promise<{ shape: string, loaded: boolean, loadMs: number, switchMs: number }>}
+		 * @returns {Promise<{ shape: string, loaded: boolean, loadMs: number, switchMs: number, upgrade: string }>}
 		 */
 		async setShape(shape) {
 			if (rt.destroyed) throw new Error('runtime 已销毁');
@@ -381,7 +429,7 @@ function buildApi(rt) {
 			if (!loadedBefore) await loadScene(rt, target);
 			// 并发切身形：加载期间又切到别的身形 → 本次结果作废（不激活/不释放，避免来回抖动）
 			if (rt.requestedShape !== target) {
-				return { shape: target, loaded: !loadedBefore, loadMs: rt.loadMs[target] || 0, switchMs: performance.now() - t0, stale: true };
+				return { shape: target, loaded: !loadedBefore, loadMs: rt.loadMs[target] || 0, switchMs: performance.now() - t0, stale: true, upgrade: rt.upgrade.status };
 			}
 			const prev = rt.shape;
 			if (!activateScene(rt, target)) throw new Error(`activateScene 失败：${target}`);
@@ -389,10 +437,12 @@ function buildApi(rt) {
 				releaseScene(rt, prev);
 				rt.shapeSwitches += 1;
 			}
+			// 首帧已用当前 tier 出图；自动 hi 设备在后台热升级到 hi（不 await，避免阻塞首帧）。
+			scheduleTierUpgrade(rt, target);
 			const loadMs = rt.loadMs[target] || 0;
 			const switchMs = performance.now() - t0;
 			if (prev && prev !== target) rt.loadMs[`switch_${target}`] = switchMs;
-			return { shape: target, loaded: !loadedBefore, loadMs, switchMs };
+			return { shape: target, loaded: !loadedBefore, loadMs, switchMs, upgrade: rt.upgrade.status };
 		},
 
 		/**
@@ -685,11 +735,17 @@ function buildApi(rt) {
 
 		/**
 		 * 静态对比模式（QA 用）：物理链固定在 rest、时间不推进，用于与 POC/DOM 静态帧对齐。
+		 * v3.0.1 起：进入静态模式会取消未完成的 lo→hi 后台升级（tier 定格在当前已加载 tier，
+		 * 避免静态截图期间发生二次纹理交换）；要最终 hi 像素请先用 `?feiyuTier=hi` 固定
+		 * 或 `await waitForTierUpgrade()`。
 		 * @param {boolean} on
 		 */
 		setStatic(on) {
 			rt.mode = on ? 'static' : 'anim';
-			if (rt.mode === 'static') resetPhysics(rt);
+			if (rt.mode === 'static') {
+				resetPhysics(rt);
+				cancelPendingUpgrade(rt, 'static');
+			}
 			rt.physAcc = 0;
 			return rt.mode;
 		},
@@ -837,7 +893,10 @@ function buildApi(rt) {
 			return { ...rt.assetInfo, tier: api.getTier() };
 		},
 
-		/** 资产 tier 决策/加载状态（E2E/调试用）：tier、原因、设备信号、覆盖与回退。 */
+		/**
+		 * 资产 tier 决策/加载状态（E2E/调试用）：当前 tier、最终目标 tier、原因、设备信号、
+		 * 覆盖/回退、lo→hi 渐进升级状态机。
+		 */
 		getTier() {
 			const scenes = {};
 			for (const [shape, scene] of rt.scenes.entries()) {
@@ -847,13 +906,72 @@ function buildApi(rt) {
 					pages: (scene.atlases || []).length,
 				};
 			}
+			const upgrade = rt.upgrade && typeof rt.upgrade === 'object' ? rt.upgrade : { status: 'none' };
 			return {
 				tier: rt.assetTier,
+				target: rt.targetTier,
+				progressive: !!rt.progressiveUpgrade,
 				reason: rt.tierInfo.reason,
 				signals: { ...rt.tierInfo.signals },
 				override: rt.tierInfo.override ? { ...rt.tierInfo.override } : null,
 				fallback: rt.tierInfo.fallback ? { ...rt.tierInfo.fallback } : null,
+				plan: rt.tierInfo.plan ? { ...rt.tierInfo.plan } : null,
+				upgrade: {
+					status: String(upgrade.status || 'none'),
+					shape: upgrade.shape || '',
+					targetTier: upgrade.targetTier || rt.targetTier,
+					startedAt: Math.round(upgrade.startedAt || 0),
+					doneAt: Math.round(upgrade.doneAt || 0),
+					error: upgrade.error || '',
+					settled: tierUpgradeSettled(upgrade.status),
+				},
 				scenes,
+			};
+		},
+
+		/**
+		 * 等 lo→hi 后台升级落定（无升级/已终态时立即 resolve）。
+		 * @returns {Promise<ReturnType<typeof api.getTier>>}
+		 */
+		waitForTierUpgrade() {
+			if (!rt.progressiveUpgrade || rt.targetTier !== 'hi' || rt.assetTier === 'hi' || tierUpgradeSettled(rt.upgrade.status)) {
+				return Promise.resolve(api.getTier());
+			}
+			return new Promise((resolve) => {
+				rt.upgradeWaiters.push(() => resolve(api.getTier()));
+			});
+		},
+
+		/**
+		 * 允许/禁止 lo→hi 后台渐进升级（QA 静态模式确定 tier 用）。
+		 * 关闭会取消未完成的后台升级（保留当前 tier、不再交换）；重新开启后对之后 setShape 生效。
+		 * @param {boolean} enabled
+		 * @returns {{ progressive: boolean, tier: string, target: string, upgrade: string }}
+		 */
+		setProgressiveUpgrade(enabled) {
+			const on = enabled !== false;
+			rt.progressiveUpgrade = on;
+			if (!on) {
+				rt.upgradeGeneration += 1;
+				rt.upgradeWantedShape = '';
+				if (rt.upgrade.status === 'loading' || rt.upgrade.status === 'pending') {
+					rt.upgrade = { ...rt.upgrade, status: 'disabled', doneAt: performance.now() };
+					rt.timeline.upgradeDoneAt = rt.upgrade.doneAt;
+					resolveUpgradeWaiters(rt);
+					notifyTierChange(rt, 'disabled');
+				}
+			} else if (rt.assetTier !== 'hi' && rt.targetTier === 'hi' && rt.shape) {
+				scheduleTierUpgrade(rt, rt.shape);
+			}
+			return { progressive: rt.progressiveUpgrade, tier: rt.assetTier, target: rt.targetTier, upgrade: rt.upgrade.status };
+		},
+
+		/** 首屏/升级时间线（performance.now 口径；页面 timeline() 合并 loading UI 采样后对外）。 */
+		getTimeline() {
+			return {
+				...(rt.timeline || {}),
+				upgradeStatus: rt.upgrade ? rt.upgrade.status : 'none',
+				upgradeShape: rt.upgrade ? rt.upgrade.shape : '',
 			};
 		},
 
@@ -900,6 +1018,11 @@ function buildApi(rt) {
 		destroy() {
 			if (rt.destroyed) return;
 			stop(rt);
+			// 取消未完成的后台升级（结果到达时 generation 不匹配 → 立即释放，不激活）
+			rt.upgradeGeneration += 1;
+			rt.upgradeWantedShape = '';
+			if (rt.upgrade.status === 'loading' || rt.upgrade.status === 'pending') rt.upgrade = { ...rt.upgrade, status: 'cancelled', doneAt: performance.now() };
+			resolveUpgradeWaiters(rt);
 			for (const shape of [...rt.scenes.keys()]) releaseScene(rt, shape);
 			if (rt.mask) {
 				rt.gl.deleteTexture(rt.mask.tex);
@@ -993,9 +1116,37 @@ function uploadDrawable(rt, drawable) {
 
 /* ------------------------------------------------------------ scene loading -- */
 
+/** 上报加载进度（页面加载态/QA 时间线用；回调异常不影响加载）。 */
+function reportLoadProgress(rt, event) {
+	const payload = {
+		shape: '',
+		tier: rt.assetTier,
+		phase: '',
+		index: 0,
+		total: 0,
+		upgrade: false,
+		...(event || {}),
+	};
+	rt.loadProgress = { ...payload };
+	if (rt.onLoadProgress) {
+		try { rt.onLoadProgress({ ...payload }); } catch { /* 页面回调异常不影响 runtime */ }
+	}
+	return payload;
+}
+
+/** 记录场景加载结果（注册进 rt.scenes + 首屏资产信息/耗时）。 */
+function registerSceneResult(rt, shape, result) {
+	rt.scenes.set(shape, result.scene);
+	rt.loadMs[shape] = result.loadMs;
+	rt.assetInfo[shape] = result.assetInfo;
+	if (!rt.timeline.firstTierReadyAt) rt.timeline.firstTierReadyAt = performance.now();
+}
+
 /**
- * 资产加载：按当前 tier 载入 rig + 1–2 页图集；hi 失败自动回退 lo（不白屏/不卡死）。
- * 回退会切换 rt.assetTier=lo，并把原因记进 rt.tierInfo.fallback（getTier() 可查）。
+ * 资产加载：按当前 tier 载入 rig + 1–2 页图集。
+ * - 渐进模式下 rt.assetTier 初始为 lo（首帧最快），hi 由 scheduleTierUpgrade 后台加载；
+ * - 非渐进模式（显式 override 固定 hi / 关闭渐进）下 hi 失败仍自动回退 lo（不白屏/不卡死），
+ *   回退会切换 rt.assetTier=lo 并记进 rt.tierInfo.fallback（getTier() 可查）。
  * @param {any} rt
  * @param {string} shape
  */
@@ -1005,15 +1156,20 @@ async function loadScene(rt, shape) {
 	const task = (async () => {
 		const tier = rt.assetTier;
 		try {
-			return await loadSceneAtTier(rt, shape, tier);
+			const result = await loadSceneAtTier(rt, shape, tier);
+			registerSceneResult(rt, shape, result);
+			return result.scene;
 		} catch (error) {
 			if (tier !== 'hi') throw error;
 			const reason = error instanceof Error ? error.message : String(error);
 			console.warn(`[2.5D] hi 资产加载失败，回退 lo：${shape}（${reason}）`);
 			rt.tierInfo.fallback = { from: 'hi', to: 'lo', shape, reason, atMs: Math.round(performance.now()) };
 			rt.assetTier = 'lo';
+			reportLoadProgress(rt, { shape, tier: 'lo', phase: 'rig', index: 0, total: tierLoadPlan('lo').total });
 			try {
-				return await loadSceneAtTier(rt, shape, 'lo');
+				const result = await loadSceneAtTier(rt, shape, 'lo');
+				registerSceneResult(rt, shape, result);
+				return result.scene;
 			} catch (fallbackError) {
 				const message = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
 				throw new Error(`hi 资产加载失败且 lo 回退也失败（${shape}）：${reason} → ${message}`);
@@ -1030,16 +1186,27 @@ async function loadScene(rt, shape) {
 
 /**
  * 按指定 tier 加载单个身形：rig JSON + 1–2 页图集 + 场景运行时结构。
+ * 只负责构建场景对象（不写 rt.scenes，由调用方决定注册/热切换），
  * 失败时回滚半成品 GL 资源（hi→lo 回退不留纹理/VBO 泄漏）。
  * @param {any} rt
  * @param {string} shape
  * @param {'lo'|'hi'} tier
+ * @param {{ upgrade?: boolean }} [options]
+ * @returns {Promise<{ scene: any, assetInfo: any, loadMs: number }>}
  */
-async function loadSceneAtTier(rt, shape, tier) {
+async function loadSceneAtTier(rt, shape, tier, options = {}) {
+	const upgrade = options.upgrade === true;
+	const plan = tierLoadPlan(tier);
+	let stageIndex = 0;
+	const progress = (/** @type {string} */ phase) => {
+		stageIndex = Math.max(stageIndex, Math.min(plan.total, plan.stages.indexOf(phase) + 1));
+		reportLoadProgress(rt, { shape, tier, phase, index: stageIndex, total: plan.total, upgrade });
+	};
 	const assetDir = assetDirForTier(shape, tier);
 	const loadT0 = performance.now();
 	const assetQuery = rt.assetVersion ? `?v=${encodeURIComponent(rt.assetVersion)}` : '';
 	const rigUrl = `${rt.assetRoot}${assetDir}/rig.json${assetQuery}`;
+	progress('rig');
 	const response = await fetch(rigUrl);
 	if (!response.ok) throw new Error(`rig 加载失败 HTTP ${response.status}：${rigUrl}`);
 	const text = await response.text();
@@ -1052,8 +1219,10 @@ async function loadSceneAtTier(rt, shape, tier) {
 	const atlases = [];
 	try {
 		for (const drawable of rig.drawables) uploadDrawable(rt, drawable);
+		progress('mesh');
 		for (const def of atlasSet.atlases) {
 			const atlasUrl = `${rt.assetRoot}${assetDir}/${def.file}${assetQuery}`;
+			progress(`atlas${def.index + 1}`);
 			const image = await loadImage(atlasUrl);
 			const width = def.width || image.naturalWidth;
 			const height = def.height || image.naturalHeight;
@@ -1132,28 +1301,31 @@ async function loadSceneAtTier(rt, shape, tier) {
 		rig.breathCfg = deformers.breathChest.bind;
 		rig.breathPivot = deformers.breathChest.pivot;
 
-		rt.scenes.set(shape, rig);
-		rt.loadMs[shape] = performance.now() - loadT0;
-		rt.assetInfo[shape] = {
-			rigUrl,
-			rigBytes: text.length,
-			assetTier: tier,
-			assetDir,
-			pages: atlases.length,
-			// 兼容旧字段（第一张图集）+ 多图集明细（cutout / hi 两页）
-			atlasUrl: atlases[0].url,
-			atlasWidth: atlases[0].width,
-			atlasHeight: atlases[0].height,
-			atlasBytesApprox: atlases[0].bytes,
-			atlases: atlases.map((atlas) => ({
-				id: atlas.id, file: atlas.file, url: atlas.url,
-				width: atlas.width, height: atlas.height, bytes: atlas.bytes,
-			})),
-			legacyAtlas: atlasSet.legacy,
-			textureBytes: rig.texBytes,
-			loadMs: Math.round(rt.loadMs[shape]),
+		const loadMs = performance.now() - loadT0;
+		progress('ready');
+		return {
+			scene: rig,
+			loadMs,
+			assetInfo: {
+				rigUrl,
+				rigBytes: text.length,
+				assetTier: tier,
+				assetDir,
+				pages: atlases.length,
+				// 兼容旧字段（第一张图集）+ 多图集明细（cutout / hi 两页）
+				atlasUrl: atlases[0].url,
+				atlasWidth: atlases[0].width,
+				atlasHeight: atlases[0].height,
+				atlasBytesApprox: atlases[0].bytes,
+				atlases: atlases.map((atlas) => ({
+					id: atlas.id, file: atlas.file, url: atlas.url,
+					width: atlas.width, height: atlas.height, bytes: atlas.bytes,
+				})),
+				legacyAtlas: atlasSet.legacy,
+				textureBytes: rig.texBytes,
+				loadMs: Math.round(loadMs),
+			},
 		};
-		return rig;
 	} catch (error) {
 		// 回滚本次尝试已创建的 GL 资源（hi 失败回退 lo 或最终失败都不留泄漏）
 		let releasedVbos = 0;
@@ -1166,6 +1338,142 @@ async function loadSceneAtTier(rt, shape, tier) {
 		for (const atlas of atlases) if (atlas.texture) deleteTexture(rt, atlas.texture);
 		throw error;
 	}
+}
+
+/* -------------------------------------------------- lo→hi 渐进 tier 升级 -- */
+
+/** 解析升级 waiters（终态时一次性 resolve）。 */
+function resolveUpgradeWaiters(rt) {
+	const waiters = rt.upgradeWaiters || [];
+	rt.upgradeWaiters = [];
+	for (const resolve of waiters) {
+		try { resolve(); } catch { /* ignore */ }
+	}
+}
+
+/** 通知页面 tier 状态变化（页面可据此更新调试角标；异常不影响 runtime）。 */
+function notifyTierChange(rt, status) {
+	if (!rt.onTierChange) return;
+	try {
+		rt.onTierChange({
+			tier: rt.assetTier,
+			targetTier: rt.targetTier,
+			shape: (rt.upgrade && rt.upgrade.shape) || rt.shape,
+			status,
+			fallback: rt.tierInfo.fallback ? { ...rt.tierInfo.fallback } : null,
+		});
+	} catch { /* ignore */ }
+}
+
+/** 设置升级终态并唤醒 waitForTierUpgrade。 */
+function settleTierUpgrade(rt, status, patch = {}) {
+	rt.upgrade = { ...rt.upgrade, ...patch, status, doneAt: performance.now() };
+	rt.timeline.upgradeDoneAt = rt.upgrade.doneAt;
+	if (status === 'ready') rt.timeline.tierReadyAt = rt.upgrade.doneAt;
+	resolveUpgradeWaiters(rt);
+	notifyTierChange(rt, status);
+}
+
+/** 取消未完成的后台升级（静态模式/关闭渐进/销毁；结果到达时 generation 不匹配会被丢弃）。 */
+function cancelPendingUpgrade(rt, reason) {
+	if (!rt.upgrade || (rt.upgrade.status !== 'loading' && rt.upgrade.status !== 'pending')) return false;
+	rt.upgradeGeneration += 1;
+	rt.upgradeWantedShape = '';
+	settleTierUpgrade(rt, 'cancelled', { error: `cancelled:${reason}` });
+	return true;
+}
+
+/**
+ * 安排 lo→hi 后台升级（不阻塞调用方）：同一时间只跑一个升级；切换身形时排队最新目标。
+ * @param {any} rt
+ * @param {string} shape
+ */
+function scheduleTierUpgrade(rt, shape) {
+	if (!rt.progressiveUpgrade || rt.targetTier !== 'hi' || rt.assetTier === 'hi') return false;
+	if (rt.destroyed || rt.contextLost) return false;
+	if (!rt.scenes.has(shape)) return false;
+	if (rt.upgrade.status === 'loading') {
+		if (rt.upgrade.shape !== shape) rt.upgradeWantedShape = shape;
+		return false;
+	}
+	void startTierUpgrade(rt, shape);
+	return true;
+}
+
+/**
+ * 后台加载 hi 场景并热切换到当前激活场景（失败保持 lo + 记录 fallback）。
+ * @param {any} rt
+ * @param {string} shape
+ */
+async function startTierUpgrade(rt, shape) {
+	if (rt.destroyed || rt.contextLost || !rt.progressiveUpgrade || rt.assetTier === 'hi') return;
+	const generation = (rt.upgradeGeneration += 1);
+	rt.upgrade = {
+		status: 'loading', shape, targetTier: 'hi',
+		startedAt: performance.now(), doneAt: 0, error: '', fallback: null,
+	};
+	rt.timeline.upgradeStartedAt = rt.upgrade.startedAt;
+	notifyTierChange(rt, 'loading');
+	try {
+		const result = await loadSceneAtTier(rt, shape, 'hi', { upgrade: true });
+		const stale = generation !== rt.upgradeGeneration || rt.destroyed || rt.contextLost;
+		if (stale) {
+			destroyScene(rt, result.scene);
+			return;
+		}
+		if (rt.shape !== shape) {
+			// 加载期间用户切到别的身形：释放 hi 场景，把升级机会让给当前身形
+			destroyScene(rt, result.scene);
+			settleTierUpgrade(rt, 'skipped', { error: 'shape-changed' });
+			if (rt.upgradeWantedShape && rt.upgradeWantedShape !== shape) {
+				const wanted = rt.upgradeWantedShape;
+				rt.upgradeWantedShape = '';
+				scheduleTierUpgrade(rt, wanted);
+			}
+			return;
+		}
+		hotSwapTier(rt, shape, result);
+	} catch (error) {
+		if (generation !== rt.upgradeGeneration || rt.destroyed) return;
+		const reason = error instanceof Error ? error.message : String(error);
+		console.warn(`[2.5D] hi 资产后台升级失败，保留 lo：${shape}（${reason}）`);
+		rt.tierInfo.fallback = { from: 'hi', to: 'lo', shape, reason, atMs: Math.round(performance.now()) };
+		// 最终 tier 退回 lo（与旧版「hi 失败回退 lo」的最终状态一致，后续不再重试）
+		rt.targetTier = 'lo';
+		rt.progressiveUpgrade = false;
+		settleTierUpgrade(rt, 'failed', { error: reason, fallback: { ...rt.tierInfo.fallback } });
+	}
+}
+
+/**
+ * hi 场景就绪后无损热切换：
+ *  - 保留当前物理链状态（发丝/裙摆不跳变）与 DIY pack（不丢用户自绘层）；
+ *  - 激活后立刻重绘一帧，避免出现空帧/闪回；旧 lo 场景释放（keepDiy 跳过已移交的 DIY 句柄）。
+ * @param {any} rt
+ * @param {string} shape
+ * @param {{ scene: any, assetInfo: any, loadMs: number }} result
+ */
+function hotSwapTier(rt, shape, result) {
+	const previous = rt.scenes.get(shape);
+	if (!previous) {
+		destroyScene(rt, result.scene);
+		settleTierUpgrade(rt, 'failed', { error: 'base-scene-missing' });
+		return;
+	}
+	const chainSnapshot = snapshotChains(previous);
+	carryDiyPacks(previous, result.scene);
+	restoreChainSnapshot(result.scene, chainSnapshot);
+
+	rt.scenes.set(shape, result.scene);
+	rt.assetTier = 'hi';
+	rt.loadMs[`${shape}_hi`] = result.loadMs;
+	rt.assetInfo[shape] = result.assetInfo;
+	const swapT0 = performance.now();
+	activateScene(rt, shape);
+	render(rt); // 立即绘制 hi 帧（下一合成帧即高清，不出现空帧/闪回）
+	const swapMs = performance.now() - swapT0;
+	rt.releaseMs[`${shape}_lo`] = destroyScene(rt, previous, { keepDiy: true });
+	settleTierUpgrade(rt, 'ready', { loadMs: Math.round(result.loadMs), swapMs: Math.round(swapMs) });
 }
 
 /**
@@ -1235,6 +1543,36 @@ function activateScene(rt, shape) {
 }
 
 /**
+ * 释放一个场景对象的 GL 资源（不碰 rt.scenes 映射）。keepDiy=true 时跳过 DIY pack 的
+ * drawable/纹理（这些句柄在 lo→hi 热升级中已移交给新场景，不能重复释放）。
+ * @param {any} rt
+ * @param {any} scene
+ * @param {{ keepDiy?: boolean }} [options]
+ * @returns {number} 释放耗时（ms）
+ */
+function destroyScene(rt, scene, options = {}) {
+	if (!scene) return 0;
+	const gl = rt.gl;
+	const keepDiy = options.keepDiy === true;
+	const t0 = performance.now();
+	let releasedVbos = 0;
+	for (const drawable of scene.drawables) {
+		if (keepDiy && drawable.diy) continue;
+		if (drawable.vao) gl.deleteVertexArray(drawable.vao);
+		if (drawable.vbo) { gl.deleteBuffer(drawable.vbo); releasedVbos += 1; }
+		if (drawable.ibo) { gl.deleteBuffer(drawable.ibo); releasedVbos += 1; }
+		if (drawable.tex && drawable.tex !== scene.texture) deleteTexture(rt, drawable.tex);
+	}
+	for (const atlas of scene.atlases || []) {
+		if (atlas.texture) deleteTexture(rt, atlas.texture);
+	}
+	if (scene.texture && !(scene.atlases || []).some((atlas) => atlas.texture === scene.texture)) deleteTexture(rt, scene.texture);
+	rt.glRes.vbos = Math.max(0, rt.glRes.vbos - releasedVbos);
+	return performance.now() - t0;
+}
+
+/**
+ * 释放某个身形场景并更新 chain 快照/释放耗时（切身形/销毁路径）。
  * @param {any} rt
  * @param {string} shape
  * @returns {number|null}
@@ -1242,22 +1580,9 @@ function activateScene(rt, shape) {
 function releaseScene(rt, shape) {
 	const scene = rt.scenes.get(shape);
 	if (!scene) return null;
-	const gl = rt.gl;
-	const t0 = performance.now();
 	rt.chainSnaps[shape] = snapshotChains(scene);
-	for (const drawable of scene.drawables) {
-		if (drawable.vao) gl.deleteVertexArray(drawable.vao);
-		if (drawable.vbo) gl.deleteBuffer(drawable.vbo);
-		if (drawable.ibo) gl.deleteBuffer(drawable.ibo);
-		if (drawable.tex && drawable.tex !== scene.texture) deleteTexture(rt, drawable.tex);
-	}
-	for (const atlas of scene.atlases || []) {
-		if (atlas.texture) deleteTexture(rt, atlas.texture);
-	}
-	if (scene.texture && !(scene.atlases || []).some((atlas) => atlas.texture === scene.texture)) deleteTexture(rt, scene.texture);
-	rt.glRes.vbos = Math.max(0, rt.glRes.vbos - scene.drawables.length * 2);
+	rt.releaseMs[shape] = destroyScene(rt, scene);
 	rt.scenes.delete(shape);
-	rt.releaseMs[shape] = performance.now() - t0;
 	return rt.releaseMs[shape];
 }
 
@@ -1941,6 +2266,8 @@ function render(rt, skipSim = true, dtWall = 1 / 60) {
 		}
 	}
 	rt.cpuMs = performance.now() - started;
+	// 首帧时间线（页面 loading 态平滑移除/E2E 首帧阈值用）：第一次真正画出人物像素
+	if (rt.timeline && !rt.timeline.firstFrameAt) rt.timeline.firstFrameAt = performance.now();
 }
 
 /* --------------------------------------------------------------- animation -- */

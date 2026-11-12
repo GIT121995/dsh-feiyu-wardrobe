@@ -184,18 +184,27 @@ test('令牌桶：突发 5 次后 429；2s 后恢复（固定 now）', async () 
 	assert.equal((await post()).statusCode, 200);
 });
 
-test('client-config v2：仅 interaction 段（无 render 字段），含 enabled/stateUrl/actionUrl', async () => {
+test('client-config v3：interaction 段（无 render 字段）+ 版本化资产清单，含 enabled/stateUrl/actionUrl', async () => {
 	const { handler } = makeHandler();
 	const res = await hit(handler, createReq({ url: DRESS_UP_CLIENT_CONFIG }));
 	assert.equal(res.statusCode, 200);
 	const body = JSON.parse(String(res.body));
 	assert.equal(body.version, DRESS_UP_CONFIG_VERSION);
-	assert.equal(body.version, 2);
-	assert.equal('render' in body, false, 'v2 客户端配置不应再有 render 字段');
+	assert.equal(body.version, 3);
+	assert.equal('render' in body, false, 'v2 起客户端配置不应再有 render 字段');
 	assert.deepEqual(body.interaction, {
 		enabled: true,
 		stateUrl: DRESS_UP_INTERACTION_STATE,
 		actionUrl: DRESS_UP_INTERACTION_ACTION,
+	});
+	// v3.0.1：版本化资产清单（宿主后台 prefetch 用；资产版本来自 app.js 单一真相）
+	assert.ok(body.assets, 'v3 客户端配置应下发资产清单');
+	assert.equal(typeof body.assets.version, 'string');
+	assert.equal(body.assets.base, `${DRESS_UP_ENTRY}art/2d5/`);
+	assert.ok(Array.isArray(body.assets.shapes) && body.assets.shapes.length > 0);
+	assert.deepEqual(body.assets.files, {
+		lo: ['rig.json', 'atlas.webp'],
+		hi: ['rig.json', 'atlas.webp', 'atlas-2.webp'],
 	});
 	assert.equal(DRESS_UP_INTERACTION_STATE, `${DRESS_UP_ENTRY}interaction-state.json`);
 	assert.equal(DRESS_UP_INTERACTION_ACTION, `${DRESS_UP_ENTRY}interaction`);

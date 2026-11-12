@@ -1,0 +1,105 @@
+{
+ "_comment": "v3.0.0 未修复实测（qa 2026-11-12 10:45，chibi DPR2 hi override 正常网络，stub host）：无加载提示、首帧/ready≈4.0s。用于 tests/load-timeline.test.mjs 验证加载体验门禁必须 FAIL。",
+ "tag": "chibi_dpr2_tier-hi_net-none",
+ "shape": "chibi",
+ "options": {
+  "dpr": 2,
+  "tier": "hi",
+  "throttle": "none"
+ },
+ "url": "http://127.0.0.1:39635/feiyu/dress-up/?embed=1&shape=chibi&feiyuTier=hi",
+ "wallMs": 11338,
+ "fatal": null,
+ "pageErrors": [],
+ "tier": {
+  "tier": "hi",
+  "reason": "override:url",
+  "signals": {
+   "dpr": 2,
+   "deviceMemory": 4,
+   "hardwareConcurrency": 2,
+   "maxTextureSize": 8192
+  },
+  "override": {
+   "tier": "hi",
+   "source": "url"
+  },
+  "fallback": null,
+  "scenes": {
+   "chibi": {
+    "tier": "hi",
+    "assetDir": "chibi-hi",
+    "pages": 2
+   }
+  }
+ },
+ "assetInfo": null,
+ "runtimeTimeline": null,
+ "loading": {
+  "selector": null,
+  "text": null,
+  "visibleAt": null,
+  "lastVisibleAt": null,
+  "hiddenAt": null,
+  "visibleBeforeReady": false,
+  "visibleMs": null,
+  "sampleCount": 295,
+  "visibleSamples": 0
+ },
+ "marks": {
+  "navigationStart": 0,
+  "domContentLoaded": 254,
+  "canvasInDom": 1904,
+  "firstDraw": 3994,
+  "ready": 4019,
+  "loadEvent": 257,
+  "loadingVisible": null,
+  "loadingHidden": null
+ },
+ "canvasRect": {
+  "x": 62,
+  "y": 22,
+  "width": 295,
+  "height": 525
+ },
+ "firstDrawOk": true,
+ "readyOk": true,
+ "requests": {
+  "count": 22,
+  "hiArt": [
+   "art/2d5/chibi-hi/rig.json?v=22",
+   "art/2d5/chibi-hi/atlas.webp?v=22",
+   "art/2d5/chibi-hi/atlas-2.webp?v=22"
+  ],
+  "loArt": []
+ },
+ "resourcesSummary": {
+  "count": 7,
+  "transferSize": 3918621,
+  "decodedBodySize": 5390290
+ },
+ "pixels": {
+  "shots": {
+   "pending": {
+    "changedRatio": 0.3077627118644068,
+    "pendingDarkRatio": 0.05785310734463277,
+    "figStd": 47.003097826502945
+   },
+   "firstframe": {
+    "changedRatio": 0.5202873284907183,
+    "pendingDarkRatio": 0.07700564971751413,
+    "figStd": 69.03340760717329
+   },
+   "ready": {
+    "changedRatio": 0.52018401937046,
+    "pendingDarkRatio": 0.07657949959644875,
+    "figStd": 68.97731472137676
+   },
+   "final": {
+    "changedRatio": 0.520769975786925,
+    "pendingDarkRatio": 0.07571267150928168,
+    "figStd": 68.90175821259467
+   }
+  }
+ }
+}
