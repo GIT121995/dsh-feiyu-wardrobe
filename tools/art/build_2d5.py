@@ -2,11 +2,12 @@
 """大肥鱼衣橱 2.5D runtime 资产构建器（M3 产品化 + B-M3b 多页图集）
 
 把 POC 产出的 rig JSON + 每 drawable 裁剪纹理，整理成产品运行时直接消费的
-「每身形 1–2 张图集 + 紧凑 rig JSON」：
+「每身形 ≤6 张图集页 + 紧凑 rig JSON」（v3.2.0 起 lo/hi 各 5 页懒加载套装页）：
 
     docs/dress-up/art/2d5/<shape>/
     ├── rig.json           紧凑 rig（浮点定点化、去 runtime 不用的字段、UV 重映射到图集空间）
-    ├── atlas.webp         图集页（lossless WebP RGBA，逐 drawable 2px 透明 padding；多页时 atlas-2.webp …）
+    ├── atlas.webp         图集页（lossless WebP RGBA，逐 drawable 2px 透明 padding；
+    ├── atlas-2.webp …       多页时 atlas-2.webp … atlas-6.webp，文件名/页序由 atlasPages 指定）
     └── build-report.json  构建报告（逐页图集尺寸/矩形/字节数/pixelEqual/校验结果）
 
 输入契约（M4 阶段按同一结构交付；源素材经 `assets-src-v1.tar.zst` 冻结）：
@@ -15,8 +16,8 @@
   --out      输出目录（<out>/<shape>/rig.json 等）
   --shape    chibi | girl
 
-多页图集（B 方案 cutout；≤2 页，单张 ≤4096×4096）：
-  输入 rig 用以下任一方式指定 drawable 归属页（两页时触发多页输出）：
+多页图集（B 方案 cutout / v3.2.0 懒加载套装页；≤6 页，单张 ≤4096×4096）：
+  输入 rig 用以下任一方式指定 drawable 归属页（>1 页时触发多页输出）：
     a) `rig.atlasPages = [{"id":"base","file":"atlas.webp"}, {"id":"cutout","file":"atlas2.webp"}]`
        + `drawables[].atlas = "base" | "cutout"`（缺省归第一页）；
     b) `rig.atlasPages = [{"id":"base","drawables":[id,...]}, {"id":"cutout","drawables":[id,...]}]`
@@ -43,6 +44,8 @@ import gzip
 import hashlib
 import json
 import math
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -58,7 +61,7 @@ PRECISION = {'positions': 2, 'uvs': 5, 'weights': 4, 'deform': 3, 'skeleton': 2}
 PAD = 2                  # 图集每 drawable 四周透明 padding（px）
 MAX_WIDTH = 2048         # 单页图集最大宽度（GL ES 3.0 最低保证 2048；cutout 页可 --max-width 4096）
 MAX_SIDE = 4096          # 单页图集最大边长（宽/高；SPEC 约束）
-MAX_PAGES = 2            # 每身形最多图集页数（cutout 首版）
+MAX_PAGES = 6            # 每身形最多图集页数（v3.2.0 懒加载套装页：base + 4 套装 = 5 页，上限留 1 页余量）
 OUTFIT_SLOTS = ('topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar')
 # provenance string written into rig.json (`m3.generator` / `product.generator`).
 # Keep the historical path so v2.5.0 dist rebuilds are byte-identical; changing it
@@ -229,7 +232,7 @@ def resolve_pages(rig: dict) -> list[dict] | None:
                 order.append(pid)
         entries = [{'id': pid} for pid in order]
     if len(entries) > MAX_PAGES:
-        raise SystemExit(f'图集页数 {len(entries)} > 上限 {MAX_PAGES}（每身形 ≤2 页）')
+        raise SystemExit(f'图集页数 {len(entries)} > 上限 {MAX_PAGES}（每身形 ≤{MAX_PAGES} 页）')
     page_ids: list[str] = []
     page_files: list[str] = []
     explicit: dict[str, str] = {}
@@ -355,6 +358,50 @@ def write_atlas(atlas: Image.Image, path: Path, verify: bool) -> tuple[int, bool
     return path.stat().st_size, pixel_equal
 
 
+def write_rig_binary(rig: dict, out_dir: Path) -> dict:
+    """写 rig.bin（feiyu-rig-binary v1）+ 构建期 brotli 预压缩 rig.bin.br（v3.2.0 rig 二进化）。
+
+    编码器 = tools/art/rig_binary.py（标准库、确定性、小端、4 字节对齐；格式规范见
+    .scratch/p1-320/RIG-BINARY.md）。.br 由 Node zlib brotli q11 预压缩：q11 在本机
+    ~2s/1MB，不适合服务端请求期压缩，构建期一次生成后由静态服务器直接发（首屏 rig
+    传输 gzip ≈284KB → brotli ≈133KB）。Node 不可用时跳过并告警，服务器动态 br 兜底。
+
+    返回写入 build-report.rig.binary 的字段：{bytes, sha256, gzipBytes, brotliBytes}。
+    """
+    sys.path.insert(0, str(HERE))
+    from rig_binary import encode_rig  # 同目录模块；延迟 import 便于工具独立运行
+
+    bin_bytes = encode_rig(rig)
+    bin_path = out_dir / 'rig.bin'
+    bin_path.write_bytes(bin_bytes)
+    info = {
+        'bytes': len(bin_bytes),
+        'sha256': hashlib.sha256(bin_bytes).hexdigest(),
+        'gzipBytes': len(gzip.compress(bin_bytes, 9)),
+        'brotliBytes': None,
+    }
+    node = shutil.which('node')
+    if node:
+        script = (
+            "const z=require('zlib'),fs=require('fs');"
+            "const p=process.argv[1];const b=fs.readFileSync(p);"
+            "fs.writeFileSync(p+'.br',z.brotliCompressSync(b,{params:{"
+            "[z.constants.BROTLI_PARAM_QUALITY]:11,"
+            "[z.constants.BROTLI_PARAM_MODE]:z.constants.BROTLI_MODE_GENERIC,"
+            "[z.constants.BROTLI_PARAM_SIZE_HINT]:b.length}}));"
+        )
+        try:
+            subprocess.run([node, '-e', script, str(bin_path)], check=True,
+                           capture_output=True, text=True, timeout=180)
+            br_path = Path(str(bin_path) + '.br')
+            if br_path.is_file() and br_path.stat().st_size > 16:
+                info['brotliBytes'] = br_path.stat().st_size
+        except Exception as exc:  # noqa: BLE001 - 预压缩失败不应让构建失败
+            print(f'[build_2d5] WARN rig.bin brotli 预压缩失败（跳过，服务器动态 br 兜底）：{exc}',
+                  file=sys.stderr)
+    return info
+
+
 def build(rig_path: Path, texdir: Path, out_dir: Path, shape: str, pad: int,
           max_width: int, verify: bool, max_side: int = MAX_SIDE,
           trim_alpha: bool = False) -> dict:
@@ -398,6 +445,7 @@ def build(rig_path: Path, texdir: Path, out_dir: Path, shape: str, pad: int,
         rig.pop('atlasPages', None)
         rig_bytes = json.dumps(rig, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
         (out_dir / 'rig.json').write_bytes(rig_bytes)
+        binary_info = write_rig_binary(rig, out_dir)
         uv_errors = validate_uvs(drawables, atlas_w, atlas_h)
         if uv_errors:
             raise SystemExit('UV 校验失败：' + '; '.join(uv_errors[:5]))
@@ -415,7 +463,7 @@ def build(rig_path: Path, texdir: Path, out_dir: Path, shape: str, pad: int,
             'atlas': {'width': atlas_w, 'height': atlas_h, 'bytes': atlas_bytes,
                       'pixelEqual': pixel_equal, 'rects': len(drawables)},
             'rig': {'bytes': len(rig_bytes), 'gzipBytes': len(gzip.compress(rig_bytes, 9)),
-                    'sha256': hashlib.sha256(rig_bytes).hexdigest()},
+                    'sha256': hashlib.sha256(rig_bytes).hexdigest(), 'binary': binary_info},
             'drawables': _drawable_report(drawables),
             'textureTotal': _texture_total([{'width': atlas_w, 'height': atlas_h, 'bytes': atlas_bytes}]),
         }
@@ -423,7 +471,7 @@ def build(rig_path: Path, texdir: Path, out_dir: Path, shape: str, pad: int,
             json.dumps(report, ensure_ascii=False, indent=1) + '\n', encoding='utf-8')
         return report
 
-    # ---------------- 多页图集路径（cutout；≤2 页） ----------------
+    # ---------------- 多页图集路径（cutout / 懒加载套装页；≤6 页） ----------------
     atlas_infos: list[dict] = []
     page_pixels: list[dict] = []
     for page in pages:
@@ -464,6 +512,7 @@ def build(rig_path: Path, texdir: Path, out_dir: Path, shape: str, pad: int,
     rig.pop('atlasPages', None)
     rig_bytes = json.dumps(rig, ensure_ascii=False, separators=(',', ':')).encode('utf-8')
     (out_dir / 'rig.json').write_bytes(rig_bytes)
+    binary_info = write_rig_binary(rig, out_dir)
     outfit_errors = validate_outfits(rig)
     if outfit_errors:
         raise SystemExit('outfit 引用缺失 drawable：' + ', '.join(outfit_errors[:5]))
@@ -480,7 +529,7 @@ def build(rig_path: Path, texdir: Path, out_dir: Path, shape: str, pad: int,
                   'rects': page_pixels[0]['rects']},
         'atlases': page_pixels,
         'rig': {'bytes': len(rig_bytes), 'gzipBytes': len(gzip.compress(rig_bytes, 9)),
-                'sha256': hashlib.sha256(rig_bytes).hexdigest()},
+                'sha256': hashlib.sha256(rig_bytes).hexdigest(), 'binary': binary_info},
         'drawables': _drawable_report(drawables),
         'textureTotal': _texture_total(page_pixels),
     }
@@ -514,7 +563,7 @@ def _texture_total(pages: list[dict]) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description='构建 2.5D 产品资产（紧凑 rig + 1–2 页图集）')
+    parser = argparse.ArgumentParser(description='构建 2.5D 产品资产（紧凑 rig + ≤6 页图集）')
     parser.add_argument('--rig', required=True, help='POC rig JSON 路径（可选 atlasPages/drawables[].atlas）')
     parser.add_argument('--texdir', required=True, help='POC 纹理目录（drawable.texture 的 basename）')
     parser.add_argument('--out', default=str(DEFAULT_OUT), help='输出目录（默认 docs/dress-up/art/2d5）')
@@ -542,8 +591,14 @@ def main(argv: list[str] | None = None) -> int:
         equal_txt = atlas['pixelEqual']
         rects = atlas['rects']
     rig = report['rig']
+    binary = rig.get('binary') or {}
+    binary_txt = ''
+    if binary.get('bytes'):
+        binary_txt = f' · rig.bin {binary["bytes"] / 1024:.0f} KiB'
+        if binary.get('brotliBytes'):
+            binary_txt += f' (brotli {binary["brotliBytes"] / 1024:.0f} KiB)'
     print(f'[{args.shape}] pages {report.get("pages", 1)} · atlas {atlas_txt} · rig '
-          f'{rig["bytes"] / 1024:.0f} KiB (gzip {rig["gzipBytes"] / 1024:.0f} KiB) · '
+          f'{rig["bytes"] / 1024:.0f} KiB (gzip {rig["gzipBytes"] / 1024:.0f} KiB){binary_txt} · '
           f'drawables {rects} · pixelEqual {equal_txt} · tex {report["textureTotal"]["texMiB"]} MiB')
     return 0
 

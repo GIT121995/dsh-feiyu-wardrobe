@@ -3,20 +3,25 @@
     "target": "ES2022",
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
-    "lib": ["ES2022"],
+    "lib": [
+      "ES2022"
+    ],
     "allowJs": true,
     "checkJs": true,
     "noEmit": true,
     "strict": false,
     "noImplicitAny": false,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": [
+      "node"
+    ]
   },
   "include": [
     "lib/**/*.js",
     "bin/**/*.mjs",
     "docs/dress-up/wardrobe-core.js",
     "docs/dress-up/runtime-2d5-core.js",
+    "docs/dress-up/rig-binary.js",
     "docs/dress-up/diy-guard.js",
     "docs/dress-up/diy-layers.js",
     "docs/dress-up/diy-store.js",

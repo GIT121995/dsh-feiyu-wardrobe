@@ -85,15 +85,15 @@ function functionalOpenings(rig) {
 }
 
 /** 用 Python+PIL 读 dist 图集，统计 v3 服装层的严格皮肤像素与 alpha 孔洞。 */
-function analyzeTextures(shape, jobs, openings) {
+function analyzeTextures(shape, jobs, openings, rigPages) {
 	const py = `
 import json, sys
 import numpy as np
 from PIL import Image
 
 payload = json.loads(sys.argv[1])
-atlas = np.array(Image.open(payload['atlas']).convert('RGBA'))
-H, W = atlas.shape[:2]
+# v3.2.0 lazy 5 页图集：按 job 所属页读取（每页独立尺寸/atlasRect 相对该页）
+pages = {name: np.array(Image.open(path).convert('RGBA')) for name, path in payload['atlases'].items()}
 canvas_w = int(payload['canvas']['width'])
 canvas_h = int(payload['canvas']['height'])
 import cv2
@@ -170,6 +170,7 @@ def alpha_analysis(tile, job):
 
 out = {}
 for job in payload['jobs']:
+    atlas = pages[job['atlas']]
     x, y, w, h = job['atlasRect']
     tile = atlas[y:y + h, x:x + w]
     info = alpha_analysis(tile, job)
@@ -178,8 +179,13 @@ for job in payload['jobs']:
     out[job['id']] = info
 print(json.dumps(out))
 `;
+	// v3.2.0 lazy 5 页图集：每页独立文件；drawable.atlas 指向所属页
+	const atlasPages = Array.isArray(rigPages) && rigPages.length
+		? rigPages
+		: [{ id: 'default', file: 'atlas.webp' }];
+	const atlasPaths = Object.fromEntries(atlasPages.map((page) => [page.file, join(DIST, shape, page.file)]));
 	const r = spawnSync(PYTHON, ['-c', py, JSON.stringify({
-		atlas: join(DIST, shape, 'atlas.webp'),
+		atlases: atlasPaths,
 		canvas: openings.canvas,
 		openings: { boxes: openings.boxes, circles: openings.circles },
 		jobs,
@@ -201,6 +207,8 @@ for (const shape of SHAPES) {
 
 		const drawableById = new Map(rig.drawables.map((d) => [d.id, d]));
 		const openings = functionalOpenings(rig);
+		/** v3.2.0 lazy 5 页图集：drawable.atlas → 页文件 */
+		const pageFileOf = new Map((rig.atlases || [rig.atlas]).filter(Boolean).map((page) => [page.id || 'default', page.file || 'atlas.webp']));
 		const jobs = [];
 		for (const combo of COMBOS) {
 			const outfit = rig.outfits[combo];
@@ -232,11 +240,14 @@ for (const shape of SHAPES) {
 					`${shape}/${combo}: ${d.id} 缺少 atlasRect`);
 				assert.ok(Array.isArray(d.rect) && d.rect.length === 4,
 					`${shape}/${combo}: ${d.id} 缺少 canvas rect（alpha bbox，孔洞定位用）`);
-				jobs.push({ id: d.id, atlasRect: d.atlasRect, rect: d.rect, layer: d.slot });
+				jobs.push({
+					id: d.id, atlasRect: d.atlasRect, rect: d.rect, layer: d.slot,
+					atlas: pageFileOf.get(d.atlas) || (rig.atlas && rig.atlas.file) || 'atlas.webp',
+				});
 			}
 		}
 
-		const report = analyzeTextures(shape, jobs, openings);
+		const report = analyzeTextures(shape, jobs, openings, rig.atlases);
 		for (const job of jobs) {
 			const r = report[job.id];
 			assert.equal(r.skinPx, 0, `${shape}: ${job.id} 服装层含烘焙皮肤 ${r.skinPx}px（应为 0）`);

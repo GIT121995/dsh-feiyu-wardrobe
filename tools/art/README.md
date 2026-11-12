@@ -5,7 +5,7 @@
 > 各阶段交付），仓库里只有半套 `tools/build_2d5.py`；W0-a 把 builder 参数化入仓、源素材打包走
 > GitHub Release asset，并加构建确定性测试。
 >
-> - 产出资产版本：**资产 v17 / v2.5.0 口径**（chibi 85 drawables / girl 86，65 骨，单页图集）。
+> - 产出资产：v3.2.0 口径（chibi 48 drawables / girl 49，65 骨，lo/hi 各 **5 页懒加载图集**）。
 > - 源素材 **132.9MB raw / tarball 89.8MB**，**不入 git**，走 GitHub Release（tag `assets-v2`）的 `assets-src-v2.tar.zst`。
 > - 运行时零依赖；构建依赖见 `tools/requirements.txt`（python3 + numpy + opencv-python-headless + Pillow）。
 
@@ -84,7 +84,7 @@ python3 tools/art/build_prod.py [--shape chibi|girl|both] [--build-atlas]
 | `--build-atlas` | off | 只写 source rig/纹理；开启后再跑 `build_2d5.py` 产出运行时 dist |
 | `--src` | `<repo>/.cache/assets-src` | 源包根（布局见上表） |
 | `--workdir` | `<repo>/.cache/build` | 中间产物根（`assets/tex/{shape}`、`assets/{shape}-cutout.feiyu.json`、`assets/build-stats.json`） |
-| `--outdir` | `<repo>/tools/art/dist` | dist 输出根（`<outdir>/{chibi,girl}/{rig.json,atlas.webp,build-report.json}`） |
+| `--outdir` | `<repo>/tools/art/dist` | dist 输出根（`<outdir>/{chibi,girl}/{rig.json,atlas.webp,atlas-2.webp…,build-report.json}`） |
 | `--tool` | `tools/art/build_2d5.py` | 图集打包器路径 |
 | `--master-config` | 无 | v2.6 素体母版重贴图契约（可重复；身形取自 config 的 `shape`）。见下文「v2.6 母版重贴图」 |
 | `--clean-garment-skin` | off | v2.6.1：删除服装纹理里**烘焙的素体皮肤**（女仆装"四只手"根因）。alpha-only、不重建 mesh（rig.json 逐字节不变）。见下文「服装修复」 |
@@ -102,10 +102,52 @@ python3 tools/art/build_2d5.py --rig <source rig.json> --texdir <纹理目录> \
     --out <dist 根> --shape chibi|girl [--trim-alpha] [--max-width 4096] [--max-side 4096] [--pad 1]
 ```
 
-- 单页：`rig.atlas` + `atlas.webp`；多页（≤2）：`rig.atlasPages` / `rig.atlases` + `drawables[].atlas`。
+- 单页：`rig.atlas` + `atlas.webp`；多页（≤6）：`rig.atlases` + `drawables[].atlas`。
+  v3.2.0 起 lo/hi 各 **5 页懒加载套装页**（第 0 页必须 base）：`base`（不被任何 outfit
+  slot 引用的 drawable）、`maid`、`hoodie-plaid`、`hoodie-pleated`、`sailor-plaid`；
+  文件名依次 `atlas.webp` / `atlas-2.webp` … `atlas-5.webp`。旧输入（无 `atlasPages` 且
+  drawable 无 `atlas`）仍走历史单页路径，输出形状不变。
 - lossless WebP RGBA、逐 drawable 透明 padding、UV 重映射到图集空间、定点化（positions 0.01px / uvs 1e-5 / weights 1e-4）。
 - 默认 `--out docs/dress-up/art/2d5`（独立使用时；builder 会显式传 `--out`）。
 - 校验失败退出码 1；**不要手改产物**，改源/脚本后重跑。
+
+## v3.2.0 懒加载套装页（5 页图集，方案 C）
+
+`build_prod.py` 在写 lo source rig 前按 `rig.outfits` 引用计算 `rig.atlasPages`，`build_2d5.py`
+据此逐页打包（hi tier 用同一分组，base 页放 2x，套装页放 1x）：
+
+| idx | id | file | lo 内容 | hi 内容 |
+|---|---|---|---|---|
+| 0 | `base` | `atlas.webp` | 所有非 outfit drawable | hi_ids（2x body/hair/face/tail）+ 常驻 1x `seam-fill` |
+| 1 | `maid` | `atlas-2.webp` | `outfits.maid` 引用的 drawable | 同套 1x 服装整层（来自 lo 纹理） |
+| 2 | `hoodie-plaid` | `atlas-3.webp` | 同上 | 同上 |
+| 3 | `hoodie-pleated` | `atlas-4.webp` | 同上 | 同上 |
+| 4 | `sailor-plaid` | `atlas-5.webp` | 同上 | 同上 |
+
+- 分组**不看源包版本**：v3 整层路径（每套 2 个整层 drawable）与旧分件路径（每套 6–9 个分件）都按
+  `outfits[combo]` 的服装 slot 引用归类；每个 drawable 恰好归属一页（构建期断言，违反直接退出码 1）。
+- `seam-fill` 不被任何 outfit 引用且必须常驻（素体填充），归 base 页；hi base 页因此含 1 个 1x 图块。
+- 页数上限 `MAX_PAGES=6`（`build_2d5.py`）；增加/调整套装顺序要同步 `LAZY_OUTFIT_COMBOS`、
+  runtime `MAX_ATLASES` 与 `index.html`/client-config preload。
+
+## v3.2.0 rig 二进化（rig.bin 二进制 rig）
+
+`build_2d5.py` 在写 `rig.json` 后调用同目录 `rig_binary.py::encode_rig()` 生成 `rig.bin`，
+再用 Node `zlib.brotliCompressSync`（q11）预压缩出 `rig.bin.br`（Node 不可用时告警跳过，
+静态服务器动态 brotli 兜底）：
+
+| 产物 | 用途 | chibi 实测 |
+|---|---|---|
+| `rig.json` | 工具/QA/运行时 JSON 回退（内容不变） | 1,658,242B / gzip ≈285KiB |
+| `rig.bin` | 运行时实际加载（header JSON + flat-f32 typed array 段） | 1,005,272B（raw 60.6% of JSON） |
+| `rig.bin.br` | 构建期 brotli q11 预压缩（首屏直接发） | 135,914B（≈133KiB） |
+
+- 格式规范：`.scratch/p1-320/RIG-BINARY.md`；解码器 `docs/dress-up/rig-binary.js`（浏览器+Node 通用，
+  零拷贝 flat typed array；JSON 回退 `toRuntimeRig` 归一成同一形状）。
+- **确定性**：`rig.bin` 双跑 md5 一致；`.br` 用语义校验（brotli 解压 == `rig.bin`，避免 Node/libbrotli
+  版本差异造成跨机假红）。`build-report.json` 的 `rig.binary = {bytes, sha256, gzipBytes, brotliBytes}` 记录实际产物。
+- **官方 dist 比对**：`verify:full` 同时校验 `rig.json` + `rig.bin` + 全部 5 页 atlas 逐字节一致。
+- 已知限制：`.br` 依赖构建机 Node 的 brotli 实现（本机 Node v22.23.2）；跨机重建只需语义等价即可。
 
 ## v2.6 母版重贴图（`--master-config`）
 
@@ -174,13 +216,17 @@ python3 tools/art/build_prod.py --build-atlas --clean-garment-skin \
 
 ## 确定性与验收口径
 
-- 同源双跑：`rig.json` / `atlas.webp` **md5 逐字节一致**（无时间戳/随机序；图集打包与 JSON 序列化固定）。
-- 与官方 `docs/dress-up/art/2d5/{chibi,girl}` 比对：`rig.json` + `atlas.webp` **逐字节一致**；
+- 同源双跑：`rig.json` + **全部 atlas 页**（`atlas.webp`、`atlas-2…5.webp`）**md5 逐字节一致**
+  （无时间戳/随机序；图集打包与 JSON 序列化固定）。
+- 与官方 `docs/dress-up/art/2d5/{chibi,girl}` 比对：`rig.json` + **全部 atlas 页** **逐字节一致**；
   `build-report.json` 允许差异（v2.5 实测三文件全一致；字段级差异说明见 `.scratch/p7/pipeline/REPORT.md`）。
   rig.json 里两个 provenance 字符串（`generator`、`cutout.source`）是**资产契约的一部分**，默认保持历史值，
   仅换资产口径时才用 `--generator-id/--source-note` 覆盖。
 - `tests/asset-build.test.mjs`：`npm test` 在源缺失时 skip（保持 `verify` 快速）；`verify:full` 在源就绪时做
-  manifest 契约 + 双跑确定性 + 官方 dist md5 比对。图集必须 `pixelEqual=true`。
+  manifest 契约 + 双跑确定性 + 官方 dist md5 比对。图集必须 `pixelEqual=true`（逐页）。
+- v3.2.0 5 页契约（lo/hi 通用，`tests/asset-build.test.mjs` 守）：页序/文件名固定；每个 drawable
+  恰好归属一页（`drawable.atlas`=页 id、`drawable.texture`=页文件、`atlasRect`/`mesh.uvs` 相对该页）；
+  `rig.atlases`=5 页、`rig.atlas`=atlases[0]、`m3.multiAtlas=true, m3.atlasPages=5`、`product.pages=5`。
 
 ## 已知限制（诚实）
 
@@ -188,7 +234,9 @@ python3 tools/art/build_prod.py --build-atlas --clean-garment-skin \
 - **构建耗时**：两身形 `--build-atlas` ≈ 4.5–5 分钟（2 核，headless，无 GPU；本机口径）。
 - **构建环境**：python3 + numpy/opencv/Pillow；图集编码依赖 Pillow 的 lossless WebP（Pillow/libwebp 版本理论上可能影响
   编码字节；v2.5 基线与本机 Pillow 10.2.0 对齐）。生产环境固定依赖版本（`tools/requirements.txt` 只给下限）。
-- **单页 4096 限制**：current production 单页；多页能力保留但未启用（2x 实验曾因收益≈噪声、VRAM 上升被砍）。
+- **单页 4096 限制**：单张图集 ≤4096×4096；v3.2.0 起 production 为 **5 页懒加载套装页**
+  （base + 4 套装），不再把所有 drawable 塞进单页。页数上限 `MAX_PAGES=6`（build_2d5）；
+  增加套装时须同步页序表（`build_prod.LAZY_OUTFIT_COMBOS`）与运行时 `MAX_ATLASES`。
 - **实验开关不保证基线一致**：`--skip-hair-split/--skip-hands/--hands-2x` 产出的 A/C/A2 变体是 QA/归因产物，
   不代表官方 dist。
 - **2x 手部**：T2 的 refined2x 数据保留在源包中（实验），默认构建不使用；收益未证实。
@@ -210,8 +258,9 @@ python3 tools/art/build_prod.py --build-atlas --src .cache/assets-src \
   --master-config .cache/assets-src/master/chibi/config.json
 ```
 
-验收：重建 `atlas.webp` 的 md5 应与仓库 `docs/dress-up/art/2d5/{shape}/atlas.webp` 一致
-（`rig.json` 在 v2.6 与 v2.5 逐字节相同）；双跑确定性由 `npm run verify:full` 校验。
+验收：重建的 `atlas.webp` + `atlas-2…5.webp` 与 `rig.json` 的 md5 应与仓库
+`docs/dress-up/art/2d5/{shape}/` 对应文件一致（v3.2.0 起 rig.json 含 `atlases`/`drawables[].atlas`，
+不再是 v2.6 的单页形状）；双跑确定性由 `npm run verify:full` 校验。
 v2.5 及以前的重建 = 不传 `--master-config`（历史源包 assets-v1 亦可）。
 
 ## v3.1.0 artfix（源包一次性修复；QA 内部代号 v3.0.1）

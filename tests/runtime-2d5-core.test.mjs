@@ -26,6 +26,7 @@ import {
 	carryDiyPacks,
 	resolveTierPlan,
 	tierLoadPlan,
+	collectLookAtlasIndices,
 	tierUpgradeSettled,
 	faceStateKeys,
 	headFollowParams,
@@ -668,11 +669,46 @@ test('tierUpgradeSettled：终态判定（waitForTierUpgrade 何时 resolve）',
 	}
 });
 
-test('tierLoadPlan：lo=rig/mesh/atlas1/ready，hi 多一页图集；总阶段数与进度条对齐', () => {
+test('tierLoadPlan：默认口径 lo=1 页 / hi=2 页；v3.2.0 lazy 可传实际页数（rig/mesh/atlasN/ready）', () => {
 	assert.deepEqual(tierLoadPlan('lo'), { tier: 'lo', pages: 1, stages: ['rig', 'mesh', 'atlas1', 'ready'], total: 4 });
 	assert.deepEqual(tierLoadPlan('hi'), { tier: 'hi', pages: 2, stages: ['rig', 'mesh', 'atlas1', 'atlas2', 'ready'], total: 5 });
+	assert.deepEqual(tierLoadPlan('lo', 2), { tier: 'lo', pages: 2, stages: ['rig', 'mesh', 'atlas1', 'atlas2', 'ready'], total: 5 });
+	const five = tierLoadPlan('lo', 5);
+	assert.equal(five.pages, 5);
+	assert.equal(five.total, 8);
+	assert.deepEqual(five.stages.slice(0, 3), ['rig', 'mesh', 'atlas1']);
+	assert.deepEqual(five.stages.slice(-1), ['ready']);
 	assert.equal(tierLoadPlan('bogus').tier, 'lo');
 	assert.equal(tierLoadPlan(undefined).pages, 1);
+	assert.equal(tierLoadPlan('lo', 0).pages, 1, '非法 pages 回退默认');
+});
+
+test('collectLookAtlasIndices：base 页恒加载 + 当前 look 的套装页（DIY drawable 不占页）', () => {
+	const rig = {
+		drawables: [
+			{ id: 'body-head', atlasIndex: 0 },
+			{ id: 'hair-back', atlasIndex: 0 },
+			{ id: 'maid-top', atlasIndex: 1 },
+			{ id: 'maid-skirt', atlasIndex: 1 },
+			{ id: 'sailor-plaid-top', atlasIndex: 4 },
+			{ id: 'diy-x-layer', atlasIndex: 0, diy: true },
+		],
+		outfits: {
+			maid: { topBody: ['maid-top'], bottom: ['maid-skirt'] },
+			'sailor-plaid': { topBody: ['sailor-plaid-top'], bottom: [] },
+		},
+		defaults: { outfit: 'maid' },
+	};
+	const maid = resolveLook(rig, { outfit: 'maid' });
+	assert.deepEqual(collectLookAtlasIndices(rig, maid), [0, 1]);
+	const sailor = resolveLook(rig, { outfit: 'sailor-plaid' });
+	assert.deepEqual(collectLookAtlasIndices(rig, sailor), [0, 4]);
+	const bare = resolveLook(rig, { bare: true });
+	assert.deepEqual(collectLookAtlasIndices(rig, bare), [0], 'bare（DIY 静态）只需 base 页');
+	// 动态 DIY outfit 引用的 base 配件页也要算（DIY layer 自身不占页）
+	const diyLook = { slots: { topBody: ['diy-x-layer', 'maid-top'], bottom: [] } };
+	assert.deepEqual(collectLookAtlasIndices(rig, diyLook), [0, 1]);
+	assert.deepEqual(collectLookAtlasIndices({ drawables: rig.drawables }, maid), [0, 1], '无 drawableById 时走线性查找');
 });
 
 test('carryDiyPacks：lo→hi 热升级迁移 DIY pack（drawable/outfits/diyPacks/统计）且不改原场景', () => {

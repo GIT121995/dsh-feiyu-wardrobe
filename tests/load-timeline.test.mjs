@@ -48,8 +48,8 @@ function fixedRun() {
 		readyOk: true,
 		requests: {
 			count: 40,
-			hiArt: ['art/2d5/chibi-hi/rig.json?v=22', 'art/2d5/chibi-hi/atlas.webp?v=22', 'art/2d5/chibi-hi/atlas-2.webp?v=22'],
-			loArt: ['art/2d5/chibi/rig.json?v=22', 'art/2d5/chibi/atlas.webp?v=22'],
+			hiArt: ['art/2d5/chibi-hi/rig.bin?v=25', 'art/2d5/chibi-hi/atlas.webp?v=25', 'art/2d5/chibi-hi/atlas-2.webp?v=25'],
+			loArt: ['art/2d5/chibi/rig.bin?v=25', 'art/2d5/chibi/atlas.webp?v=25', 'art/2d5/chibi/atlas-2.webp?v=25'],
 		},
 		resourcesSummary: { count: 8, transferSize: 900000, decodedBodySize: 1200000 },
 		pixels: { shots: { pending: { pendingDarkRatio: 0.30, figStd: 30 }, firstframe: { changedRatio: 0.42 } } },

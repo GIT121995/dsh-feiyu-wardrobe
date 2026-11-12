@@ -224,17 +224,51 @@ export function tierUpgradeSettled(status) {
 
 /**
  * 按 tier 计算加载阶段名（进度条用；与 runtime `onLoadProgress` 的 phase/total 对齐）。
- * lo：rig → mesh → atlas1 → ready；hi：rig → mesh → atlas1 → atlas2 → ready。
+ *
+ * v3.2.0 lazy outfit page：实际加载页数取决于当前 look（base 页 + 当前套装页），
+ * 调用方可传 `pages` 覆盖；缺省保持历史口径（lo=1 / hi=2）供旧 fixture/回退路径使用。
+ * lo：rig → mesh → atlas1… → ready。
  * @param {'lo'|'hi'|string} tier
+ * @param {number} [pages] 本次实际加载的图集页数（1–6）
  * @returns {{ tier: 'lo'|'hi', pages: number, stages: string[], total: number }}
  */
-export function tierLoadPlan(tier) {
+export function tierLoadPlan(tier, pages) {
 	const resolved = tier === 'hi' ? 'hi' : 'lo';
-	const pages = resolved === 'hi' ? 2 : 1;
+	const pageCount = Number.isInteger(pages) && pages > 0 ? pages : (resolved === 'hi' ? 2 : 1);
 	const stages = ['rig', 'mesh'];
-	for (let index = 1; index <= pages; index += 1) stages.push(`atlas${index}`);
+	for (let index = 1; index <= pageCount; index += 1) stages.push(`atlas${index}`);
 	stages.push('ready');
-	return { tier: resolved, pages, stages, total: stages.length };
+	return { tier: resolved, pages: pageCount, stages, total: stages.length };
+}
+
+/**
+ * 当前 look 需要哪些图集页（懒加载页选择）。
+ *
+ * v3.2.0：每身形图集按「base 页 + 每套 outfit 一页」拆分（见 tools/art/README）。
+ * 返回排序后的页下标数组，恒含 0（base 页：身体/头发/脸/尾巴等常驻层）。
+ * DIY 动态 drawable 自带纹理，不占 rig 图集页，跳过。
+ *
+ * @param {any} rig 场景 rig（需 drawables；可选 drawableById 加速）
+ * @param {{ slots?: Record<string, string[]> }} look resolveLook 的结果
+ * @returns {number[]}
+ */
+export function collectLookAtlasIndices(rig, look) {
+	const indices = new Set([0]);
+	const slots = (look && look.slots) || {};
+	let byId = rig && rig.drawableById;
+	if (!byId) {
+		byId = new Map();
+		for (const drawable of (rig && rig.drawables) || []) byId.set(drawable.id, drawable);
+	}
+	for (const slot of OUTFIT_SLOTS) {
+		for (const id of slots[slot] || []) {
+			const drawable = byId.get ? byId.get(id) : byId[id];
+			if (!drawable || drawable.diy) continue;
+			const index = Number.isInteger(drawable.atlasIndex) ? drawable.atlasIndex : 0;
+			indices.add(index);
+		}
+	}
+	return [...indices].filter((index) => Number.isInteger(index) && index >= 0).sort((a, b) => a - b);
 }
 
 /**
@@ -480,8 +514,12 @@ export const OUTFIT_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveU
 export const CUTOUT_SLOTS = ['legs', 'armUpper', 'armFore', 'hand', 'collar', 'sleeveUpper', 'sleeveFore'];
 /** 旧版四个服装槽位（向后兼容基线）。 */
 export const LEGACY_OUTFIT_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve'];
-/** 每身心最多图集数（cutout 首版；单张超过 4096 时可拆 2 张）。 */
-export const MAX_ATLASES = 2;
+/**
+ * 每身形最多图集页数。
+ * v3.2.0 lazy outfit page（方案 C）：base 页 + 4 个套装页 = 5 页，其余页按需懒加载；
+ * 预留 1 页余量给未来槽位/配饰拆分（构建侧 MAX_PAGES=6 与这里保持一致）。
+ */
+export const MAX_ATLASES = 6;
 /** DIY pack 旧槽位别名（S1/S2 早期产物可能用 arms 等命名）。 */
 export const DIY_SLOT_ALIASES = { arms: 'sleeve', arm: 'sleeve', sleeves: 'sleeve' };
 

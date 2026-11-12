@@ -3,7 +3,7 @@
 
 把冻结的源素材（M2 cutout 分件 + M4 production 模板 + P2/T2 精修交付 + P3 冻结
 输入）组装成 2 身形 × 6 套装的 cutout rig，再调用 `tools/art/build_2d5.py`
-（单页 lossless WebP 图集 + trim-alpha）输出运行时资产：
+（多页 lossless WebP 图集 + trim-alpha）输出运行时资产：
 
     <repo>/.cache/assets-src/          # 源根（fetch-sources.mjs 下载，源工程不入 git）
       art/                             # M2 cutout art
@@ -12,7 +12,7 @@
       hands/                           # T2 手部精修 overlay 数据
       prod/                            # P3 冻结输入（seamfill + rest-colour ref）
     <repo>/.cache/build/               # 中间产物（texdir / source rig / build-stats）
-    <repo>/tools/art/dist/             # 输出 dist/{shape}/{rig.json,atlas.webp,build-report.json}
+    <repo>/tools/art/dist/             # 输出 dist/{shape}/{rig.json,atlas*.webp,build-report.json}
 
 v2.5 口径相对 P3（v2.4.0）的改动（T1 + T2 合并，见 W0 REPORT §构建验证）：
   * split_girl_back_hair 保留 5,117px 抽取，但不再 inline 重绘底层（P3 的 24 轮
@@ -35,12 +35,23 @@ v3.0 paper-doll 增量（`.scratch/p8/v3-paperdoll/PLAN.md` §4）：
     clean_garment_skin 全部跳过（V3_IDS 过滤，避免把身体色/内壁色打回服装层）；
     仅做 color_bleed 2px RGB 外扩（alpha 不变）。
   * 没有 layers/ 的源包完全保持 v2.7 分件路径（已实测逐字节复现官方 v2.7.0 dist）。
-  * hi tier 不变：服装仍 1x，走 lo 页图集。
+  * hi tier 服装仍 1x（v3.2.0 起在 5 页方案里单独成套装页，不再与 lo 混页）。
   * Phase 2C（用户选定 W8 方案）：源包 `art/body-fix/{shape}/neck-overlay.png`
     （675×1200 RGBA，alpha=羽化权重、RGB=目标肤色，含 neck-overlay.json 元数据）存在时，
     构建期把 overlay alpha 合成到 body-head 贴图（lo 1x；hi Lanczos 2x 到 1350×2400），
     tex alpha 不变、overlay alpha=0 区域逐字节不变，并**跳过**算法版 retouch_neck。
     overlay 缺失时才回退算法版（G1 修复：颈部中值去条带 + 轻度提亮，见 retouch_neck()）。
+
+v3.2.0 lazy outfit page（方案 C，`.scratch/p1-320/PLAN.md` §1）：
+  * lo/hi 各输出 **5 页**图集（固定页序）：第 0 页 `base` = 不被任何 outfit 引用的
+    drawable（body/hair/face/tail/legs/seam-fill…），后 4 页 = [maid, hoodie-plaid,
+    hoodie-pleated, sailor-plaid] 各自 outfit slot 引用的 drawable（保持 drawables 原顺序）；
+    文件名 atlas.webp / atlas-2.webp … atlas-5.webp。
+  * hi tier：`base` 页为 2x body/hair/face/tail（+ 常驻的 1x seam-fill，它不被任何 outfit
+    引用且不能缺页），4 个套装页为该套装的 1x 服装整层（来自 lo 纹理）。
+  * 每个 drawable 恰好归属一页（构建期断言），页/文件 id 顺序 = PLAN §1.1；运行时按 look
+    懒加载 base + 当前套装页（本 builder 只产出图集，不涉及运行时逻辑）。
+  * 旧输入（lo source rig 无 atlasPages）仍走 build_2d5 历史单页路径。
 
 构建说明：
   * 输入路径全部相对 `--src`（默认 <repo>/.cache/assets-src）解析；`--outdir`
@@ -126,6 +137,11 @@ OPTS = {
 V3_LAYERS = (('top', 'topBody', 64.0), ('skirt', 'bottom', 30.0))
 V3_CELL = 9                       # 整层网格密度（px/格；比旧分件 14 细，衣摆变形更平滑）
 V3_IDS = set()                    # build_shape 填充；补丁步骤（seam-extend/rest-port/skin-clean）跳过整层
+# ---- v3.2.0 lazy outfit page（方案 C）：lo/hi 图集 5 页，页序/文件名固定（PLAN §1.1）----
+# 第 0 页 base = 不被任何 outfit slot 引用的 drawable；其后每套装一页（按下方固定顺序）。
+LAZY_OUTFIT_COMBOS = ('maid', 'hoodie-plaid', 'hoodie-pleated', 'sailor-plaid')
+LAZY_ATLAS_FILES = ('atlas.webp', 'atlas-2.webp', 'atlas-3.webp',
+                    'atlas-4.webp', 'atlas-5.webp')
 NECK_BODY_IDS = ('body-head', 'body-torso')
 NECK_ALPHA = 240                # 可处理像素 alpha 下限（皮肤区实际 255）
 NECK_TARGET_HALF_W = 100.0      # 胸口参考带半宽（lo 坐标）
@@ -1995,6 +2011,70 @@ def _hi_master_path(shape, cfg, hi_src):
     return None, 'missing'
 
 
+# --------------- v3.2.0 lazy outfit page：5 页图集分组（lo/hi 共用）---------------
+def outfit_page_refs(rig):
+    """按 outfits 的服装 slot 引用收集 drawable id（每个 outfit 内保序去重）。
+
+    只认 GARMENT_SLOTS（与 build_2d5.py 的 OUTFIT_SLOTS 一致）；`base` outfit 无 slot
+    引用 → 不产生页面。引用不存在的 drawable 直接报错（不静默丢件）。
+    """
+    known = {d['id'] for d in rig['drawables']}
+    refs = {}
+    for outfit_id, outfit in (rig.get('outfits') or {}).items():
+        if not isinstance(outfit, dict):
+            continue
+        ids = []
+        for slot in GARMENT_SLOTS:
+            for did in outfit.get(slot) or []:
+                if not isinstance(did, str):
+                    raise SystemExit(f'outfit {outfit_id}.{slot} 含非字符串 drawable id')
+                if did not in known:
+                    raise SystemExit(f'outfit {outfit_id}.{slot} 引用了不存在的 drawable {did}')
+                if did not in ids:
+                    ids.append(did)
+        if ids:
+            refs[outfit_id] = ids
+    return refs
+
+
+def build_atlas_pages(rig):
+    """5 页懒加载图集分组（PLAN §1.1）：base + maid/hoodie-plaid/hoodie-pleated/sailor-plaid。
+
+    base 页 = 不被任何 outfit slot 引用的 drawable；每个套装页 = outfits[combo] 各 slot
+    引用的 drawable。页 id/文件名固定；页内 drawables 保持 rig['drawables'] 原顺序。
+    断言：每个 drawable 恰好归属一页、每页非空。返回 build_2d5 的 atlasPages 契约
+    （[{id,file,drawables:[id...]}, ...]，第 0 页必须是 base）。
+    """
+    refs = outfit_page_refs(rig)
+    extra = sorted(set(refs) - set(LAZY_OUTFIT_COMBOS))
+    if extra:
+        raise SystemExit(f'lazy outfit page: 未知套装 {extra}（页序固定为 '
+                         f'{list(LAZY_OUTFIT_COMBOS)}，新增套装需同步 build_2d5 页数上限）')
+    pages = [{'id': 'base', 'file': LAZY_ATLAS_FILES[0], 'drawables': []}]
+    for i, combo in enumerate(LAZY_OUTFIT_COMBOS, start=1):
+        if combo not in refs:
+            raise SystemExit(f'lazy outfit page: outfits 缺少套装 {combo}（无法生成 5 页图集）')
+        pages.append({'id': combo, 'file': LAZY_ATLAS_FILES[i], 'drawables': []})
+    page_of = {}
+    for page in pages[1:]:
+        for did in refs[page['id']]:
+            if did in page_of:
+                raise SystemExit(f'drawable {did} 被多个套装页引用（{page_of[did]} 与 {page["id"]}），'
+                                 '每个 drawable 必须恰好归属一页')
+            page_of[did] = page['id']
+    by_page = {page['id']: page for page in pages}
+    for d in rig['drawables']:
+        by_page[page_of.get(d['id'], 'base')]['drawables'].append(d['id'])
+    for page in pages:
+        if not page['drawables']:
+            raise SystemExit(f'图集页 {page["id"]} 没有任何 drawable')
+    assigned = sum(len(page['drawables']) for page in pages)
+    if assigned != len(rig['drawables']):
+        raise SystemExit(f'图集页分组 drawable 数 {assigned} != rig drawables '
+                         f'{len(rig["drawables"])}（有 drawable 未归属或多归）')
+    return pages
+
+
 def build_hi_tier(shape, rig_path, texdir, stats, hi_outdir, hi_src):
     """Build the mixed-resolution hi (2x) tier from the lo build artifacts.
 
@@ -2006,7 +2086,10 @@ def build_hi_tier(shape, rig_path, texdir, stats, hi_outdir, hi_src):
     * garment drawables stay 1x (copy lo texture);
     * texSize is doubled for 2x drawables, rect stays in 1x canvas coords;
       meshes are untouched (uvs are normalised);
-    * two atlas pages: page `hi` (2x tiles) + page `lo` (1x garments/rest), each
+    * five lazy outfit atlas pages (v3.2.0, PLAN §1.1): page 0 `base` = 2x
+      body/hair/face/tail drawables (+ the always-loaded 1x `seam-fill`, which no
+      outfit references and must stay resident), pages 1-4 = one page per outfit
+      combo holding that outfit's 1x garment drawables (lo textures); each page
       <=4096 and pixelEqual=True (build_2d5 contract).
     Returns the build stats entry."""
     rig = json.load(open(rig_path))
@@ -2117,14 +2200,13 @@ def build_hi_tier(shape, rig_path, texdir, stats, hi_outdir, hi_src):
     log(f'[{shape}] hi sources: {hi_art} layer files from art, '
         f'{hi_canvas} body drawables from 2x master, {hi_placeholder} placeholder, '
         f'residueProtected={hi_residue_protected}px')
-    # two atlas pages: 2x big tiles first, 1x garments second
+    # five lazy outfit atlas pages (v3.2.0): base page = 2x tiles + always-resident
+    # 1x seam-fill; combo pages = the outfit's 1x garment drawables. Grouping is
+    # computed from rig.outfits, so hi and lo page ids/files/order stay identical.
     rig.pop('atlasPages', None)
     for d in rig['drawables']:
         d.pop('atlas', None)
-    rig['atlasPages'] = [
-        {'id': 'hi', 'file': 'atlas.webp', 'drawables': hi_ids},
-        {'id': 'lo', 'file': 'atlas-2.webp', 'drawables': lo_ids},
-    ]
+    rig['atlasPages'] = build_atlas_pages(rig)
     hi_rig_path = os.path.join(WORK, 'assets', f'{shape}-hi-cutout.feiyu.json')
     json.dump(rig, open(hi_rig_path, 'w'), separators=(',', ':'))
     tmp_root = os.path.join(WORK, 'hi-dist-tmp')
@@ -2770,14 +2852,16 @@ def build_shape(shape, page_split='base'):
     }
     if OPTS['hands_2x']:
         overlay_refined_hands_2x(shape, drawables, texdir, stats)
-    # M4b: single-page atlas (content ~5.1M px, fits <=4096x4096) -> 1 request,
-    # no second-page whitespace. build_2d5 legacy single-page path.
+    # v3.2.0 lazy outfit page: 5-page atlas (base + 4 outfit combos)。分组在全部纹理后处理
+    # （port_rest_colors / clean_garment_skin）之后、写 source rig JSON 之前按 outfits 引用
+    # 计算，build_2d5 据此逐页打包（输出 rig.atlases + drawables[].atlas）。
     port_rest_colors(shape, drawables, outfits, texdir)
     # v2.6.1 fix: garment textures may bake duplicated body parts (4-hand maid) ->
     # remove them AFTER all garment RGB writes and BEFORE build_2d5; alpha-only, no
     # mesh rebuild so rig.json stays byte-identical.
     clean_garment_skin(shape, drawables, texdir, outfits, stats)
     stats['colorBleed'] = {'px': COLOR_BLEED_COUNT['px'], 'pxPerPart': round(COLOR_BLEED_PX, 1)}
+    rig_json['atlasPages'] = build_atlas_pages(rig_json)
     rig.add_leg_collider_meta(rig_json)
     out_rig = os.path.join(WORK, 'assets', f'{shape}-cutout.feiyu.json')
     json.dump(rig_json, open(out_rig, 'w'), separators=(',', ':'))
@@ -2831,7 +2915,8 @@ def main():
     ap.add_argument('--build-atlas', action='store_true')
     ap.add_argument('--tier', choices=['lo', 'hi'], default='lo',
                     help='asset tier: lo = current 1x dist (default); hi = mixed 2x '
-                         'body/hair/face/tail + 1x garments, two-page atlas')
+                         'body/hair/face/tail + 1x garments, five-page lazy atlas '
+                         '(base + 4 outfit pages)')
     ap.add_argument('--hi-outdir', default=None,
                     help='hi tier output root (default <repo>/docs/dress-up/art/2d5; '
                          'writes <root>/{shape}-hi/)')
@@ -2901,8 +2986,8 @@ def main():
             rep = json.load(open(os.path.join(d, 'build-report.json')))
             pages = rep.get('atlases') or ([rep['atlas']] if rep.get('atlas') else [])
             log(f'[{shape}] atlas pages {len(pages)} '
-                + ', '.join(f"{p.get('width')}x{p.get('height')} pxEqual={p.get('pixelEqual')}"
-                            for p in pages))
+                + ', '.join(f"{p.get('id')}={p.get('width')}x{p.get('height')} "
+                            f"pxEqual={p.get('pixelEqual')}" for p in pages))
     json.dump(all_stats, open(os.path.join(WORK, 'assets', 'build-stats.json'), 'w'),
               indent=1, ensure_ascii=False)
     log('done')

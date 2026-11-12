@@ -132,7 +132,7 @@ test('visibleDrawables：旧 rig（无 cutout 槽位）仍可渲染，不引入�
 	assert.deepEqual(ids, ['hair-back', 'body', 'maid-body', 'arms', 'bangs']);
 });
 
-test('normalizeAtlases：旧单图集兼容 / 新多图集（≤2）/ 超限与重复 id 报错', () => {
+test('normalizeAtlases：旧单图集兼容 / 新多图集（≤MAX_ATLASES）/ 超限与重复 id 报错', () => {
 	const legacy = normalizeAtlases({ atlas: { file: 'atlas.webp', width: 2048, height: 2048 } });
 	assert.equal(legacy.ok, true);
 	assert.equal(legacy.legacy, true);
@@ -143,12 +143,10 @@ test('normalizeAtlases：旧单图集兼容 / 新多图集（≤2）/ 超限与�
 	assert.equal(multi.ok, true);
 	assert.equal(multi.legacy, false);
 	assert.deepEqual(multi.atlases.map((atlas) => atlas.id), ['base', 'cutout']);
-	assert.equal(MAX_ATLASES, 2);
+	assert.equal(MAX_ATLASES, 6);
 
 	const tooMany = normalizeAtlases({
-		atlases: [
-			{ id: 'a', file: 'a.webp' }, { id: 'b', file: 'b.webp' }, { id: 'c', file: 'c.webp' },
-		],
+		atlases: Array.from({ length: MAX_ATLASES + 1 }, (_, index) => ({ id: `p${index}`, file: `atlas-${index}.webp` })),
 	});
 	assert.equal(tooMany.ok, false);
 	assert.ok(tooMany.errors.includes('too_many_atlases'));

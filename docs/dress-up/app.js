@@ -19,9 +19,9 @@ import {
 	normalizeState,
 	randomOutfit,
 	// @ts-ignore tsc 不认识带 ?v= 的模块路径；加版本号让浏览器绕过旧缓存
-} from './wardrobe-core.js?v=27';
-import { createDiy } from './diy-ui.js?v=27';
-import { createDiyPacks } from './diy-packs.js?v=27';
+} from './wardrobe-core.js?v=28';
+import { createDiy } from './diy-ui.js?v=28';
+import { createDiyPacks } from './diy-packs.js?v=28';
 import {
 	ACTION_SPECS,
 	actionParams,
@@ -29,7 +29,7 @@ import {
 	hitZone,
 	moodFacePlan,
 	pickLine,
-} from './interaction-model.js?v=27';
+} from './interaction-model.js?v=28';
 
 (() => {
 	'use strict';
@@ -37,10 +37,10 @@ import {
 	const $ = (sel) => document.querySelector(sel);
 	const STORAGE_KEY = 'feiyu:outfit';
 	/** 2.5D runtime 模块（v2 唯一渲染路径；页面模块版本 v25）。 */
-	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=27';
+	const RUNTIME_2D5_MODULE = './runtime-2d5.js?v=28';
 	const RUNTIME_2D5_ASSET_ROOT = 'art/2d5/';
 	/** 2.5D 资产版本（v3.1.1 = 24：MaxRects 紧凑图集（VRAM -35%），页面模块 v27）。 */
-	const RUNTIME_2D5_ASSET_VERSION = '24';
+	const RUNTIME_2D5_ASSET_VERSION = '25';
 	const params = new URLSearchParams(location.search);
 
 	/* ---------------- 首屏加载时间线（v3.0.1） ---------------- */
@@ -419,7 +419,7 @@ import {
 		rig: '正在加载角色数据…',
 		mesh: '正在加载角色数据…',
 		atlas1: '正在加载角色贴图…',
-		atlas2: '正在加载高清贴图…',
+		atlas2: '正在加载套装贴图…',
 		ready: '正在加载最后一点…',
 		'upgrade-start': '正在加载高清贴图…',
 		'upgrade-ready': '高清贴图已就绪',
@@ -453,7 +453,8 @@ import {
 	 */
 	function updateLoadingProgress(phase, index = 0, total = 0) {
 		if (loadingTimeline.hidden) return;
-		const label = LOADING_LABELS[phase] || LOADING_LABELS.boot;
+		const label = LOADING_LABELS[phase]
+			|| (/^atlas\d+$/.test(String(phase)) ? LOADING_LABELS.atlas1 : LOADING_LABELS.boot);
 		let percent;
 		if (phase === 'ready') {
 			percent = 100;
@@ -641,10 +642,10 @@ import {
 			hideRuntimeUnavailable();
 			const rt = await ensureRuntime();
 			if (seq !== runtimeBootSeq) return;
-			await rt.setShape(state.shape);
+			await rt.setShape(state.shape, { look: currentLookState() });
 			perfMark('feiyu:shape-ready');
 			if (seq !== runtimeBootSeq) return;
-			runtime.setLook({ outfit: state.outfit, top: state.top, bottom: state.bottom });
+			runtime.setLook(currentLookState());
 			runtime.freeze(false);
 			applyReducedMotionPreference();
 			applyDiyStatic();
@@ -661,12 +662,17 @@ import {
 		}
 	}
 
+	/** 当前页面 state → runtime look（lazy outfit page：加载时按它选择要拉的套装页）。 */
+	function currentLookState() {
+		return { outfit: state.outfit, top: state.top, bottom: state.bottom };
+	}
+
 	/** 把页面状态同步到 2.5D runtime（身形按需加载、造型动态组合、DIY 静态贴片）。 */
 	function sync2d5() {
 		if (!runtime) return;
 		const seq = (syncSeq += 1);
 		const shape = state.shape;
-		runtime.setShape(shape).then(async (result) => {
+		runtime.setShape(shape, { look: currentLookState() }).then(async (result) => {
 			if (seq !== syncSeq || !runtime) return;
 			if (result && result.stale) return;
 			// S3：动态 DIY 套装按需加载（多纹理；不重建 base 图集）

@@ -17,6 +17,17 @@ const EXPECTED_DRAWABLES = { chibi: 48, girl: 49 };
 const OUTFIT_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar'];
 /** v3 整层 outfit：每套 2 个 drawable 的 id 后缀（{combo}-top / {combo}-skirt）。 */
 const V3_OUTFITS = ['maid', 'hoodie-plaid', 'hoodie-pleated', 'sailor-plaid'];
+/**
+ * v3.2.0 lazy outfit page（方案 C）：每身形 5 页 —— base 页 + 每套 outfit 一页。
+ * 首屏只加载 base 页 + 当前套装页；其余套装页由 runtime 首帧后空闲预取。
+ */
+const LAZY_PAGES = [
+	{ id: 'base', file: 'atlas.webp' },
+	{ id: 'maid', file: 'atlas-2.webp' },
+	{ id: 'hoodie-plaid', file: 'atlas-3.webp' },
+	{ id: 'hoodie-pleated', file: 'atlas-4.webp' },
+	{ id: 'sailor-plaid', file: 'atlas-5.webp' },
+];
 
 /** 读 WebP 尺寸（VP8X / VP8L / VP8 三种头）。 */
 function webpSize(file) {
@@ -48,6 +59,21 @@ function loadRig(shape) {
 	return JSON.parse(readFileSync(file, 'utf8'));
 }
 
+/** 构建报告的图集页列表（单页 legacy 报告没有 atlases 时回退 atlas）。 @returns {any[]} */
+function reportPages(dir) {
+	const report = JSON.parse(readFileSync(join(dir, 'build-report.json'), 'utf8'));
+	return report.atlases || (report.atlas ? [report.atlas] : []);
+}
+
+/** 页 id → 尺寸（rig.atlases）。 @returns {Map<string, { width: number, height: number, file: string }>} */
+function atlasMeta(rig) {
+	const map = new Map();
+	for (const atlas of rig.atlases || [rig.atlas]) {
+		if (atlas && atlas.id && atlas.file) map.set(atlas.id, atlas);
+	}
+	return map;
+}
+
 /** 浮点小数位不超过 n 位（JSON 序列化后的十进制位数）。 */
 function decimals(value) {
 	const text = String(value);
@@ -71,33 +97,57 @@ function walkAssets() {
 	return files;
 }
 
-test('2.5D 资产全集：两身形 rig + 图集 + 构建报告（缺失时先跑 npm run build:assets）', () => {
+test('2.5D 资产全集：两身形 rig + 5 页图集 + 构建报告（缺失时先跑 npm run build:assets）', () => {
 	for (const shape of SHAPES) {
 		for (const name of ['rig.json', 'atlas.webp', 'build-report.json']) {
 			const file = join(ASSET_ROOT, shape, name);
 			assert.ok(existsSync(file), `缺少 art/2d5/${shape}/${name}`);
 			assert.ok(statSync(file).size > 1024, `art/2d5/${shape}/${name} 体积异常`);
 		}
+		// v3.2.0：构建报告声明的每个图集页文件（atlas.webp…atlas-5.webp）都必须存在
+		const pages = reportPages(join(ASSET_ROOT, shape));
+		assert.equal(pages.length, LAZY_PAGES.length, `${shape} 应有的图集页数`);
+		for (const page of pages) {
+			const file = join(ASSET_ROOT, shape, page.file);
+			assert.ok(existsSync(file), `缺少 art/2d5/${shape}/${page.file}`);
+			assert.ok(statSync(file).size > 1024, `art/2d5/${shape}/${page.file} 体积异常`);
+		}
 	}
 	assert.ok(existsSync(join(ROOT, '..', '..', 'tools', 'art', 'build_2d5.py')), '仓库应带资产构建脚本 tools/art/build_2d5.py');
 });
 
-test('2.5D rig：图集元数据与实际 WebP 尺寸一致、UV 重映射到图集空间', () => {
+test('2.5D rig：5 页图集元数据与实际 WebP 尺寸一致（base 页 + 每套 outfit 一页）', () => {
 	for (const shape of SHAPES) {
 		const rig = loadRig(shape);
-		assert.ok(rig.atlas, `${shape} 缺少 atlas 元数据`);
+		assert.ok(Array.isArray(rig.atlases) && rig.atlases.length === LAZY_PAGES.length,
+			`${shape} 应为 ${LAZY_PAGES.length} 页懒加载图集（v3.2.0 lazy outfit page）`);
+		assert.equal(rig.atlasesLegacy, undefined, 'rig.json 不应持久化运行时字段 atlasesLegacy');
+		assert.deepEqual(rig.atlases.map((atlas) => atlas.id), LAZY_PAGES.map((page) => page.id), `${shape} 页 id/顺序`);
+		assert.deepEqual(rig.atlases.map((atlas) => atlas.file), LAZY_PAGES.map((page) => page.file), `${shape} 页文件/顺序`);
+		assert.deepEqual(rig.atlas, rig.atlases[0], `${shape} rig.atlas 应=第一页（旧消费者兼容）`);
 		assert.equal(rig.atlas.file, 'atlas.webp');
 		assert.equal(rig.atlas.format, 'webp-lossless-rgba');
 		assert.ok(rig.atlas.padding >= 1 && rig.atlas.padding <= 8, 'padding 应在 1–8px');
-		const size = webpSize(join(ASSET_ROOT, shape, 'atlas.webp'));
-		assert.equal(rig.atlas.width, size.width, `${shape} 图集宽与 rig 元数据不一致`);
-		assert.equal(rig.atlas.height, size.height, `${shape} 图集高与 rig 元数据不一致`);
-		assert.ok(rig.atlas.width <= 4096 && rig.atlas.height <= 4096, '单页图集尺寸不应超出 4096');
+		assert.equal(rig.m3.multiAtlas, true, `${shape} m3.multiAtlas 应为 true`);
+		assert.equal(rig.m3.atlasPages, LAZY_PAGES.length, `${shape} m3.atlasPages 应为页数`);
+		assert.equal(rig.product.pages, LAZY_PAGES.length, `${shape} product.pages 应为页数`);
 		const report = JSON.parse(readFileSync(join(ASSET_ROOT, shape, 'build-report.json'), 'utf8'));
-		assert.equal(report.atlas.width, rig.atlas.width);
-		assert.equal(report.atlas.height, rig.atlas.height);
-		assert.equal(report.atlas.pixelEqual, true, '图集回读应逐像素一致（lossless）');
+		assert.equal(report.pages, LAZY_PAGES.length, `${shape} build-report.pages`);
+		const pages = reportPages(join(ASSET_ROOT, shape));
 		assert.equal(report.drawables.length, rig.drawables.length);
+		for (let index = 0; index < rig.atlases.length; index += 1) {
+			const atlas = rig.atlases[index];
+			const page = pages[index];
+			assert.equal(page.id, atlas.id, `${shape} 报告页 id 不一致`);
+			assert.equal(page.file, atlas.file, `${shape} 报告页文件不一致`);
+			const size = webpSize(join(ASSET_ROOT, shape, atlas.file));
+			assert.equal(atlas.width, size.width, `${shape}/${atlas.file} 宽与 rig 元数据不一致`);
+			assert.equal(atlas.height, size.height, `${shape}/${atlas.file} 高与 rig 元数据不一致`);
+			assert.ok(atlas.width <= 4096 && atlas.height <= 4096, `${shape}/${atlas.file} 超出 4096`);
+			assert.equal(page.width, atlas.width);
+			assert.equal(page.height, atlas.height);
+			assert.equal(page.pixelEqual, true, `${shape}/${atlas.file} 图集回读应逐像素一致（lossless）`);
+		}
 	}
 });
 
@@ -135,13 +185,16 @@ test('2.5D rig：drawable/mesh 数据完整（顶点/UV/权重/索引/图集矩�
 		assert.equal(rig.drawables.length, EXPECTED_DRAWABLES[shape], `${shape} drawable 数量应为 ${EXPECTED_DRAWABLES[shape]}`);
 		assert.ok(rig.slots.body && rig.slots.legs && rig.slots.armUpper && rig.slots.armFore && rig.slots.hand,
 			`${shape} 缺少 cutout 身体部件槽位`);
-		const atlasW = rig.atlas.width;
-		const atlasH = rig.atlas.height;
+		const pagesById = atlasMeta(rig);
 		let totalVerts = 0;
 		for (const drawable of rig.drawables) {
 			const label = `${shape}/${drawable.id}`;
 			assert.equal(typeof drawable.id, 'string', `${label} 缺 id`);
-			assert.equal(drawable.texture, 'atlas.webp', `${label} 应引用图集`);
+			const page = pagesById.get(drawable.atlas);
+			assert.ok(page, `${label} atlas=${drawable.atlas} 未在 rig.atlases 声明`);
+			assert.equal(drawable.texture, page.file, `${label} texture 应=所属图集页文件`);
+			const atlasW = page.width;
+			const atlasH = page.height;
 			assert.ok(!('source' in drawable), `${label} 不应保留 POC source 字段`);
 			const mesh = drawable.mesh;
 			assert.ok(Array.isArray(mesh.positions) && mesh.positions.length > 0, `${label} 缺顶点`);
@@ -247,30 +300,45 @@ test('2.5D rig：骨架/物理链/碰撞体/槽位引用闭合', () => {
 	}
 });
 
-test('2.5D 资产体积预算：单身形 ≤3MB、双身形合计 ≤6MB、rig gzip ≤400KB、包体 ≤15MB', () => {
+test('2.5D 资产体积预算：5 页图集合计 ≤ 单身形预算；首屏 payload（rig 传输 + base 页 + 当前套装页）≤1.0MiB', () => {
 	let total = 0;
 	for (const shape of SHAPES) {
-		const rigBytes = readFileSync(join(ASSET_ROOT, shape, 'rig.json'));
-		const atlasBytes = readFileSync(join(ASSET_ROOT, shape, 'atlas.webp'));
-		const shapeTotal = rigBytes.byteLength + atlasBytes.byteLength + statSync(join(ASSET_ROOT, shape, 'build-report.json')).size;
+		const dir = join(ASSET_ROOT, shape);
+		const rigBytes = readFileSync(join(dir, 'rig.json'));
+		const pageFiles = reportPages(dir).map((page) => page.file);
+		const atlasBytes = pageFiles.reduce((sum, file) => sum + statSync(join(dir, file)).size, 0);
+		const shapeTotal = rigBytes.byteLength + atlasBytes + statSync(join(dir, 'build-report.json')).size;
 		total += shapeTotal;
 		assert.ok(shapeTotal <= 4.5 * 1024 * 1024, `${shape} 资产 ${(shapeTotal / 1048576).toFixed(2)}MB 超出单身形预算`);
 		const gzip = gzipSync(rigBytes, { level: 9 });
 		assert.ok(gzip.byteLength <= 400 * 1024, `${shape} rig gzip ${(gzip.byteLength / 1024).toFixed(0)}KB 超出预算`);
 	}
 	assert.ok(total <= 9 * 1024 * 1024, `2.5D 资产合计 ${(total / 1048576).toFixed(2)}MB 超出预算`);
-	// 首屏 payload（单身形，gzip rig + 图集）：v3.1.1 基线 ≈1.47MiB；锁 ≤1.6MiB 防回归
-	const chibiRig = readFileSync(join(ASSET_ROOT, 'chibi/rig.json'));
-	const firstScreen = gzipSync(chibiRig, { level: 9 }).byteLength + statSync(join(ASSET_ROOT, 'chibi/atlas.webp')).size;
-	assert.ok(firstScreen <= 1.6 * 1024 * 1024, `2.5D 首屏 payload ${(firstScreen / 1048576).toFixed(2)}MB 超 1.6MiB`);
-	const breakdown = Object.fromEntries(SHAPES.map((shape) => {
-		const rig = readFileSync(join(ASSET_ROOT, `${shape}/rig.json`));
-		return [shape, {
-			rigGzipKiB: Math.round(gzipSync(rig, { level: 9 }).byteLength / 1024),
-			atlasKiB: Math.round(statSync(join(ASSET_ROOT, `${shape}/atlas.webp`)).size / 1024),
-		}];
-	}));
-	assert.ok(breakdown.chibi.rigGzipKiB < breakdown.chibi.atlasKiB, '首屏应以图集为主（体积占比诊断）');
+	// v3.2.0 首屏口径（lo tier，默认造型 maid）：rig 传输（rig.bin.br 优先；缺失回退 rig.json gzip）
+	// + base 页 + 当前套装页。v3.1.1 基线单页 ≈1.47MiB（gzip rig + 整页 atlas）→ 目标 ≤1.0MiB。
+	const firstScreen = {};
+	for (const shape of SHAPES) {
+		const dir = join(ASSET_ROOT, shape);
+		const rig = loadRig(shape);
+		const pages = atlasMeta(rig);
+		const basePage = pages.get('base');
+		const outfitId = (rig.defaults && rig.defaults.outfit) || 'maid';
+		const outfitPage = pages.get(outfitId);
+		assert.ok(basePage && outfitPage, `${shape} 缺少 base/${outfitId} 页`);
+		const binBr = join(dir, 'rig.bin.br');
+		const bin = join(dir, 'rig.bin');
+		const rigTransfer = existsSync(binBr)
+			? statSync(binBr).size
+			: existsSync(bin)
+				? gzipSync(readFileSync(bin), { level: 9 }).byteLength
+				: gzipSync(readFileSync(join(dir, 'rig.json')), { level: 9 }).byteLength; // 阶段 2 前过渡口径
+		const atlasTransfer = statSync(join(dir, basePage.file)).size + statSync(join(dir, outfitPage.file)).size;
+		const screen = rigTransfer + atlasTransfer;
+		firstScreen[shape] = { rigTransferKiB: Math.round(rigTransfer / 1024), atlasTransferKiB: Math.round(atlasTransfer / 1024), screenKiB: Math.round(screen / 1024) };
+		assert.ok(screen <= 1.0 * 1024 * 1024, `${shape} 2.5D 首屏 payload ${(screen / 1048576).toFixed(3)}MiB 超 1.0MiB（${JSON.stringify(firstScreen[shape])}）`);
+		assert.ok(atlasTransfer > rigTransfer, `${shape} 首屏应以图集为主（体积占比诊断：${JSON.stringify(firstScreen[shape])}）`);
+	}
+	test.diagnostic?.(`首屏 payload（lo / 默认 maid）：${JSON.stringify(firstScreen)}`);
 });
 
 test('2.5D 资产无绝对路径/无构建机依赖（可移植到 npm 包）', () => {
@@ -285,28 +353,29 @@ test('2.5D 资产无绝对路径/无构建机依赖（可移植到 npm 包）', 
 });
 
 
-test('2.5D 资产：单页图集 legacy 契约（runtime normalizeAtlases 可消费）+ 多图集字段向前兼容', () => {
+test('2.5D 资产：lazy 5 页图集契约（runtime normalizeAtlases/resolveDrawableAtlas 可消费）', () => {
 	for (const shape of SHAPES) {
 		const rig = loadRig(shape);
 		const normalized = normalizeAtlases(rig);
 		assert.equal(normalized.ok, true, `${shape} 图集配置非法：${normalized.errors.join(',')}`);
-		if (!rig.atlases) {
-			assert.equal(normalized.legacy, true, `${shape} 单页图集应走 legacy 模式`);
-			assert.equal(normalized.atlases.length, 1);
-			assert.equal(normalized.atlases[0].file, 'atlas.webp');
-			for (const drawable of rig.drawables) {
-				assert.equal(drawable.texture, 'atlas.webp', `${shape}/${drawable.id} 应引用 atlas.webp`);
-				assert.equal(resolveDrawableAtlas(drawable, normalized.atlases), 0);
-			}
-		} else {
-			assert.equal(normalized.legacy, false);
-			assert.ok(normalized.atlases.length >= 1 && normalized.atlases.length <= 2);
-			const ids = new Set(normalized.atlases.map((atlas) => atlas.id));
-			for (const drawable of rig.drawables) {
-				assert.ok(ids.has(drawable.atlas), `${shape}/${drawable.id} atlas=${drawable.atlas} 未声明`);
-				const index = resolveDrawableAtlas(drawable, normalized.atlases);
-				assert.equal(normalized.atlases[index].file, drawable.texture);
-			}
+		assert.equal(normalized.legacy, false, `${shape} 应为多图集（非 legacy）`);
+		assert.equal(normalized.atlases.length, LAZY_PAGES.length, `${shape} 应为 ${LAZY_PAGES.length} 页`);
+		const ids = new Set(normalized.atlases.map((atlas) => atlas.id));
+		for (const drawable of rig.drawables) {
+			assert.ok(ids.has(drawable.atlas), `${shape}/${drawable.id} atlas=${drawable.atlas} 未声明`);
+			const index = resolveDrawableAtlas(drawable, normalized.atlases);
+			assert.equal(normalized.atlases[index].file, drawable.texture, `${shape}/${drawable.id} texture 与页不一致`);
+		}
+		// 页归属：base 页不含 outfit 整层；每套 outfit 页恰好该套 2 个整层
+		const outfitIds = new Set();
+		for (const combo of V3_OUTFITS) {
+			for (const id of [...(rig.outfits[combo].topBody || []), ...(rig.outfits[combo].bottom || [])]) outfitIds.add(id);
+		}
+		const byPage = new Map(LAZY_PAGES.map((page) => [page.id, [] ]));
+		for (const drawable of rig.drawables) byPage.get(drawable.atlas).push(drawable.id);
+		assert.ok(byPage.get('base').every((id) => !outfitIds.has(id)), `${shape} base 页不应含 outfit 整层`);
+		for (const combo of V3_OUTFITS) {
+			assert.deepEqual(byPage.get(combo).sort(), [`${combo}-skirt`, `${combo}-top`].sort(), `${shape}/${combo} 页应恰好 2 个整层`);
 		}
 	}
 });
@@ -324,27 +393,29 @@ test('2.5D 资产：显存估算与构建报告一致（含 mipmap）且 ≤40Mi
 		assert.equal(memory.texMiBwithMipmap, report.textureTotal.texMiBwithMipmap, `${shape} mipmap texMiB 不一致`);
 		// v3.1.1 MaxRects 紧凑图集：lo tier mipmap 显存实测 ~16.8MiB（v3.1.0 为 25.7–26.4MiB）；锁 ≤20MiB
 		assert.ok(memory.texMiBwithMipmap <= 20, `${shape} mipmap 显存 ${memory.texMiBwithMipmap}MiB 超出 20MiB`);
-		assert.equal(report.atlas.pixelEqual, true, `${shape} pixelEqual 应为 true`);
+		const pages = reportPages(join(ASSET_ROOT, shape));
+		for (const page of pages) assert.equal(page.pixelEqual, true, `${shape}/${page.file} pixelEqual 应为 true`);
 	}
 });
 
 /* ---------------- v2.6.1 hi tier（2x 高 DPI，两页图集） ---------------- */
 
-test('v2.6.1 hi tier：2 页图集可被 runtime 契约消费（normalize/resolve/尺寸/显存与报告一致）', (t) => {
+test('hi tier：lazy 5 页图集（base=2x + 每套 outfit 1x 页）可被 runtime 契约消费', (t) => {
 	const hiShapes = SHAPES.filter((shape) => existsSync(join(ASSET_ROOT, `${shape}-hi`, 'rig.json')));
 	if (hiShapes.length === 0) return t.skip('hi tier 产物未生成（先跑 npm run build:assets:hi）');
 	for (const shape of hiShapes) {
 		const dir = join(ASSET_ROOT, `${shape}-hi`);
 		const rig = JSON.parse(readFileSync(join(dir, 'rig.json'), 'utf8'));
 		const report = JSON.parse(readFileSync(join(dir, 'build-report.json'), 'utf8'));
-		// 1) 多图集契约：2 页、非 legacy、每页 ≤4096 且 WebP 实际尺寸与 rig 元数据一致
+		// 1) 多图集契约：5 页、非 legacy、每页 ≤4096 且 WebP 实际尺寸与 rig 元数据一致
 		const normalized = normalizeAtlases(rig);
 		assert.equal(normalized.ok, true, `${shape}-hi 图集配置非法：${normalized.errors.join(',')}`);
 		assert.equal(normalized.legacy, false, `${shape}-hi 应走多图集（非 legacy）`);
-		assert.equal(normalized.atlases.length, 2, `${shape}-hi 应为 2 页图集`);
-		assert.deepEqual(normalized.atlases.map((atlas) => atlas.file), ['atlas.webp', 'atlas-2.webp']);
-		assert.equal(report.pages, 2, `${shape}-hi 构建报告页数应为 2`);
-		assert.equal(report.atlases.length, 2);
+		assert.equal(normalized.atlases.length, LAZY_PAGES.length, `${shape}-hi 应为 ${LAZY_PAGES.length} 页图集`);
+		assert.deepEqual(normalized.atlases.map((atlas) => atlas.id), LAZY_PAGES.map((page) => page.id), `${shape}-hi 页 id/顺序`);
+		assert.deepEqual(normalized.atlases.map((atlas) => atlas.file), LAZY_PAGES.map((page) => page.file), `${shape}-hi 页文件/顺序`);
+		assert.equal(report.pages, LAZY_PAGES.length, `${shape}-hi 构建报告页数`);
+		assert.equal(report.atlases.length, LAZY_PAGES.length);
 		for (const atlas of normalized.atlases) {
 			const size = webpSize(join(dir, atlas.file));
 			assert.equal(atlas.width, size.width, `${shape}-hi/${atlas.file} 宽与 rig 元数据不一致`);
@@ -356,7 +427,7 @@ test('v2.6.1 hi tier：2 页图集可被 runtime 契约消费（normalize/resolv
 		const loById = Object.fromEntries(loRig.drawables.map((drawable) => [drawable.id, drawable]));
 		const pageIds = new Set(normalized.atlases.map((atlas) => atlas.id));
 		let twoXCount = 0;
-		let pageUse = { hi: 0, lo: 0 };
+		const pageUse = {};
 		for (const drawable of rig.drawables) {
 			const label = `${shape}-hi/${drawable.id}`;
 			assert.ok(pageIds.has(drawable.atlas), `${label} atlas=${drawable.atlas} 未在 rig.atlases 声明`);
@@ -375,7 +446,11 @@ test('v2.6.1 hi tier：2 页图集可被 runtime 契约消费（normalize/resolv
 			if (drawable.texSize[0] > lo.texSize[0] * 1.5) twoXCount += 1;
 		}
 		assert.ok(twoXCount >= 20, `${shape}-hi 2x drawable 过少：${twoXCount}`);
-		assert.ok((pageUse.hi || 0) > 0 && (pageUse.lo || 0) > 0, `${shape}-hi 两页都应被引用：${JSON.stringify(pageUse)}`);
+		assert.ok((pageUse.base || 0) > 0, `${shape}-hi base 页应有 drawable：${JSON.stringify(pageUse)}`);
+		for (const combo of V3_OUTFITS) {
+			assert.equal(pageUse[combo], 2, `${shape}-hi/${combo} 页应恰好 2 个整层（1x）`);
+		}
+		assert.equal(rig.drawables.length, loRig.drawables.length, `${shape}-hi drawables 数应与 lo 相同`);
 		// 3) 显存估算与构建报告一致（2x 页占大头，仍在预算内）
 		const memory = estimateTextureMemory(normalized.atlases.map((atlas) => ({ width: atlas.width, height: atlas.height })), false);
 		assert.equal(memory.texMiB, report.textureTotal.texMiB, `${shape}-hi texMiB 与构建报告不一致`);

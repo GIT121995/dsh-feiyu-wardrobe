@@ -53,11 +53,13 @@ import {
 	tierLoadPlan,
 	tierUpgradeSettled,
 	carryDiyPacks,
+	collectLookAtlasIndices,
 	CUTOUT_SLOTS,
 	LEGACY_OUTFIT_SLOTS,
 	unregisterDiyPack,
 	visibleDrawables,
-} from './runtime-2d5-core.js?v=27';
+} from './runtime-2d5-core.js?v=28';
+import { decodeRigBinary, toRuntimeRig } from './rig-binary.js?v=28';
 
 /** 单个 spring 链节点相对 rest 的最大偏移（px，安全包络，POC 同值）。 */
 const CHAIN_OFFSET_LIMIT = 42;
@@ -415,21 +417,40 @@ function buildApi(rt) {
 
 		/**
 		 * 按需加载并切换身形（先加载目标 → 激活 → 释放旧身形；参数/时间/物理链状态保留）。
+		 * v3.2.0 lazy outfit page：`options.look` 给出首帧期望造型，加载时只拉 base 页 +
+		 * 该造型用到的套装页，其余页首帧后空闲预取（切装缺页由 setLook 延迟应用兜底）。
 		 * 自动 hi 设备首帧用 lo 资产（立即出图），返回后 hi 资产在后台加载并热切换升级
 		 * （不阻塞本 Promise；用 waitForTierUpgrade() 等最终 tier）。
 		 * @param {string} shape
+		 * @param {{ look?: { outfit?: string, top?: string, bottom?: string, bare?: boolean } }} [options]
 		 * @returns {Promise<{ shape: string, loaded: boolean, loadMs: number, switchMs: number, upgrade: string }>}
 		 */
-		async setShape(shape) {
+		async setShape(shape, options = {}) {
 			if (rt.destroyed) throw new Error('runtime 已销毁');
 			const target = typeof shape === 'string' ? shape : 'chibi';
+			if (options && options.look) rt.lastLookState = options.look;
 			rt.requestedShape = target;
 			const t0 = performance.now();
 			const loadedBefore = rt.scenes.has(target);
-			if (!loadedBefore) await loadScene(rt, target);
+			if (!loadedBefore) await loadScene(rt, target, { look: rt.lastLookState });
 			// 并发切身形：加载期间又切到别的身形 → 本次结果作废（不激活/不释放，避免来回抖动）
 			if (rt.requestedShape !== target) {
 				return { shape: target, loaded: !loadedBefore, loadMs: rt.loadMs[target] || 0, switchMs: performance.now() - t0, stale: true, upgrade: rt.upgrade.status };
+			}
+			const targetScene = rt.scenes.get(target);
+			// 场景已缓存但当前造型的套装页还没加载（例如预取未完成就切回）→ 补页后再激活，避免错纹理帧。
+			if (targetScene && rt.lastLookState) {
+				try {
+					const wanted = resolveLook(targetScene, rt.lastLookState);
+					const needed = collectLookAtlasIndices(targetScene, wanted);
+					for (const index of needed) {
+						if (!(targetScene.atlasByIndex && targetScene.atlasByIndex.has(index))) {
+							await ensureAtlasPage(rt, targetScene, index);
+						}
+					}
+				} catch (error) {
+					console.warn(`[2.5D] 切回身形补套装页失败：${error instanceof Error ? error.message : error}`);
+				}
 			}
 			const prev = rt.shape;
 			if (!activateScene(rt, target)) throw new Error(`activateScene 失败：${target}`);
@@ -447,15 +468,13 @@ function buildApi(rt) {
 
 		/**
 		 * 设置当前造型：套装优先，否则上衣+下装动态组合（缺件回退见 core.resolveLook）。
+		 * v3.2.0 lazy outfit page：所需套装页未加载时先保留旧 look、后台补页后自动应用
+		 * （不裸身/不闪错套装）；返回值是**当前生效**的 look（补页完成前仍是旧 look）。
 		 * @param {{ outfit?: string, top?: string, bottom?: string, bare?: boolean }} state
 		 * @returns {{ slots: any, outfit: string|null, label: string, fallback: string|null, warnings: string[] }}
 		 */
 		setLook(state) {
-			rt.lastLookState = state || {};
-			if (!rt.scene) return rt.look;
-			rt.look = resolveLook(rt.scene, rt.lastLookState);
-			buildActive(rt);
-			return rt.look;
+			return applyLook(rt, state);
 		},
 
 		/** @returns {any} 当前造型解析结果（label/fallback/warnings）。 */
@@ -900,10 +919,16 @@ function buildApi(rt) {
 		getTier() {
 			const scenes = {};
 			for (const [shape, scene] of rt.scenes.entries()) {
+				const loaded = (scene.atlases || []).map((atlas) => atlas.id);
 				scenes[shape] = {
 					tier: scene.assetTier || rt.assetTier,
 					assetDir: scene.assetDir || shape,
 					pages: (scene.atlases || []).length,
+					atlasPages: (scene.atlasDefs || []).length,
+					atlasesLoaded: loaded,
+					atlasesPending: (scene.atlasDefs || [])
+						.filter((def) => !loaded.includes(def.id))
+						.map((def) => def.id),
 				};
 			}
 			const upgrade = rt.upgrade && typeof rt.upgrade === 'object' ? rt.upgrade : { status: 'none' };
@@ -1068,25 +1093,72 @@ function deleteTexture(rt, tex) {
 	rt.glRes.textures = Math.max(0, rt.glRes.textures - 1);
 }
 
+/**
+ * mesh 归一成运行时扁平形状（v3.2.0 rig 二进化）：
+ * - rig.bin 解码结果已是扁平 typed array（positions/uvs/weights/deform Float32Array、
+ *   bones/indices Uint16Array，另 vertexCount/indexCount）；
+ * - DIY pack 与 rig.json 回退路径给的是 [[x,y],…] 嵌套数组 → 这里一次性转扁平（保留在
+ *   drawable.mesh 上，uploadDrawable 只认一种形状）。
+ * @param {any} mesh
+ * @returns {any}
+ */
+function ensureFlatMesh(mesh) {
+	if (!mesh) return mesh;
+	if (typeof mesh.vertexCount === 'number' && mesh.positions && typeof mesh.positions[0] === 'number') return mesh;
+	const source = mesh.positions || [];
+	const vertexCount = source.length;
+	const positions = new Float32Array(vertexCount * 2);
+	const uvs = new Float32Array(vertexCount * 2);
+	const bones = new Uint16Array(vertexCount * 4);
+	const weights = new Float32Array(vertexCount * 4);
+	const deform = new Float32Array(vertexCount * 2);
+	for (let i = 0; i < vertexCount; i += 1) {
+		const offset = i * 2;
+		positions[offset] = Number(source[i][0]) || 0;
+		positions[offset + 1] = Number(source[i][1]) || 0;
+		const uv = (mesh.uvs && mesh.uvs[i]) || [0, 0];
+		uvs[offset] = Number(uv[0]) || 0;
+		uvs[offset + 1] = Number(uv[1]) || 0;
+		const bone = (mesh.bones && mesh.bones[i]) || [0, 0, 0, 0];
+		const weight = (mesh.weights && mesh.weights[i]) || [0, 0, 0, 0];
+		const def = (mesh.deform && mesh.deform[i]) || [0, 0];
+		for (let k = 0; k < 4; k += 1) {
+			bones[i * 4 + k] = Number(bone[k]) || 0;
+			weights[i * 4 + k] = Number(weight[k]) || 0;
+		}
+		deform[i * 2] = Number(def[0]) || 0;
+		deform[i * 2 + 1] = Number(def[1]) || 0;
+	}
+	const indices = mesh.indices instanceof Uint16Array ? mesh.indices : new Uint16Array((mesh.indices || []).map((value) => Number(value) || 0));
+	return {
+		positions, uvs, bones, weights, deform, indices,
+		vertexCount, indexCount: indices.length, flat: true,
+		cell: mesh.cell, grid: mesh.grid,
+	};
+}
+
 /** @param {any} rt @param {any} drawable */
 function uploadDrawable(rt, drawable) {
 	const gl = rt.gl;
-	const positions = drawable.mesh.positions;
-	const vertexCount = positions.length;
+	const mesh = ensureFlatMesh(drawable.mesh);
+	drawable.mesh = mesh;
+	const vertexCount = mesh.vertexCount;
+	const positions = mesh.positions;
+	const uvs = mesh.uvs;
+	const bones = mesh.bones;
+	const weights = mesh.weights;
+	const deform = mesh.deform;
 	const stride = 14;
 	const buffer = new Float32Array(vertexCount * stride);
 	let offset = 0;
 	for (let i = 0; i < vertexCount; i += 1) {
-		const position = positions[i];
-		const uv = drawable.mesh.uvs[i];
-		const bone = drawable.mesh.bones[i];
-		const weight = drawable.mesh.weights[i];
-		const deform = drawable.mesh.deform[i];
-		buffer[offset++] = position[0]; buffer[offset++] = position[1];
-		buffer[offset++] = uv[0]; buffer[offset++] = uv[1];
-		buffer[offset++] = bone[0]; buffer[offset++] = bone[1]; buffer[offset++] = bone[2]; buffer[offset++] = bone[3];
-		buffer[offset++] = weight[0]; buffer[offset++] = weight[1]; buffer[offset++] = weight[2]; buffer[offset++] = weight[3];
-		buffer[offset++] = deform[0]; buffer[offset++] = deform[1];
+		const p2 = i * 2;
+		const b4 = i * 4;
+		buffer[offset++] = positions[p2]; buffer[offset++] = positions[p2 + 1];
+		buffer[offset++] = uvs[p2]; buffer[offset++] = uvs[p2 + 1];
+		buffer[offset++] = bones[b4]; buffer[offset++] = bones[b4 + 1]; buffer[offset++] = bones[b4 + 2]; buffer[offset++] = bones[b4 + 3];
+		buffer[offset++] = weights[b4]; buffer[offset++] = weights[b4 + 1]; buffer[offset++] = weights[b4 + 2]; buffer[offset++] = weights[b4 + 3];
+		buffer[offset++] = deform[p2]; buffer[offset++] = deform[p2 + 1];
 	}
 	const vbo = gl.createBuffer();
 	gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
@@ -1095,7 +1167,7 @@ function uploadDrawable(rt, drawable) {
 	const vao = gl.createVertexArray();
 	gl.bindVertexArray(vao);
 	gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
-	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint16Array(drawable.mesh.indices), gl.STATIC_DRAW);
+	gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mesh.indices, gl.STATIC_DRAW);
 	gl.bindBuffer(gl.ARRAY_BUFFER, vbo);
 	const FLOAT = 4;
 	gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, stride * FLOAT, 0);
@@ -1109,7 +1181,7 @@ function uploadDrawable(rt, drawable) {
 	drawable.ibo = ibo;
 	drawable.vbo = vbo;
 	drawable.verts = vertexCount;
-	drawable.tris = drawable.mesh.indices.length / 3;
+	drawable.tris = mesh.indexCount / 3;
 	drawable.vboBytes = buffer.byteLength;
 	rt.glRes.vbos += 2;
 }
@@ -1150,13 +1222,25 @@ function registerSceneResult(rt, shape, result) {
  * @param {any} rt
  * @param {string} shape
  */
-async function loadScene(rt, shape) {
+/**
+ * 资产加载：按当前 tier 载入 rig + base 页 + 当前 look 所需套装页（v3.2.0 lazy outfit page）。
+ * - 渐进模式下 rt.assetTier 初始为 lo（首帧最快），hi 由 scheduleTierUpgrade 后台加载；
+ * - 非渐进模式（显式 override 固定 hi / 关闭渐进）下 hi 失败仍自动回退 lo（不白屏/不卡死），
+ *   回退会切换 rt.assetTier=lo 并记进 rt.tierInfo.fallback（getTier() 可查）。
+ * - options.look：首帧应使用的造型（懒加载据此选择套装页；缺省用 rt.lastLookState /
+ *   rig.defaults.outfit，保证首帧不是裸体/错套装）。
+ * @param {any} rt
+ * @param {string} shape
+ * @param {{ look?: any }} [options]
+ */
+async function loadScene(rt, shape, options = {}) {
 	if (rt.scenes.has(shape)) return rt.scenes.get(shape);
 	if (rt.loading.has(shape)) return rt.loading.get(shape);
 	const task = (async () => {
 		const tier = rt.assetTier;
+		const sceneOptions = { look: options.look || rt.lastLookState };
 		try {
-			const result = await loadSceneAtTier(rt, shape, tier);
+			const result = await loadSceneAtTier(rt, shape, tier, sceneOptions);
 			registerSceneResult(rt, shape, result);
 			return result.scene;
 		} catch (error) {
@@ -1165,9 +1249,9 @@ async function loadScene(rt, shape) {
 			console.warn(`[2.5D] hi 资产加载失败，回退 lo：${shape}（${reason}）`);
 			rt.tierInfo.fallback = { from: 'hi', to: 'lo', shape, reason, atMs: Math.round(performance.now()) };
 			rt.assetTier = 'lo';
-			reportLoadProgress(rt, { shape, tier: 'lo', phase: 'rig', index: 0, total: tierLoadPlan('lo').total });
+			reportLoadProgress(rt, { shape, tier: 'lo', phase: 'rig', index: 1, total: tierLoadPlan('lo', 2).total });
 			try {
-				const result = await loadSceneAtTier(rt, shape, 'lo');
+				const result = await loadSceneAtTier(rt, shape, 'lo', sceneOptions);
 				registerSceneResult(rt, shape, result);
 				return result.scene;
 			} catch (fallbackError) {
@@ -1185,73 +1269,113 @@ async function loadScene(rt, shape) {
 }
 
 /**
- * 按指定 tier 加载单个身形：rig JSON + 1–2 页图集 + 场景运行时结构。
- * 只负责构建场景对象（不写 rt.scenes，由调用方决定注册/热切换），
+ * 加载 rig：rig.bin（v3.2.0 二进制）优先，失败回退 rig.json。
+ *
+ * rig.bin 由构建期生成（头部 JSON + flat-f32 typed array 段；见 docs/dress-up/rig-binary.js），
+ * 运行时零拷贝解码，避免 1.6MB JSON.parse 的分配/GC；rig.bin.br 由构建期 brotli q11 预压缩，
+ * 静态服务器直接发 br（传输 ≈131KB，JSON gzip ≈278KB）。
+ * 回退路径 toRuntimeRig 把 JSON 嵌套 mesh 归一成同一扁平 typed array 形状（consumer 只认一种）。
+ * @param {any} rt
+ * @param {string} assetDir
+ * @param {string} assetQuery
+ * @param {string} rigUrl rig.json 的 URL（回退用）
+ * @returns {Promise<{ rig: any, rigUrl: string, rigBytes: number }>}
+ */
+async function loadRigAsset(rt, assetDir, assetQuery, rigUrl) {
+	const binUrl = `${rt.assetRoot}${assetDir}/rig.bin${assetQuery}`;
+	try {
+		const response = await fetch(binUrl);
+		if (!response.ok) throw new Error(`HTTP ${response.status}`);
+		const buffer = await response.arrayBuffer();
+		const rig = decodeRigBinary(buffer);
+		if (!rig || !Array.isArray(rig.drawables)) throw new Error('解码结果非法');
+		rt.timeline.rigFormat = 'bin';
+		return { rig, rigUrl: binUrl, rigBytes: buffer.byteLength };
+	} catch (error) {
+		console.warn(`[2.5D] rig.bin 不可用，回退 rig.json：${error instanceof Error ? error.message : error}`);
+	}
+	const response = await fetch(rigUrl);
+	if (!response.ok) throw new Error(`rig 加载失败 HTTP ${response.status}：${rigUrl}`);
+	const text = await response.text();
+	const rig = toRuntimeRig(JSON.parse(text));
+	if (!rig || !Array.isArray(rig.drawables)) throw new Error(`rig 格式非法：${rigUrl}`);
+	rt.timeline.rigFormat = 'json';
+	return { rig, rigUrl, rigBytes: text.length };
+}
+
+/**
+ * 按指定 tier 加载单个身形：rig + base 页 + 当前 look 所需套装页 + 场景运行时结构。
+ *
+ * v3.2.0 lazy outfit page（方案 C，首屏只加载 base + 当前套装）：
+ * - 图集按 rig.atlases 分页（base 页恒为第 0 页；每个 outfit 一套一页）；
+ * - 首帧只 await base 页 + resolveLook 用到的套装页（默认造型通常 2 页）；
+ * - 其余页由 scheduleAtlasPrefetch 在首帧后空闲预取；切装缺页由 setLook 延迟应用兜底。
  * 失败时回滚半成品 GL 资源（hi→lo 回退不留纹理/VBO 泄漏）。
  * @param {any} rt
  * @param {string} shape
  * @param {'lo'|'hi'} tier
- * @param {{ upgrade?: boolean }} [options]
+ * @param {{ upgrade?: boolean, look?: any }} [options]
  * @returns {Promise<{ scene: any, assetInfo: any, loadMs: number }>}
  */
 async function loadSceneAtTier(rt, shape, tier, options = {}) {
 	const upgrade = options.upgrade === true;
-	const plan = tierLoadPlan(tier);
-	let stageIndex = 0;
-	const progress = (/** @type {string} */ phase) => {
-		stageIndex = Math.max(stageIndex, Math.min(plan.total, plan.stages.indexOf(phase) + 1));
-		reportLoadProgress(rt, { shape, tier, phase, index: stageIndex, total: plan.total, upgrade });
-	};
 	const assetDir = assetDirForTier(shape, tier);
 	const loadT0 = performance.now();
 	const assetQuery = rt.assetVersion ? `?v=${encodeURIComponent(rt.assetVersion)}` : '';
 	const rigUrl = `${rt.assetRoot}${assetDir}/rig.json${assetQuery}`;
-	progress('rig');
-	const response = await fetch(rigUrl);
-	if (!response.ok) throw new Error(`rig 加载失败 HTTP ${response.status}：${rigUrl}`);
-	const text = await response.text();
-	const rig = JSON.parse(text);
+	reportLoadProgress(rt, { shape, tier, phase: 'rig', index: 1, total: 4, upgrade });
+	// v3.2.0 rig 二进化：rig.bin（二进制，零拷贝解码）优先；404/解码失败回退 rig.json
+	const rigAsset = await loadRigAsset(rt, assetDir, assetQuery, rigUrl);
+	const rig = rigAsset.rig;
 	if (!rig || !Array.isArray(rig.drawables)) throw new Error(`rig 格式非法：${rigUrl}`);
-	// 多图集（v2.2 cutout / v2.6.1 hi 两页）：rig.atlases 1–2 张；旧 rig.atlas 单张向后兼容。
+	// 多图集（v3.2.0 lazy：base + 每个套装一页，≤6 页；旧 rig.atlas 单张向后兼容）
 	const atlasSet = normalizeAtlases(rig);
 	if (!atlasSet.ok) throw new Error(`图集配置非法：${atlasSet.errors.join(',')}`);
 	/** @type {Array<{ id: string, file: string, width: number, height: number, index: number, url: string, image: HTMLImageElement, texture: WebGLTexture, bytes: number }>} */
 	const atlases = [];
+	/** @type {Map<number, any>} */
+	const atlasByIndex = new Map();
 	try {
-		for (const drawable of rig.drawables) uploadDrawable(rt, drawable);
-		progress('mesh');
-		for (const def of atlasSet.atlases) {
-			const atlasUrl = `${rt.assetRoot}${assetDir}/${def.file}${assetQuery}`;
-			progress(`atlas${def.index + 1}`);
-			const image = await loadImage(atlasUrl);
-			const width = def.width || image.naturalWidth;
-			const height = def.height || image.naturalHeight;
-			if (image.naturalWidth !== width || image.naturalHeight !== height) {
-				throw new Error(`图集尺寸不符：${atlasUrl} ${image.naturalWidth}x${image.naturalHeight} != ${width}x${height}`);
-			}
-			atlases.push({
-				id: def.id, file: def.file, index: def.index, url: atlasUrl, image,
-				width, height, texture: textureFromImage(rt, image), bytes: width * height * 4,
-			});
+		for (const drawable of rig.drawables) {
+			uploadDrawable(rt, drawable);
+			const atlasIndex = resolveDrawableAtlas(drawable, atlasSet.atlases);
+			drawable.atlasIndex = atlasIndex;
+			drawable.atlasId = atlasSet.atlases[atlasIndex].id;
+			drawable.tex = null;
 		}
+		// 首屏页选择：当前 look（调用方传入的期望造型；缺省用 rig 默认套装）
+		const initialLookState = options.look || rt.lastLookState
+			|| { outfit: (rig.defaults && rig.defaults.outfit) || 'none' };
+		const initialLook = resolveLook(rig, initialLookState);
+		const requiredPages = collectLookAtlasIndices({ drawables: rig.drawables }, initialLook);
+		const totalStages = 2 + requiredPages.length + 1;
+		reportLoadProgress(rt, { shape, tier, phase: 'mesh', index: 2, total: totalStages, upgrade });
+		let stageIndex = 2;
+		for (const pageIndex of requiredPages) {
+			const def = atlasSet.atlases[pageIndex];
+			stageIndex += 1;
+			reportLoadProgress(rt, { shape, tier, phase: `atlas${stageIndex - 1}`, index: stageIndex, total: totalStages, upgrade });
+			await loadAtlasPage(rt, shape, rig, def, assetDir, assetQuery, atlases, atlasByIndex);
+		}
+		rig.atlasDefs = atlasSet.atlases.map((def) => ({ ...def }));
+		rig.atlasByIndex = atlasByIndex;
+		rig.atlasPending = new Map();
+		rig.atlasPrefetch = null;
+		rig.atlasEpoch = 0;
 		rig.atlases = atlases;
+		rig.atlasesLoadedIds = atlases.map((atlas) => atlas.id);
 		rig.atlasesLegacy = atlasSet.legacy;
 		rig.image = atlases[0].image;
 		rig.texture = atlases[0].texture;
 		rig.atlasWidth = atlases[0].width;
 		rig.atlasHeight = atlases[0].height;
-		for (const drawable of rig.drawables) {
-			const atlasIndex = resolveDrawableAtlas(drawable, atlases);
-			drawable.atlasIndex = atlasIndex;
-			drawable.atlasId = atlases[atlasIndex].id;
-			drawable.tex = atlases[atlasIndex].texture;
-		}
 		rig.texBytes = atlases.reduce((sum, atlas) => sum + atlas.bytes, 0);
 
 		// 场景运行时结构（与 POC 同口径）
 		rig.shape = shape;
 		rig.assetTier = tier;
 		rig.assetDir = assetDir;
+		rig.assetQuery = assetQuery;
 		rig.drawableById = Object.fromEntries(rig.drawables.map((drawable) => [drawable.id, drawable]));
 		rig.diyPacks = new Map();
 		rig.file = `${assetDir}/rig.json`;
@@ -1302,29 +1426,11 @@ async function loadSceneAtTier(rt, shape, tier, options = {}) {
 		rig.breathPivot = deformers.breathChest.pivot;
 
 		const loadMs = performance.now() - loadT0;
-		progress('ready');
+		reportLoadProgress(rt, { shape, tier, phase: 'ready', index: totalStages, total: totalStages, upgrade });
 		return {
 			scene: rig,
 			loadMs,
-			assetInfo: {
-				rigUrl,
-				rigBytes: text.length,
-				assetTier: tier,
-				assetDir,
-				pages: atlases.length,
-				// 兼容旧字段（第一张图集）+ 多图集明细（cutout / hi 两页）
-				atlasUrl: atlases[0].url,
-				atlasWidth: atlases[0].width,
-				atlasHeight: atlases[0].height,
-				atlasBytesApprox: atlases[0].bytes,
-				atlases: atlases.map((atlas) => ({
-					id: atlas.id, file: atlas.file, url: atlas.url,
-					width: atlas.width, height: atlas.height, bytes: atlas.bytes,
-				})),
-				legacyAtlas: atlasSet.legacy,
-				textureBytes: rig.texBytes,
-				loadMs: Math.round(loadMs),
-			},
+			assetInfo: assetInfoForScene(rig, { rigUrl: rigAsset.rigUrl, rigBytes: rigAsset.rigBytes, tier, assetDir, loadMs }),
 		};
 	} catch (error) {
 		// 回滚本次尝试已创建的 GL 资源（hi 失败回退 lo 或最终失败都不留泄漏）
@@ -1339,6 +1445,215 @@ async function loadSceneAtTier(rt, shape, tier, options = {}) {
 		throw error;
 	}
 }
+
+/* ------------------------------------------- v3.2.0 懒加载图集页（套装页） -- */
+
+/** 首帧后空闲预取套装页的延迟（ms；让首帧/加载态收起先完成，避免抢带宽）。 */
+const ATLAS_PREFETCH_DELAY_MS = 220;
+
+/**
+ * 加载单页图集并挂到场景上（绘制器按 drawable.atlasIndex 取纹理）。
+ * @param {any} rt
+ * @param {string} shape
+ * @param {any} scene
+ * @param {{ id: string, file: string, index: number, width: number, height: number }} def
+ * @param {string} assetDir
+ * @param {string} assetQuery
+ * @param {any[]} atlases
+ * @param {Map<number, any>} atlasByIndex
+ * @returns {Promise<any>}
+ */
+async function loadAtlasPage(rt, shape, scene, def, assetDir, assetQuery, atlases, atlasByIndex) {
+	const atlasUrl = `${rt.assetRoot}${assetDir}/${def.file}${assetQuery}`;
+	const image = await loadImage(atlasUrl);
+	const width = def.width || image.naturalWidth;
+	const height = def.height || image.naturalHeight;
+	if (image.naturalWidth !== width || image.naturalHeight !== height) {
+		throw new Error(`图集尺寸不符：${atlasUrl} ${image.naturalWidth}x${image.naturalHeight} != ${width}x${height}`);
+	}
+	const atlas = {
+		id: def.id, file: def.file, index: def.index, url: atlasUrl, image,
+		width, height, texture: textureFromImage(rt, image), bytes: width * height * 4,
+	};
+	atlases.push(atlas);
+	atlasByIndex.set(def.index, atlas);
+	for (const drawable of scene.drawables) {
+		if (drawable.diy || drawable.image) continue;
+		if (drawable.atlasIndex === def.index) drawable.tex = atlas.texture;
+	}
+	if (scene.stats) {
+		scene.stats.texBytes += atlas.bytes;
+		if (rt.scene === scene) rt.stats.texBytes += atlas.bytes;
+	}
+	scene.atlasesLoadedIds = atlases.map((entry) => entry.id);
+	refreshAssetInfo(rt, scene);
+	return atlas;
+}
+
+/**
+ * 确保某图集页已加载（幂等、并发去重）。缺页时由 setLook 延迟应用/后台预取调用。
+ * @param {any} rt
+ * @param {any} scene
+ * @param {number} pageIndex
+ * @returns {Promise<any>}
+ */
+function ensureAtlasPage(rt, scene, pageIndex) {
+	if (!scene || scene.destroyed) return Promise.reject(new Error('场景已释放'));
+	if (scene.atlasByIndex && scene.atlasByIndex.has(pageIndex)) {
+		return Promise.resolve(scene.atlasByIndex.get(pageIndex));
+	}
+	const defs = scene.atlasDefs || [];
+	const def = defs[pageIndex];
+	if (!def) return Promise.reject(new Error(`图集页不存在：${pageIndex}`));
+	if (!scene.atlasPending) scene.atlasPending = new Map();
+	if (scene.atlasPending.has(pageIndex)) return scene.atlasPending.get(pageIndex);
+	const epoch = scene.atlasEpoch || 0;
+	const task = loadAtlasPage(rt, scene.shape, scene, def, scene.assetDir || '', scene.assetQuery || '',
+		scene.atlases, scene.atlasByIndex)
+		.then((atlas) => {
+			if (scene.destroyed || (scene.atlasEpoch || 0) !== epoch) {
+				if (atlas && atlas.texture) deleteTexture(rt, atlas.texture);
+				throw new Error('场景已释放');
+			}
+			return atlas;
+		})
+		.finally(() => { scene.atlasPending.delete(pageIndex); });
+	scene.atlasPending.set(pageIndex, task);
+	return task;
+}
+
+/**
+ * 首帧后空闲预取剩余套装页（已加载/正在加载的跳过；失败只 warn，切装时仍可按需重试）。
+ * @param {any} rt
+ * @param {any} scene
+ */
+function scheduleAtlasPrefetch(rt, scene) {
+	if (!scene || rt.destroyed || rt.contextLost) return;
+	if (scene.atlasPrefetch || scene.atlasPrefetchScheduled) return;
+	const defs = scene.atlasDefs || [];
+	if ((scene.atlases || []).length >= defs.length) return;
+	scene.atlasPrefetchScheduled = true;
+	scene.atlasPrefetch = setTimeout(() => {
+		scene.atlasPrefetch = null;
+		void prefetchRemainingAtlases(rt, scene);
+	}, ATLAS_PREFETCH_DELAY_MS);
+}
+
+/** @param {any} rt @param {any} scene */
+async function prefetchRemainingAtlases(rt, scene) {
+	for (const def of scene.atlasDefs || []) {
+		if (rt.destroyed || rt.contextLost || scene.destroyed) return;
+		if (scene.atlasByIndex && scene.atlasByIndex.has(def.index)) continue;
+		try {
+			await ensureAtlasPage(rt, scene, def.index);
+		} catch (error) {
+			if (scene.destroyed) return;
+			console.warn(`[2.5D] 套装图集后台预取失败（${scene.shape}/${def.id}）：${error instanceof Error ? error.message : error}`);
+		}
+	}
+}
+
+/**
+ * 场景资产信息（getAssetInfo 用；含懒加载页/待加载页与当前语义字段）。
+ * @param {any} scene
+ * @param {{ rigUrl?: string, rigBytes?: number, tier?: string, assetDir?: string, loadMs?: number }} [extra]
+ * @returns {any}
+ */
+function assetInfoForScene(scene, extra = {}) {
+	const atlases = scene.atlases || [];
+	const defs = scene.atlasDefs || [];
+	const loadedIds = new Set(atlases.map((atlas) => atlas.id));
+	return {
+		rigUrl: extra.rigUrl || scene.rigUrl || '',
+		rigBytes: extra.rigBytes || scene.rigBytes || 0,
+		assetTier: extra.tier || scene.assetTier || rtTierFallback(scene),
+		assetDir: extra.assetDir || scene.assetDir || '',
+		pages: atlases.length,
+		atlasPages: defs.length,
+		atlasesLoaded: atlases.map((atlas) => atlas.id),
+		atlasesPending: defs.filter((def) => !loadedIds.has(def.id)).map((def) => def.id),
+		// 兼容旧字段（第一张图集）+ 多图集明细
+		atlasUrl: atlases[0] ? atlases[0].url : '',
+		atlasWidth: atlases[0] ? atlases[0].width : 0,
+		atlasHeight: atlases[0] ? atlases[0].height : 0,
+		atlasBytesApprox: atlases[0] ? atlases[0].bytes : 0,
+		atlases: atlases.map((atlas) => ({
+			id: atlas.id, file: atlas.file, url: atlas.url,
+			width: atlas.width, height: atlas.height, bytes: atlas.bytes,
+		})),
+		legacyAtlas: !!scene.atlasesLegacy,
+		textureBytes: atlases.reduce((sum, atlas) => sum + atlas.bytes, 0),
+		loadMs: extra.loadMs == null ? (scene.loadMs || 0) : Math.round(extra.loadMs),
+	};
+}
+
+/** @param {any} scene @returns {string} */
+function rtTierFallback(scene) {
+	return scene && scene.assetTier ? scene.assetTier : 'lo';
+}
+
+/**
+ * 刷新 rt.assetInfo 中当前场景的图集加载明细（预取完成/按需加载后用）。
+ * @param {any} rt
+ * @param {any} scene
+ */
+function refreshAssetInfo(rt, scene) {
+	if (!rt.assetInfo || !scene || scene.destroyed) return;
+	const key = scene.shape;
+	if (!key || rt.scenes.get(key) !== scene) return;
+	const previous = rt.assetInfo[key] || {};
+	rt.assetInfo[key] = {
+		...previous,
+		...assetInfoForScene(scene, {
+			rigUrl: previous.rigUrl,
+			rigBytes: previous.rigBytes,
+			tier: scene.assetTier,
+			assetDir: scene.assetDir,
+			loadMs: previous.loadMs,
+		}),
+	};
+}
+
+/**
+ * 应用造型（setLook 的唯一实现）：所需图集页缺失时保留旧 look、后台补页后自动应用，
+ * 避免「裸体/错套装」帧。返回**当前生效**的 look（延迟应用完成前仍是旧 look）。
+ * @param {any} rt
+ * @param {any} state
+ * @returns {any}
+ */
+function applyLook(rt, state) {
+	rt.lastLookState = state || {};
+	if (!rt.scene) return rt.look;
+	const scene = rt.scene;
+	const look = resolveLook(scene, rt.lastLookState);
+	const required = collectLookAtlasIndices(scene, look);
+	const missing = required.filter((index) => !(scene.atlasByIndex && scene.atlasByIndex.has(index)));
+	if (missing.length === 0) {
+		rt.pendingLook = null;
+		rt.look = look;
+		buildActive(rt);
+		return rt.look;
+	}
+	const token = (rt.lookRequestToken = (rt.lookRequestToken || 0) + 1);
+	rt.pendingLook = { token, state: rt.lastLookState, look, missing };
+	void (async () => {
+		try {
+			for (const index of missing) await ensureAtlasPage(rt, scene, index);
+		} catch (error) {
+			if (rt.pendingLook && rt.pendingLook.token === token) rt.pendingLook = null;
+			console.warn(`[2.5D] 套装页按需加载失败（保留当前造型）：${error instanceof Error ? error.message : error}`);
+			return;
+		}
+		if (rt.destroyed || rt.scene !== scene) return;
+		if (!rt.pendingLook || rt.pendingLook.token !== token) return;
+		rt.pendingLook = null;
+		rt.look = resolveLook(scene, rt.lastLookState);
+		buildActive(rt);
+		render(rt); // 静态/冻结模式下也立即更新（动画模式下一帧本来也会重绘）
+	})();
+	return rt.look;
+}
+
 
 /* -------------------------------------------------- lo→hi 渐进 tier 升级 -- */
 
@@ -1415,7 +1730,7 @@ async function startTierUpgrade(rt, shape) {
 	rt.timeline.upgradeStartedAt = rt.upgrade.startedAt;
 	notifyTierChange(rt, 'loading');
 	try {
-		const result = await loadSceneAtTier(rt, shape, 'hi', { upgrade: true });
+		const result = await loadSceneAtTier(rt, shape, 'hi', { upgrade: true, look: rt.lastLookState });
 		const stale = generation !== rt.upgradeGeneration || rt.destroyed || rt.contextLost;
 		if (stale) {
 			destroyScene(rt, result.scene);
@@ -1432,7 +1747,7 @@ async function startTierUpgrade(rt, shape) {
 			}
 			return;
 		}
-		hotSwapTier(rt, shape, result);
+		await hotSwapTier(rt, shape, result);
 	} catch (error) {
 		if (generation !== rt.upgradeGeneration || rt.destroyed) return;
 		const reason = error instanceof Error ? error.message : String(error);
@@ -1453,7 +1768,7 @@ async function startTierUpgrade(rt, shape) {
  * @param {string} shape
  * @param {{ scene: any, assetInfo: any, loadMs: number }} result
  */
-function hotSwapTier(rt, shape, result) {
+async function hotSwapTier(rt, shape, result) {
 	const previous = rt.scenes.get(shape);
 	if (!previous) {
 		destroyScene(rt, result.scene);
@@ -1463,6 +1778,19 @@ function hotSwapTier(rt, shape, result) {
 	const chainSnapshot = snapshotChains(previous);
 	carryDiyPacks(previous, result.scene);
 	restoreChainSnapshot(result.scene, chainSnapshot);
+	// v3.2.0 lazy：hi 场景只加载了「加载时 look」的套装页；DIY pack 迁移后当前 look 可能引用
+	// 其它套装页（DIY 造型的 base 配对层），激活前补齐，避免 hi 首帧错纹理。
+	try {
+		const wanted = resolveLook(result.scene, rt.lastLookState || {});
+		const needed = collectLookAtlasIndices(result.scene, wanted);
+		for (const index of needed) {
+			if (!(result.scene.atlasByIndex && result.scene.atlasByIndex.has(index))) {
+				await ensureAtlasPage(rt, result.scene, index);
+			}
+		}
+	} catch (error) {
+		console.warn(`[2.5D] hi 场景补套装页失败（保留已加载页）：${error instanceof Error ? error.message : error}`);
+	}
 
 	rt.scenes.set(shape, result.scene);
 	rt.assetTier = 'hi';
@@ -1473,6 +1801,7 @@ function hotSwapTier(rt, shape, result) {
 	render(rt); // 立即绘制 hi 帧（下一合成帧即高清，不出现空帧/闪回）
 	const swapMs = performance.now() - swapT0;
 	rt.releaseMs[`${shape}_lo`] = destroyScene(rt, previous, { keepDiy: true });
+	scheduleAtlasPrefetch(rt, result.scene);
 	settleTierUpgrade(rt, 'ready', { loadMs: Math.round(result.loadMs), swapMs: Math.round(swapMs) });
 }
 
@@ -1554,6 +1883,10 @@ function destroyScene(rt, scene, options = {}) {
 	if (!scene) return 0;
 	const gl = rt.gl;
 	const keepDiy = options.keepDiy === true;
+	// 取消空闲预取并让在途页加载结果作废（到达后立即释放，不挂到已释放场景）
+	if (scene.atlasPrefetch) { clearTimeout(scene.atlasPrefetch); scene.atlasPrefetch = null; }
+	scene.atlasEpoch = (scene.atlasEpoch || 0) + 1;
+	scene.destroyed = true;
 	const t0 = performance.now();
 	let releasedVbos = 0;
 	for (const drawable of scene.drawables) {
@@ -1647,14 +1980,19 @@ function reuploadTextures(rt) {
 			atlas.texture = textureFromImage(rt, atlas.image);
 		}
 		scene.texture = scene.atlases[0].texture;
+		// v3.2.0 lazy 页：loaded 页按 index 映射（数组顺序=加载顺序，不保证=页下标）
+		const byIndex = new Map();
+		for (const atlas of scene.atlases) byIndex.set(atlas.index == null ? 0 : atlas.index, atlas);
 		for (const drawable of scene.drawables) {
 			// DIY 动态 drawable 自带纹理：mipmap/画质切换时按各自图片重传，不落回 base 图集
 			if (drawable.image) {
 				if (drawable.tex) deleteTexture(rt, drawable.tex);
 				drawable.tex = textureFromImage(rt, drawable.image);
+			} else if (drawable.diy) {
+				continue;
 			} else {
-				const atlas = scene.atlases[drawable.atlasIndex || 0] || scene.atlases[0];
-				drawable.tex = atlas.texture;
+				const atlas = byIndex.get(drawable.atlasIndex || 0) || scene.atlases[0];
+				drawable.tex = atlas ? atlas.texture : null;
 			}
 		}
 	}
@@ -2268,6 +2606,11 @@ function render(rt, skipSim = true, dtWall = 1 / 60) {
 	rt.cpuMs = performance.now() - started;
 	// 首帧时间线（页面 loading 态平滑移除/E2E 首帧阈值用）：第一次真正画出人物像素
 	if (rt.timeline && !rt.timeline.firstFrameAt) rt.timeline.firstFrameAt = performance.now();
+	// v3.2.0 lazy outfit page：首帧之后才空闲预取其余套装页（首帧关键路径只含 base+当前套装页）
+	if (rt.scene && !rt.scene.atlasPrefetchUntil) {
+		rt.scene.atlasPrefetchUntil = performance.now();
+		scheduleAtlasPrefetch(rt, rt.scene);
+	}
 }
 
 /* --------------------------------------------------------------- animation -- */

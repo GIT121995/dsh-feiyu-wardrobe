@@ -51,8 +51,8 @@ node scripts/visual-qa.mjs --mode compare --out /tmp/feiyu-visual-qa-reports
 两种模式都会检查，异常 exit 2：
 
 1. `docs/dress-up/**/*.{html,js,css,json}` 内所有 `?v=<n>` 必须**只有一个值**（页面模块版本）；`app.js` 的 `RUNTIME_2D5_ASSET_VERSION` 必须存在（资产版本）。
-2. 实际浏览器请求里的 `?v=` 必须与源码一致：`art/2d5/**` 用资产版本，其余页面模块用页面版本；缺带版本号的 `rig.json`/`atlas.webp`/`runtime-2d5*.js` 请求也 fail。
-3. compare 额外要求：当前资产/页面版本 **以及** `art/2d5/{chibi,girl}/rig.json`、`atlas.webp` 的 sha256 与基线 manifest 完全一致。**改了资产没升资产版本（或漏改页面 `?v=`）一律 fail** —— 这类错误会让线上用户吃到旧缓存，必须显式修版本号再重生成基线。
+2. 实际浏览器请求里的 `?v=` 必须与源码一致：`art/2d5/**` 用资产版本，其余页面模块用页面版本；缺带版本号的 `rig.bin`/`atlas.webp`/`runtime-2d5*.js` 请求也 fail（v3.2.0 起运行时加载 `rig.bin`，`rig.json` 仅回退）。
+3. compare 额外要求：当前资产/页面版本 **以及** `art/2d5/{chibi,girl}/rig.json`、`rig.bin`、全部 5 页 `atlas*.webp` 的 sha256 与基线 manifest 完全一致（lazy outfit page 起图集为多页）。**改了资产没升资产版本（或漏改页面 `?v=`）一律 fail** —— 这类错误会让线上用户吃到旧缓存，必须显式修版本号再重生成基线。
 
 ## 判定口径与退出码
 

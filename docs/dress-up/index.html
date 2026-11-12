@@ -7,7 +7,7 @@
 <meta name="description" content="陪大肥鱼换衣服、一起过日子：2.5D 动态角色（WebGL2），自由搭配、切换 Q版/少女版、换背景和特效——开源免费。">
 <meta name="theme-color" content="#f6ecff">
 <!-- v3.0.1 首屏资产版本（与 app.js RUNTIME_2D5_ASSET_VERSION 一致；供 head 内提前 preload 用） -->
-<meta name="feiyu-asset-version" content="24">
+<meta name="feiyu-asset-version" content="25">
 <style>
   /* v3.0.1 首屏加载态：静态标记 + 内联样式，脚本/外部 CSS 就绪前即可见（暗色舞台风格） */
   #figureLoading {
@@ -99,10 +99,11 @@
     if (!/^\d+$/.test(assetVersion)) return;
     const shape = shapeForPreload();
     const forcedTier = tierForPreload();
-    // 默认（auto）= 首帧 lo 路径：只 preload lo rig+atlas（体积小、首帧最快）；
-    // 显式 ?feiyuTier=hi 固定 hi 时 preload hi rig+两页图集。
+    // v3.2.0 lazy outfit page：首屏只加载 base 页（+ 运行时按当前套装补拉套装页），
+    // 所以 preload 只覆盖 rig.bin + base 页图集；套装页由 runtime 的懒加载/后台预取负责。
+    // 默认（auto）= lo 首帧路径；显式 ?feiyuTier=hi 固定 hi 时 preload hi 的 rig.bin + base 页。
     const hi = forcedTier === 'hi';
-    const files = hi ? ['rig.json', 'atlas.webp', 'atlas-2.webp'] : ['rig.json', 'atlas.webp'];
+    const files = ['rig.bin', 'atlas.webp'];
     const head = document.head || document.documentElement;
     for (const file of files) {
       const url = new URL('art/2d5/' + shape + (hi ? '-hi/' : '/') + file, location.href);
@@ -110,7 +111,7 @@
       const link = document.createElement('link');
       link.rel = 'preload';
       link.href = url.href;
-      if (file === 'rig.json') {
+      if (file.startsWith('rig.')) {
         link.as = 'fetch';
         link.crossOrigin = 'anonymous';
         link.setAttribute('fetchpriority', 'high');
@@ -125,7 +126,7 @@
   } catch (error) { /* preload 失败不影响正常加载 */ }
 })();
 </script>
-<link rel="stylesheet" href="style.css?v=27">
+<link rel="stylesheet" href="style.css?v=28">
 </head>
 <body>
 <main class="app">
@@ -212,6 +213,6 @@
   </div>
 </main>
 <canvas id="exportCanvas" width="900" height="1350" hidden></canvas>
-<script type="module" src="app.js?v=27"></script>
+<script type="module" src="app.js?v=28"></script>
 </body>
 </html>

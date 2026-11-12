@@ -1,31 +1,84 @@
 {
  "shape": "girl",
  "sourceRig": "girl-cutout.feiyu.json",
- "sourceRigBytes": 1647888,
+ "sourceRigBytes": 1648999,
  "generator": "tools/build_2d5.py",
  "padding": 1,
  "trimAlpha": true,
- "pages": 1,
+ "pages": 5,
  "atlas": {
-  "width": 3893,
+  "width": 2824,
   "height": 852,
-  "bytes": 1074428,
+  "bytes": 541198,
   "pixelEqual": true,
-  "rects": 49
+  "rects": 41
  },
+ "atlases": [
+  {
+   "id": "base",
+   "file": "atlas.webp",
+   "width": 2824,
+   "height": 852,
+   "bytes": 541198,
+   "pixelEqual": true,
+   "rects": 41
+  },
+  {
+   "id": "maid",
+   "file": "atlas-2.webp",
+   "width": 894,
+   "height": 584,
+   "bytes": 164394,
+   "pixelEqual": true,
+   "rects": 2
+  },
+  {
+   "id": "hoodie-plaid",
+   "file": "atlas-3.webp",
+   "width": 629,
+   "height": 353,
+   "bytes": 111550,
+   "pixelEqual": true,
+   "rects": 2
+  },
+  {
+   "id": "hoodie-pleated",
+   "file": "atlas-4.webp",
+   "width": 609,
+   "height": 353,
+   "bytes": 87330,
+   "pixelEqual": true,
+   "rects": 2
+  },
+  {
+   "id": "sailor-plaid",
+   "file": "atlas-5.webp",
+   "width": 581,
+   "height": 341,
+   "bytes": 137504,
+   "pixelEqual": true,
+   "rects": 2
+  }
+ ],
  "rig": {
-  "bytes": 1556295,
-  "gzipBytes": 263721,
-  "sha256": "06e6a0018ca8a71383e6d5f0a9aab0fd72bade808b0e927ae06c479f0a60b631"
+  "bytes": 1557222,
+  "gzipBytes": 264630,
+  "sha256": "0e08b4daf740d807771d904d475d81e4fbae27348e7ce47d29f687d47d9286b8",
+  "binary": {
+   "bytes": 945600,
+   "sha256": "994de39385921be3a640f272d5424224fa734c3a79615bb006c189a4e23a1273",
+   "gzipBytes": 257478,
+   "brotliBytes": 128252
+  }
  },
  "drawables": [
   {
    "id": "body-head",
    "slot": "body",
    "z": 11.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1504,
+    1053,
     1,
     448,
     468
@@ -41,9 +94,9 @@
    "id": "body-torso",
    "slot": "body",
    "z": 10.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1504,
+    1053,
     471,
     550,
     332
@@ -59,10 +112,10 @@
    "id": "tail",
    "slot": "body",
    "z": 8.5,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    2819,
-    342,
+    1605,
+    406,
     239,
     331
    ],
@@ -77,10 +130,10 @@
    "id": "arm-upper-L",
    "slot": "armUpper",
    "z": 45.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    2819,
-    675,
+    2535,
+    296,
     143,
     145
    ],
@@ -95,10 +148,10 @@
    "id": "arm-upper-R",
    "slot": "armUpper",
    "z": 45.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1342,
-    585,
+    2517,
+    144,
     152,
     150
    ],
@@ -113,10 +166,10 @@
    "id": "arm-fore-L",
    "slot": "armFore",
    "z": 48.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    2964,
-    675,
+    2535,
+    443,
     77,
     175
    ],
@@ -131,10 +184,10 @@
    "id": "arm-fore-R",
    "slot": "armFore",
    "z": 48.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    3818,
-    1,
+    2535,
+    620,
     74,
     175
    ],
@@ -149,10 +202,10 @@
    "id": "hand-L",
    "slot": "hand",
    "z": 65.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1401,
-    737,
+    1664,
+    739,
     55,
     110
    ],
@@ -167,10 +220,10 @@
    "id": "hand-R",
    "slot": "hand",
    "z": 65.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1342,
-    737,
+    1605,
+    739,
     57,
     112
    ],
@@ -185,9 +238,9 @@
    "id": "leg-L",
    "slot": "legs",
    "z": 9.1,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    3537,
+    2255,
     1,
     129,
     439
@@ -203,9 +256,9 @@
    "id": "leg-R",
    "slot": "legs",
    "z": 9.1,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    3668,
+    2386,
     1,
     129,
     439
@@ -221,10 +274,10 @@
    "id": "seam-fill",
    "slot": "body",
    "z": 7.6,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    2499,
-    707,
+    2517,
+    1,
     306,
     141
    ],
@@ -239,7 +292,7 @@
    "id": "hair-back-girl",
    "slot": "hairBack",
    "z": 10.5,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
     1,
     1,
@@ -257,9 +310,9 @@
    "id": "maid-top",
    "slot": "topBody",
    "z": 64.0,
-   "atlas": null,
+   "atlas": "maid",
    "atlasRect": [
-    1053,
+    1,
     1,
     449,
     582
@@ -275,10 +328,10 @@
    "id": "maid-skirt",
    "slot": "bottom",
    "z": 30.0,
-   "atlas": null,
+   "atlas": "maid",
    "atlasRect": [
-    2056,
-    406,
+    452,
+    1,
     441,
     323
    ],
@@ -293,9 +346,9 @@
    "id": "hoodie-plaid-top",
    "slot": "topBody",
    "z": 64.0,
-   "atlas": null,
+   "atlas": "hoodie-plaid",
    "atlasRect": [
-    2386,
+    1,
     1,
     318,
     351
@@ -311,10 +364,10 @@
    "id": "hoodie-plaid-skirt",
    "slot": "bottom",
    "z": 30.0,
-   "atlas": null,
+   "atlas": "hoodie-plaid",
    "atlasRect": [
-    3228,
-    320,
+    321,
+    1,
     307,
     193
    ],
@@ -329,10 +382,10 @@
    "id": "hoodie-pleated-top",
    "slot": "topBody",
    "z": 64.0,
-   "atlas": null,
+   "atlas": "hoodie-pleated",
    "atlasRect": [
-    2499,
-    354,
+    1,
+    1,
     318,
     351
    ],
@@ -347,10 +400,10 @@
    "id": "hoodie-pleated-skirt",
    "slot": "bottom",
    "z": 30.0,
-   "atlas": null,
+   "atlas": "hoodie-pleated",
    "atlasRect": [
-    1053,
-    585,
+    321,
+    1,
     287,
     212
    ],
@@ -365,9 +418,9 @@
    "id": "sailor-plaid-top",
    "slot": "topBody",
    "z": 64.0,
-   "atlas": null,
+   "atlas": "sailor-plaid",
    "atlasRect": [
-    3255,
+    309,
     1,
     271,
     186
@@ -383,9 +436,9 @@
    "id": "sailor-plaid-skirt",
    "slot": "bottom",
    "z": 30.0,
-   "atlas": null,
+   "atlas": "sailor-plaid",
    "atlasRect": [
-    2706,
+    1,
     1,
     306,
     339
@@ -401,9 +454,9 @@
    "id": "hair-front-bangs",
    "slot": "hairFront",
    "z": 70,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1954,
+    1503,
     1,
     430,
     403
@@ -419,10 +472,10 @@
    "id": "hair-strand-L1",
    "slot": "strands",
    "z": 12.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    3060,
-    320,
+    2087,
+    1,
     166,
     415
    ],
@@ -437,9 +490,9 @@
    "id": "hair-strand-L2",
    "slot": "strands",
    "z": 12.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    3682,
+    2399,
     442,
     134,
     334
@@ -455,10 +508,10 @@
    "id": "hair-strand-L3",
    "slot": "strands",
    "z": 12.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    3228,
-    515,
+    2087,
+    418,
     163,
     302
    ],
@@ -473,10 +526,10 @@
    "id": "hair-strand-R1",
    "slot": "strands",
    "z": 12.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    3014,
-    1,
+    1846,
+    406,
     239,
     317
    ],
@@ -491,10 +544,10 @@
    "id": "hair-strand-R2",
    "slot": "strands",
    "z": 12.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    3535,
-    515,
+    2252,
+    442,
     145,
     317
    ],
@@ -509,10 +562,10 @@
    "id": "hair-strand-R3",
    "slot": "strands",
    "z": 12.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    3393,
-    515,
+    1935,
+    1,
     140,
     335
    ],
@@ -527,9 +580,9 @@
    "id": "face-eye-L-sclera",
    "slot": "face",
    "z": 15.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1458,
+    933,
     805,
     62,
     45
@@ -545,10 +598,10 @@
    "id": "face-eye-L-iris",
    "slot": "face",
    "z": 15.1,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1458,
-    737,
+    933,
+    763,
     34,
     35
    ],
@@ -563,10 +616,10 @@
    "id": "face-eye-L-lash",
    "slot": "face",
    "z": 15.2,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    649,
-    799,
+    1919,
+    797,
     58,
     47
    ],
@@ -581,9 +634,9 @@
    "id": "face-eye-R-sclera",
    "slot": "face",
    "z": 15.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1522,
+    1053,
     805,
     50,
     45
@@ -599,10 +652,10 @@
    "id": "face-eye-R-iris",
    "slot": "face",
    "z": 15.1,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    2452,
-    354,
+    1721,
+    761,
     34,
     34
    ],
@@ -617,10 +670,10 @@
    "id": "face-eye-R-lash",
    "slot": "face",
    "z": 15.2,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1574,
-    805,
+    933,
+    725,
     52,
     36
    ],
@@ -635,10 +688,10 @@
    "id": "face-eye-L-lid-half",
    "slot": "face",
    "z": 15.3,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    2386,
-    354,
+    1721,
+    797,
     64,
     49
    ],
@@ -653,10 +706,10 @@
    "id": "face-eye-R-lid-half",
    "slot": "face",
    "z": 15.3,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    709,
-    799,
+    997,
+    725,
     54,
     48
    ],
@@ -671,10 +724,10 @@
    "id": "face-eye-L-lid-closed",
    "slot": "face",
    "z": 15.3,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    517,
-    799,
+    1787,
+    797,
     64,
     49
    ],
@@ -689,10 +742,10 @@
    "id": "face-eye-R-lid-closed",
    "slot": "face",
    "z": 15.3,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    765,
-    799,
+    997,
+    775,
     54,
     48
    ],
@@ -707,10 +760,10 @@
    "id": "face-eye-L-lid-smile",
    "slot": "face",
    "z": 15.3,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    583,
-    799,
+    1853,
+    797,
     64,
     49
    ],
@@ -725,10 +778,10 @@
    "id": "face-eye-R-lid-smile",
    "slot": "face",
    "z": 15.3,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    821,
-    799,
+    1979,
+    797,
     54,
     48
    ],
@@ -743,9 +796,9 @@
    "id": "face-brow-L",
    "slot": "face",
    "z": 15.5,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1574,
+    517,
     843,
     18,
     8
@@ -761,10 +814,10 @@
    "id": "face-brow-R",
    "slot": "face",
    "z": 15.5,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    3535,
-    834,
+    1788,
+    761,
     27,
     12
    ],
@@ -779,10 +832,10 @@
    "id": "face-mouth-neutral",
    "slot": "face",
    "z": 15.6,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1489,
-    774,
+    553,
+    843,
     12,
     7
    ],
@@ -797,10 +850,10 @@
    "id": "face-mouth-small",
    "slot": "face",
    "z": 15.6,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    3043,
-    675,
+    537,
+    843,
     14,
     7
    ],
@@ -815,10 +868,10 @@
    "id": "face-mouth-mid",
    "slot": "face",
    "z": 15.6,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    2807,
-    822,
+    969,
+    763,
     26,
     25
    ],
@@ -833,10 +886,10 @@
    "id": "face-mouth-open",
    "slot": "face",
    "z": 15.6,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    1458,
-    774,
+    1757,
+    761,
     29,
     29
    ],
@@ -851,10 +904,10 @@
    "id": "face-mouth-smile",
    "slot": "face",
    "z": 15.6,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    2452,
-    390,
+    1788,
+    778,
     38,
     11
    ],
@@ -869,7 +922,7 @@
    "id": "hair-backfill",
    "slot": "hairBack",
    "z": 4,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
     517,
     1,
@@ -887,10 +940,10 @@
    "id": "hair-arm-girl",
    "slot": "strands",
    "z": 66.0,
-   "atlas": null,
+   "atlas": "base",
    "atlasRect": [
-    2056,
-    731,
+    517,
+    725,
     414,
     116
    ],
@@ -903,10 +956,10 @@
   }
  ],
  "textureTotal": {
-  "atlasBytes": 1074428,
-  "pages": 1,
+  "atlasBytes": 1041976,
+  "pages": 5,
   "bytesPerPixel": 4,
-  "texMiB": 12.65,
-  "texMiBwithMipmap": 16.87
+  "texMiB": 13.59,
+  "texMiBwithMipmap": 18.12
  }
 }

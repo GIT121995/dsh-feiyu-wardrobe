@@ -304,8 +304,9 @@ function assertRuntimeVersionWiring(requests, versions, shape) {
 		}
 	}
 	if (bad.length > 0) throw new GateError(`${shape} 实际请求的 cache-bust 版本与源码不一致（漏改 ?v=）：\n    ${bad.slice(0, 8).join('\n    ')}`, 2);
-	const required = [`runtime-2d5.js?v=${versions.page}`, `runtime-2d5-core.js?v=${versions.page}`, `app.js?v=${versions.page}`, `art/2d5/${shape}/rig.json?v=${versions.asset}`, `art/2d5/${shape}/atlas.webp?v=${versions.asset}`];
+	const required = [`runtime-2d5.js?v=${versions.page}`, `runtime-2d5-core.js?v=${versions.page}`, `app.js?v=${versions.page}`, `art/2d5/${shape}/rig.bin?v=${versions.asset}`, `art/2d5/${shape}/atlas.webp?v=${versions.asset}`];
 	for (const marker of required) {
+		// v3.2.0：rig 二进化后运行时优先请求 rig.bin（rig.bin 404 才回退 rig.json）——正常路径必须命中 rig.bin
 		if (!requests.some((url) => url.includes(marker))) throw new GateError(`${shape} 缺少带正确版本的资源请求：${marker}`, 2);
 	}
 }
@@ -519,10 +520,26 @@ async function captureShape(page, input) {
 			return { dataURL: target.toDataURL('image/jpeg', quality), size: [outW, outH] };
 		}
 
+		/** 等造型真正生效（v3.2.0 lazy outfit page：套装页懒加载/后台预取未完成时 setLook 会延迟应用）。 */
+		function waitLookApplied(outfit) {
+			return new Promise((resolve, reject) => {
+				const startedAt = performance.now();
+				const tick = () => {
+					const state = rt.getState();
+					const applied = state.look && state.look.outfit === outfit && !state.look.fallback;
+					if (applied) return resolve(state);
+					if (performance.now() - startedAt > 8000) return reject(new Error(`等待造型 ${outfit} 生效超时（套装页懒加载失败？）`));
+					setTimeout(tick, 25);
+				};
+				tick();
+			});
+		}
+
 		/** 换造型并渲染静态帧（与基线完全相同的调用顺序）。 */
-		function renderLook(outfit, dpr) {
+		async function renderLook(outfit, dpr) {
 			rt.setDPR(dpr);
 			rt.setLook({ outfit });
+			await waitLookApplied(outfit);
 			rt.setStatic(true); // 每次换装后重新固定物理 rest，避免跨造型串状态
 			rt.advance(3, 1 / 60);
 			rt.renderFrame();
@@ -533,7 +550,7 @@ async function captureShape(page, input) {
 		const stateInfo = {};
 		// 1x 全身：画布 675×1200（DPR1）
 		for (const outfit of outfits) {
-			const state = renderLook(outfit, 1);
+			const state = await renderLook(outfit, 1);
 			stateInfo[outfit] = {
 				active: state.active.length,
 				lookLabel: state.look && state.look.label,
@@ -548,7 +565,7 @@ async function captureShape(page, input) {
 		}
 		// 2x 关键局部：DPR2 画布裁局部，输出 2x 设计像素
 		for (const outfit of outfits) {
-			renderLook(outfit, 2);
+			await renderLook(outfit, 2);
 			if (canvas.width !== design.width * 2 || canvas.height !== design.height * 2) {
 				throw new Error(`2x 画布尺寸异常：${canvas.width}×${canvas.height}`);
 			}

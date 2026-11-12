@@ -6,9 +6,10 @@
  *   1) 源包 manifest 契约：schema/assetVersion/fileCount/totalBytes + 逐文件 size/sha256；
  *   2) 源包布局（art/m4/feet/hands/prod + VERSION/sources.json）；
  *   3) tools/art 脚本可用（build_prod/build_2d5/pack/fetch 的 --help 冒烟）；
- *   4) 构建确定性：单身形（默认 chibi）双跑 build_prod → rig.json + atlas.webp md5 一致；
- *      设 `FEIYU_ASSET_VERIFY_DIST=1` 时额外与 `docs/dress-up/art/2d5/<shape>` 官方 dist
- *      逐字节比对（rig.json/atlas.webp 必须一致；build-report 允许 provenance 文案差异）。
+ *   4) 构建确定性：单身形（默认 chibi）双跑 build_prod → rig.json + **全部 5 页 atlas** md5 一致
+ *      （v3.2.0 lazy outfit page 契约）；设 `FEIYU_ASSET_VERIFY_DIST=1` 时额外与
+ *      `docs/dress-up/art/2d5/<shape>` 官方 dist 逐字节比对（rig.json + 所有 atlas 页必须一致；
+ *      build-report 允许 provenance 文案差异）。
  *
  * 环境变量：
  *   FEIYU_ASSETS_SRC              源根覆盖（默认 <repo>/.cache/assets-src）
@@ -24,6 +25,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { brotliDecompressSync } from 'node:zlib';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -59,6 +61,71 @@ function v3LayerCombos(shape = SHAPE) {
 	return V3_COMBOS.filter((combo) =>
 		existsSync(join(SRC, 'art', 'garments', shape, combo, 'layers', 'top.png')) &&
 		existsSync(join(SRC, 'art', 'garments', shape, combo, 'layers', 'skirt.png')));
+}
+
+/**
+ * v3.2.0 lazy outfit page（方案 C，PLAN §1.1）：lo/hi 图集各 5 页，页序/文件名固定。
+ * base 页 = 不被任何 outfit slot 引用的 drawable；其后每套装一页 = outfits[combo] 引用。
+ */
+const LAZY_PAGE_IDS = ['base', 'maid', 'hoodie-plaid', 'hoodie-pleated', 'sailor-plaid'];
+const LAZY_PAGE_FILES = ['atlas.webp', 'atlas-2.webp', 'atlas-3.webp', 'atlas-4.webp', 'atlas-5.webp'];
+/** 与 build_prod.py / build_2d5.py 一致的服装 slot 集合。 */
+const GARMENT_SLOTS = ['topUnder', 'bottom', 'topBody', 'sleeve', 'sleeveUpper', 'sleeveFore', 'collar'];
+
+/** rig.outfits → Map(outfitId → Set(drawable id))（只认服装 slot 引用）。 */
+function outfitDrawableRefs(rig) {
+	const refs = new Map();
+	for (const [outfitId, outfit] of Object.entries(rig.outfits ?? {})) {
+		if (!outfit || typeof outfit !== 'object') continue;
+		const ids = new Set();
+		for (const slot of GARMENT_SLOTS) for (const id of outfit[slot] ?? []) ids.add(id);
+		if (ids.size) refs.set(outfitId, ids);
+	}
+	return refs;
+}
+
+/** 断言 lo/hi 的 5 页懒加载图集契约（页序/文件名/每 drawable 恰好一页/base 与套装页归属）。 */
+function assertLazyAtlasPages(rig, report, label) {
+	const pages = report.atlases ?? (report.atlas ? [report.atlas] : []);
+	assert.equal(report.pages, 5, `${label} build-report.pages 应为 5`);
+	assert.equal(pages.length, 5, `${label} 应为 5 页图集`);
+	assert.deepEqual(pages.map((p) => p.id), LAZY_PAGE_IDS, `${label} 页 id 顺序应为 ${LAZY_PAGE_IDS}`);
+	assert.deepEqual(pages.map((p) => p.file), LAZY_PAGE_FILES, `${label} 页文件顺序应为 ${LAZY_PAGE_FILES}`);
+	assert.ok(Array.isArray(rig.atlases) && rig.atlases.length === 5, `${label} rig.atlases 应为 5 页`);
+	assert.deepEqual(rig.atlases.map((p) => [p.id, p.file]), LAZY_PAGE_FILES.map((file, i) => [LAZY_PAGE_IDS[i], file]),
+		`${label} rig.atlases 页表应为 ${LAZY_PAGE_IDS}`);
+	assert.deepEqual(rig.atlas, rig.atlases[0], `${label} rig.atlas 应为 atlases[0]（兼容旧消费者）`);
+	assert.equal(rig.m3?.multiAtlas, true, `${label} m3.multiAtlas 应为 true`);
+	assert.equal(rig.m3?.atlasPages, 5, `${label} m3.atlasPages 应为 5`);
+	assert.equal(rig.product?.pages, 5, `${label} product.pages 应为 5`);
+	const pageIds = new Set(rig.atlases.map((p) => p.id));
+	const fileById = new Map(rig.atlases.map((p) => [p.id, p.file]));
+	const byPage = new Map(LAZY_PAGE_IDS.map((id) => [id, []]));
+	const refs = outfitDrawableRefs(rig);
+	const outfitRefs = new Set([...refs.values()].flatMap((ids) => [...ids]));
+	for (const d of rig.drawables) {
+		assert.ok(pageIds.has(d.atlas), `${label} drawable ${d.id} 的 atlas=${d.atlas} 未在 atlases 声明`);
+		assert.equal(d.texture, fileById.get(d.atlas), `${label} drawable ${d.id} texture 应为所属页文件`);
+		assert.ok(Array.isArray(d.atlasRect) && d.atlasRect.length === 4, `${label} drawable ${d.id} 缺 atlasRect`);
+		byPage.get(d.atlas).push(d.id);
+	}
+	assert.equal([...byPage.values()].reduce((n, ids) => n + ids.length, 0), rig.drawables.length,
+		`${label} 每个 drawable 必须恰好归属一页`);
+	for (const page of rig.atlases) assert.ok(byPage.get(page.id).length > 0, `${label} 图集页 ${page.id} 为空`);
+	assert.deepEqual(byPage.get('base'), rig.drawables.filter((d) => !outfitRefs.has(d.id)).map((d) => d.id),
+		`${label} base 页应恰为不被任何 outfit slot 引用的 drawable（保持原顺序）`);
+	for (const combo of LAZY_PAGE_IDS.slice(1)) {
+		const want = rig.drawables.filter((d) => refs.get(combo)?.has(d.id)).map((d) => d.id);
+		assert.ok(want.length > 0, `${label} outfit ${combo} 未引用任何 drawable`);
+		assert.deepEqual(byPage.get(combo), want, `${label} 页 ${combo} 应恰为 outfit 引用的 drawable（保持原顺序）`);
+	}
+	for (const page of pages) {
+		assert.equal(page.pixelEqual, true, `${label} 页 ${page.id} pixelEqual != true`);
+		assert.ok(page.width <= 4096 && page.height <= 4096, `${label} 页 ${page.id} 超 4096：${page.width}x${page.height}`);
+		assert.ok(page.bytes > 0, `${label} 页 ${page.id} bytes 非法`);
+		assert.equal(page.rects, byPage.get(page.id).length, `${label} 页 ${page.id} 报告 rects 与归属不一致`);
+	}
+	return pages;
 }
 
 /** python3 + 构建依赖可用？（numpy/cv2/Pillow；缺失时跳过构建类测试） */
@@ -135,7 +202,7 @@ test('assets-src manifest：schema + 逐文件 size/sha256 契约（源缺失 sk
 });
 
 // ---------------------------------------------------------- 构建确定性 ----
-test(`build_prod 确定性：${SHAPE} 双跑 rig.json + atlas.webp md5 一致（源缺失/依赖缺失 skip）`, (t) => {
+test(`build_prod 确定性：${SHAPE} 双跑 rig.json + 全部 atlas 页 md5 一致（源缺失/依赖缺失 skip）`, (t) => {
 	if (!hasSources) return t.skip(`源包未就绪：${SRC}`);
 	if (!pythonBuildDeps()) return t.skip(`python 构建依赖不可用（${PYTHON}: numpy/cv2/Pillow）`);
 	const builder = join(ROOT, 'tools', 'art', 'build_prod.py');
@@ -154,17 +221,35 @@ test(`build_prod 确定性：${SHAPE} 双跑 rig.json + atlas.webp md5 一致（
 			], { encoding: 'utf8', timeout: 30 * 60 * 1000, maxBuffer: 1 << 26 });
 			assert.equal(r.status, 0, `build_prod 失败（${SHAPE}）：\n${(r.stderr || '').slice(-4000)}\n${(r.stdout || '').slice(-4000)}`);
 		}
-		const files = ['rig.json', 'atlas.webp'];
+		// v3.2.0 lo 5 页契约（页序/文件名/归属先于逐字节比对校验）
+		const report = JSON.parse(readFileSync(join(runs[0].out, SHAPE, 'build-report.json'), 'utf8'));
+		const distRig = JSON.parse(readFileSync(join(runs[0].out, SHAPE, 'rig.json'), 'utf8'));
+		const pages = assertLazyAtlasPages(distRig, report, `${SHAPE} lo`);
+		const files = ['rig.json', 'rig.bin', ...pages.map((page) => page.file)];
 		const md5s = runs.map((run) => Object.fromEntries(files.map((f) => [f, sha256(join(run.out, SHAPE, f))])));
 		for (const f of files) {
 			assert.equal(md5s[0][f], md5s[1][f], `${SHAPE}/${f} 双跑 md5 不一致（构建不确定）：${md5s[0][f]} vs ${md5s[1][f]}`);
 		}
 		// 图集必须 lossless 回读逐像素相等（与 pixelEqual 语义一致）
-		const report = JSON.parse(readFileSync(join(runs[0].out, SHAPE, 'build-report.json'), 'utf8'));
-		const pages = report.atlases ?? (report.atlas ? [report.atlas] : []);
-		assert.ok(pages.length >= 1, `${SHAPE} build-report 缺少图集页信息`);
 		for (const page of pages) assert.equal(page.pixelEqual, true, `${SHAPE} 图集 pixelEqual != true`);
-		t.diagnostic(`${SHAPE}: rig sha256 ${md5s[0]['rig.json']} / atlas sha256 ${md5s[0]['atlas.webp']}`);
+		// v3.2.0 rig 二进化：rig.bin 必须由构建期生成；.br 为构建期预压缩产物（解压必须等于 rig.bin）；
+		// build-report.rig.binary 记录与实际文件一致（brotliBytes=null 表示构建机无 Node，允许）
+		for (const run of runs) {
+			const dir = join(run.out, SHAPE);
+			const report2 = JSON.parse(readFileSync(join(dir, 'build-report.json'), 'utf8'));
+			const binary = report2.rig && report2.rig.binary;
+			assert.ok(binary && binary.bytes > 0, `${SHAPE} build-report 缺少 rig.binary 字段`);
+			const bin = readFileSync(join(dir, 'rig.bin'));
+			assert.equal(binary.bytes, bin.byteLength, `${SHAPE} rig.binary.bytes 与实际 rig.bin 不一致`);
+			assert.equal(binary.sha256, sha256(join(dir, 'rig.bin')), `${SHAPE} rig.binary.sha256 不一致`);
+			if (binary.brotliBytes != null) {
+				const br = readFileSync(join(dir, 'rig.bin.br'));
+				assert.equal(binary.brotliBytes, br.byteLength, `${SHAPE} rig.binary.brotliBytes 不一致`);
+				assert.ok(brotliDecompressSync(br).equals(bin), `${SHAPE} rig.bin.br 解压结果应逐字节等于 rig.bin`);
+			}
+		}
+		t.diagnostic(`${SHAPE}: rig sha256 ${md5s[0]['rig.json']} / atlas sha256 `
+			+ pages.map((page) => `${page.file} ${md5s[0][page.file]}`).join(' + '));
 
 		// ---------------- v3.0 整层 outfit 契约（源包含 layers/ 时生效）----------------
 		// 每套 combo 只保留 2 个整层 drawable（{combo}-top z=64 / {combo}-skirt z=30），
@@ -172,7 +257,6 @@ test(`build_prod 确定性：${SHAPE} 双跑 rig.json + atlas.webp md5 一致（
 		const v3Combos = v3LayerCombos();
 		if (v3Combos.length) {
 			const srcRig = JSON.parse(readFileSync(join(runs[0].work, 'assets', `${SHAPE}-cutout.feiyu.json`), 'utf8'));
-			const distRig = JSON.parse(readFileSync(join(runs[0].out, SHAPE, 'rig.json'), 'utf8'));
 			const wantIds = v3Combos.flatMap((combo) => [`${combo}-top`, `${combo}-skirt`]);
 			if (v3Combos.length === V3_COMBOS.length) {
 				assert.equal(wantIds.length, 8, `v3 整层 outfit 应有 8 个 drawable（4 套 × top/skirt），实际 ${wantIds.length}`);
@@ -300,7 +384,7 @@ test(`build_prod 确定性：${SHAPE} 双跑 rig.json + atlas.webp md5 一致（
 			t.diagnostic(`chibi 体表近黑残留：${residue}px（上限 7200；v2.6.2 修复后 6,611；v2.6.0 bug 时 ~12,653）`);
 		}
 
-		// verify:full 口径：重建产物必须与仓库官方 dist 逐字节一致（rig + atlas）
+		// verify:full 口径：重建产物必须与仓库官方 dist 逐字节一致（rig + 全部 atlas 页）
 		if (VERIFY_DIST) {
 			const official = join(ROOT, 'docs', 'dress-up', 'art', '2d5', SHAPE);
 			for (const f of files) {
@@ -312,14 +396,15 @@ test(`build_prod 确定性：${SHAPE} 双跑 rig.json + atlas.webp md5 一致（
 					(discoverMasterConfigs().length ? '' : '；v2.6 官方 dist 由母版重贴图（--master-config）构建'),
 				);
 			}
-			t.diagnostic(`${SHAPE}: 重建产物与 docs/dress-up/art/2d5 逐字节一致（rig+atlas）${discoverMasterConfigs().length ? `（master-config ×${discoverMasterConfigs().length}）` : ''}`);
+			t.diagnostic(`${SHAPE}: 重建产物与 docs/dress-up/art/2d5 逐字节一致`
+				+ `（rig + ${pages.length} 页 atlas）${discoverMasterConfigs().length ? `（master-config ×${discoverMasterConfigs().length}）` : ''}`);
 		}
 	} finally {
 		rmSync(scratch, { recursive: true, force: true });
 	}
 });
 
-// ------------------------------------------------- v2.6.1 hi (2x) tier ----
+// ---------------------------------------------- v2.6.1 hi (2x) tier / v3.2.0 5 页 ----
 /** hi tier 静态契约：docs/dress-up/art/2d5/{shape}-hi 存在时校验（不依赖源包）。 */
 const HI_ROOT = join(ROOT, 'docs', 'dress-up', 'art', '2d5');
 const LO_ROOT = HI_ROOT;
@@ -327,27 +412,24 @@ const HI_2X_IDS = new Set(['body-head', 'body-torso', 'leg-L', 'leg-R',
 	'arm-upper-L', 'arm-upper-R', 'arm-fore-L', 'arm-fore-R', 'hand-L', 'hand-R',
 	'tail']);
 const HI_2X_SLOTS = new Set(['hairBack', 'strands', 'hairFront', 'face']);
+/** hi base 页里唯一允许的 1x drawable：常驻的素体填充（不被任何 outfit 引用，不能缺页）。 */
+const HI_BASE_1X_ALLOWED = new Set(['seam-fill']);
 
-test('v2.6.1 hi tier：两页图集/像素相等/2x 纹理尺寸/结构与 lo 一致（缺产物 skip）', (t) => {
+test('v3.2.0 hi tier：五页懒加载图集/像素相等/2x-1x 划分/结构与 lo 一致（缺产物 skip）', (t) => {
 	const shapes = ['chibi', 'girl'].filter((s) => existsSync(join(HI_ROOT, `${s}-hi`, 'rig.json')));
 	if (!shapes.length) return t.skip('hi tier 产物未生成（先跑 npm run build:assets:hi）');
 	for (const shape of shapes) {
 		const dir = join(HI_ROOT, `${shape}-hi`);
 		const rig = JSON.parse(readFileSync(join(dir, 'rig.json'), 'utf8'));
 		const rep = JSON.parse(readFileSync(join(dir, 'build-report.json'), 'utf8'));
-		const pages = rep.atlases ?? (rep.atlas ? [rep.atlas] : []);
-		assert.equal(pages.length, 2, `${shape}-hi 应为 2 页图集`);
-		for (const p of pages) {
-			assert.equal(p.pixelEqual, true, `${shape}-hi 图集 pixelEqual != true`);
-			assert.ok(p.width <= 4096 && p.height <= 4096, `${shape}-hi 图集页超 4096：${p.width}x${p.height}`);
-			assert.ok(existsSync(join(dir, p.file ?? 'atlas.webp')), `${shape}-hi 缺少图集文件`);
-		}
+		const pages = assertLazyAtlasPages(rig, rep, `${shape}-hi`);
+		for (const p of pages) assert.ok(existsSync(join(dir, p.file)), `${shape}-hi 缺少图集文件 ${p.file}`);
 		assert.equal(rig.skeleton.bones.length, 65, `${shape}-hi 骨数应为 65`);
 		// 与 lo 对比：drawable 集合/rect/mesh 相同，仅纹理与 atlas 字段变化
 		const lo = JSON.parse(readFileSync(join(LO_ROOT, shape, 'rig.json'), 'utf8'));
 		assert.equal(rig.drawables.length, lo.drawables.length, `${shape}-hi drawables 数应与 lo 相同`);
 		const loById = new Map(lo.drawables.map((d) => [d.id, d]));
-		const pageIds = new Map(pages.map((p, i) => [p.id ?? `page${i}`, p.drawables ?? null]));
+		const pageOf = new Map(rig.drawables.map((d) => [d.id, d.atlas]));
 		for (const d of rig.drawables) {
 			const l = loById.get(d.id);
 			assert.ok(l, `${shape}-hi 多出 drawable ${d.id}`);
@@ -380,17 +462,27 @@ test('v2.6.1 hi tier：两页图集/像素相等/2x 纹理尺寸/结构与 lo �
 				assert.deepEqual(d.texSize, l.texSize, `${shape}-hi 1x drawable ${d.id} texSize 应与 lo 相同`);
 			}
 		}
-		// lo tier 未被覆盖：仍是单页 atlas
+		// v3.2.0 页划分：base 页 = 2x body/hair/face/tail（+ 常驻 1x seam-fill）；
+		// 4 个套装页 = 该套装的 1x 服装 drawable（2x drawable 不得混入套装页）。
+		for (const d of rig.drawables) {
+			const want2x = HI_2X_IDS.has(d.id) || HI_2X_SLOTS.has(d.slot);
+			if (want2x) {
+				assert.equal(pageOf.get(d.id), 'base', `${shape}-hi 2x drawable ${d.id} 应留在 base 页`);
+			} else if (HI_BASE_1X_ALLOWED.has(d.id)) {
+				assert.equal(pageOf.get(d.id), 'base', `${shape}-hi 常驻 1x ${d.id} 应留在 base 页`);
+			} else {
+				assert.notEqual(pageOf.get(d.id), 'base', `${shape}-hi 1x 服装 drawable ${d.id} 不应在 base 页`);
+			}
+		}
+		// lo tier 未被覆盖：同样 5 页（hi 构建只写 <shape>-hi/，不碰 lo dist）
 		const loRep = JSON.parse(readFileSync(join(LO_ROOT, shape, 'build-report.json'), 'utf8'));
-		const loPages = loRep.atlases ?? (loRep.atlas ? [loRep.atlas] : []);
-		assert.equal(loPages.length, 1, `${shape} lo tier 应仍为单页（不被 hi 构建影响）`);
-		assert.equal(loPages[0].pixelEqual, true);
-		t.diagnostic(`${shape}-hi: ${pages.map((p) => `${p.width}x${p.height}`).join(' + ')}，`
-			+ `${rig.drawables.length} drawables / 65 bones`);
+		const loPages = assertLazyAtlasPages(lo, loRep, `${shape} lo`);
+		t.diagnostic(`${shape}-hi: ${pages.map((p) => `${p.id} ${p.width}x${p.height}`).join(' + ')}，`
+			+ `${rig.drawables.length} drawables / 65 bones（lo ${loPages.length} 页）`);
 	}
 });
 
-test('v2.6.1 hi tier 构建确定性：chibi 双跑 md5 一致（FEIYU_ASSET_VERIFY_HI=1 + 源就绪）', (t) => {
+test('v3.2.0 hi tier 构建确定性：chibi 双跑 md5 一致 + 5 页契约（FEIYU_ASSET_VERIFY_HI=1 + 源就绪）', (t) => {
 	if (process.env.FEIYU_ASSET_VERIFY_HI !== '1') {
 		return t.skip('设 FEIYU_ASSET_VERIFY_HI=1（verify:full）才跑 hi 构建确定性（较慢）');
 	}
@@ -412,18 +504,19 @@ test('v2.6.1 hi tier 构建确定性：chibi 双跑 md5 一致（FEIYU_ASSET_VER
 			assert.equal(r.status, 0, `hi build 失败（${SHAPE}）：\n${(r.stderr || '').slice(-4000)}\n${(r.stdout || '').slice(-4000)}`);
 		}
 		const dirName = `${SHAPE}-hi`;
-		const files = ['rig.json', 'atlas.webp', 'atlas-2.webp', 'build-report.json'];
+		const rep = JSON.parse(readFileSync(join(runs[0].out, dirName, 'build-report.json'), 'utf8'));
+		const hiRig = JSON.parse(readFileSync(join(runs[0].out, dirName, 'rig.json'), 'utf8'));
+		const pages = assertLazyAtlasPages(hiRig, rep, `${dirName}（重建）`);
+		const files = ['rig.json', 'rig.bin', ...pages.map((page) => page.file)];
 		const md5s = runs.map((run) => Object.fromEntries(
 			files.map((f) => [f, sha256(join(run.out, dirName, f))])));
 		for (const f of files) {
 			assert.equal(md5s[0][f], md5s[1][f],
 				`${dirName}/${f} 双跑 md5 不一致（hi 构建不确定）：${md5s[0][f]} vs ${md5s[1][f]}`);
 		}
-		const rep = JSON.parse(readFileSync(join(runs[0].out, dirName, 'build-report.json'), 'utf8'));
-		const pages = rep.atlases ?? (rep.atlas ? [rep.atlas] : []);
-		assert.equal(pages.length, 2, 'hi 构建应输出 2 页图集');
 		for (const p of pages) assert.equal(p.pixelEqual, true);
-		t.diagnostic(`hi ${SHAPE}: rig sha256 ${md5s[0]['rig.json']} / atlas ${md5s[0]['atlas.webp']} + ${md5s[0]['atlas-2.webp']}`);
+		t.diagnostic(`hi ${SHAPE}: rig sha256 ${md5s[0]['rig.json']} / atlas `
+			+ pages.map((page) => `${page.file} ${md5s[0][page.file]}`).join(' + '));
 	} finally {
 		rmSync(scratch, { recursive: true, force: true });
 	}

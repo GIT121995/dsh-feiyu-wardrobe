@@ -684,7 +684,7 @@ export function evaluateRun(result, options) {
 	const loRequests = result.requests && result.requests.loArt ? result.requests.loArt : [];
 	if (options.tier === 'hi') {
 		if (finalTier !== 'hi') failures.push(`tier override=hi 但运行时 tier=${finalTier || 'unknown'}（防止静默降级）`);
-		if (!hiRequests.some((url) => url.includes('rig.json'))) failures.push('hi tier 没有请求 art/2d5/*-hi/rig.json');
+		if (!hiRequests.some((url) => url.includes('rig.bin'))) failures.push('hi tier 没有请求 art/2d5/*-hi/rig.bin（v3.2.0 rig 二进化）');
 		if (!hiRequests.some((url) => url.includes('atlas.webp'))) failures.push('hi tier 没有请求 hi atlas.webp');
 		if (tl && tl.tierAtFirstFrame && tl.tierAtFirstFrame !== 'hi') failures.push(`tier override=hi 但首帧 tier=${tl.tierAtFirstFrame}（override 应直接按 hi 加载，不做 progressive upgrade）`);
 		if (tl && tl.upgrade && tl.upgrade.status && !['none', 'not-needed', 'skipped', 'done'].includes(tl.upgrade.status)) failures.push(`tier override=hi 却存在进行中的 lo→hi 升级：${tl.upgrade.status}（QA 静态确定性要求 override 固定 tier）`);
@@ -697,7 +697,7 @@ export function evaluateRun(result, options) {
 		// 因此只要求「已启动（loading/done）」+ 首帧 tier=lo；真机 GPU 上通常 ready 后数秒内完成）
 		const targetTier = contract.targetTier || null;
 		if (targetTier === 'hi') {
-			if (!hiRequests.some((url) => url.includes('rig.json'))) failures.push('auto hi 没有请求 hi rig.json');
+			if (!hiRequests.some((url) => url.includes('rig.bin'))) failures.push('auto hi 没有请求 hi rig.bin（v3.2.0 rig 二进化）');
 			const upgradeStatus = tl && tl.upgrade ? tl.upgrade.status : null;
 			if (upgradeStatus && !['loading', 'done'].includes(upgradeStatus)) {
 				failures.push(`lo→hi 升级状态异常：upgrade.status=${upgradeStatus}${tl.upgrade.error ? `（${tl.upgrade.error}）` : ''}`);
@@ -726,8 +726,8 @@ function workspaceSnapshot(repo) {
 	for (const rel of [
 		'docs/dress-up/app.js', 'docs/dress-up/index.html', 'docs/dress-up/runtime-2d5.js',
 		'docs/dress-up/runtime-2d5-core.js', 'lib/webserver.js',
-		'docs/dress-up/art/2d5/chibi/rig.json', 'docs/dress-up/art/2d5/chibi/atlas.webp',
-		'docs/dress-up/art/2d5/chibi-hi/rig.json', 'docs/dress-up/art/2d5/chibi-hi/atlas.webp',
+		'docs/dress-up/art/2d5/chibi/rig.bin', 'docs/dress-up/art/2d5/chibi/rig.bin.br', 'docs/dress-up/art/2d5/chibi/atlas.webp',
+		'docs/dress-up/art/2d5/chibi/atlas-2.webp', 'docs/dress-up/art/2d5/chibi-hi/rig.bin', 'docs/dress-up/art/2d5/chibi-hi/atlas.webp',
 	]) {
 		const file = join(repo, rel);
 		if (!existsSync(file)) continue;

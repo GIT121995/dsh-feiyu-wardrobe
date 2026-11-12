@@ -2,6 +2,75 @@
 
 > 文档路径说明（W0，2026-11-05）：下文历史条目中的 `docs/dress-up/LAYER-ARCHITECTURE.md`、`LAYER-MODEL.md`、`PROMPTS.md`、`PLAN-2.5D-RIG.md`、`RENDERING-EFFECT-EVALUATION.md`、`DIY-UPLOAD.md` 均已归档到 [`docs/archive/`](docs/archive/README.md)（原因与现行替代见该索引）。历史条目原文保留不改，仅作当时发布记录。
 
+## 3.2.0 — 2026-11-12
+
+「P1 性能工程第二步：lazy outfit page（方案 C）+ rig 二进化（rig.bin）+ brotli 传输」
+
+### 核心结果
+- **首屏 transfer（lo tier，默认 maid 造型）**：chibi **≈1.47MiB → 0.96MiB**（rig.bin.br 133KiB + base 页 659KiB + maid 页 195KiB）；
+  girl **→ 0.80MiB**。**P1「首屏 ≤1MB」目标首次达成**（chibi 0.96MiB / girl 0.80MiB，均为构建产物实测）。
+  请求构成 = 2 个 JS + 1 个 rig + 2 个图集页；其余 3 个套装页首帧后空闲预取。
+- **rig 解析**：`JSON.parse`（1.6MB）中位 ≈24–29ms → `rig.bin` 零拷贝解码 **≈0.6–0.8ms**（Node 基准；浏览器同量级），
+  并消除 10 万+ 嵌套数组的解析分配/GC（DSH 侧边栏多插件场景内存压力同步下降）。
+- **质量**：图集仍 lossless WebP；拆分只改打包布局/UV，逐 drawable 纹理像素不变（见 QA 节「纹理像素级等价」）。
+
+### lazy outfit page（方案 C）：lo/hi 5 页图集
+- lo/hi 每身形图集由单页/两页改为 **5 页**：`atlas.webp`（base：身体/头发/脸/尾巴等常驻层）
+  + `atlas-2.webp`（maid）/ `atlas-3.webp`（hoodie-plaid）/ `atlas-4.webp`（hoodie-pleated）/ `atlas-5.webp`（sailor-plaid）。
+  每页 = 该套装 `{combo}-top` + `{combo}-skirt` 两个整层 drawable；页序/文件名固定，**每个 drawable 恰好归属一页**。
+- hi tier 同构：base 页 = 2x 主体/发/脸/tail + 常驻 1x `seam-fill`，4 个套装页 = 1x 整层服装。
+- 契约：`rig.atlases` 5 项（`rig.atlas`=第一页兼容旧消费者）、`m3.multiAtlas/atlasPages`、`product.pages`、
+  `drawables[].atlas/texture`；构建报告 `pages/atlases[]` 逐页 `pixelEqual`。
+- 构建：`build_prod.py` 新增 `build_atlas_pages()`（按 `outfits` 引用分组 + 构建期断言：每 drawable 恰好一页、每页非空）；
+  `build_2d5.py` `MAX_PAGES` 2→6，旧单页输入仍走历史路径。
+- runtime：`MAX_ATLASES` 2→6；`setShape(shape, { look })` 按当前造型选首屏页；`setLook` 缺页时**保留旧造型、
+  后台补页完成后自动应用**（不裸身/不闪错套装）；首帧后 ≈220ms 空闲预取其余页；`getAssetInfo()/getTier()`
+  暴露 `atlasPages / atlasesLoaded / atlasesPending`；释放场景/destroy 取消预取并删除已加载页纹理。
+- 首屏 `index.html` preload 改为 `rig.bin` + base 页（套装页交给 runtime）；client-config 资产清单版本 3→4
+  （lo：rig.bin + 5 页；hi：rig.bin + base 页）。
+
+### rig 二进化：feiyu-rig-binary v1
+- 新增二进制格式（`.scratch/p1-320/RIG-BINARY.md`）：8B magic + u32 headerLen + header JSON（rig 元数据 +
+  每 drawable `meshMeta`）+ 4 字节对齐 binary 段；positions/uvs/weights/deform **f32**、bones/indices **u16**（GL 原生类型，
+  渲染逐字节等价）、确定性、显式小端。
+- 构建期生成 `rig.bin`（chibi ≈0.96MiB raw / 60.6% of JSON）并 **Node brotli q11 预压缩 `rig.bin.br`**
+  （chibi 135,914B ≈133KiB）；`rig.json` 保留（工具/QA/回退）。
+- 运行时 `rig.bin` 优先加载、404/解码失败回退 `rig.json`（`toRuntimeRig` 归一成同一扁平 typed array 形状，
+  consumer 只认一种）；`uploadDrawable` 改扁平索引读取（DIY pack/JSON 回退统一归一，兼容不变）。
+- 新增 `tests/rig-binary.test.mjs`（4 个 rig roundtrip：非 mesh 字段 deepStrictEqual、逐值 `Math.fround`、确定性双跑
+  sha256、损坏输入/JSON 回退、体积/耗时诊断）。
+
+### brotli 静态传输
+- `lib/webserver.js`：支持 `Accept-Encoding: br`——**构建期 `.br` 预压缩产物优先**（mtime 保护防陈旧）、
+  缺省 q5 动态压缩 + size/mtime 进程内缓存、gzip 9 回退、`Vary: accept-encoding`；`.bin` 计入可压缩类型。
+- rig 首屏传输 gzip ≈285KiB → **brotli ≈133KiB**（q11 在请求期需 ~2.4s/1.6MB 太慢，故构建期一次生成）。
+
+### QA / 门禁
+- 资产契约测试改 5 页（页序/文件名/归属/base 不含 outfit 整层/每套装页恰 2 个整层；hi 2x/1x 页划分）；
+  预算门禁改为 **首屏 = rig 传输（`.br` 优先）+ base 页 + 默认套装页 ≤1.0MiB**（v3.1.1 基线 1.47MiB）。
+- 构建确定性双跑与官方 dist 逐字节比对扩展到 **rig.bin + 全部 5 页 atlas**；`.br` 用语义校验（解压==rig.bin，
+  避免 Node/libbrotli 版本差异造成假红）。
+- 视觉门禁：`renderLook` 等造型真正生效（懒加载页兜底）；资产哈希覆盖全部 5 页；
+  纹理像素级等价校验：v3.1.1 单页图集逐 drawable 裁切 vs v3.2.0 各页对应 drawable 裁切，**48/49 drawables × 2 身形
+  逐像素相等（0px 差异）**——即拆分不改变任何渲染纹理内容。
+- 结果：`npm run verify:full` **332 pass / 0 fail / 2 skip**（含 lo chibi 双跑确定性 + 官方 dist 逐字节一致（rig.json/rig.bin/5 页 atlas）、
+  hi chibi 双跑 md5 一致）；`visual:qa compare` **80/80 PASS、变更图 0 张**（资产 v25 / 页面 v28 基线重生成）；
+  `qa-load-timeline --shape both --dpr 2 --tier auto --assert` **PASS**（chibi firstDraw 2881ms / ready 2918ms、
+  girl firstDraw 1330ms / ready 1362ms，headless SwANGLE；不劣于 v3.1.1 的 2948/1343ms）；`npm run typecheck` PASS。
+  v3.1.1 → v3.2.0 纹理像素级等价：4 个 dist（lo chibi/girl、hi chibi/girl）逐 drawable 从旧图集裁切 vs 新图集裁切
+  **0px 差异**（48/49 drawables × 4；合计 lo 6.02M / hi 19.0M 像素）——拆分不改变任何纹理内容。
+  渲染层面（旧基线 vs 新基线截图对比）：54/80 张存在子像素级重采样差异，合计 5,973/22.6M px（0.026%）差异 >10/255、
+  最大通道差 25/255；来源是 UV 归一化到新页尺寸后的 5 位小数定点化误差（≤0.03px 采样位移，集中在 AA 边缘），
+  无结构/颜色/接缝变化。按门禁流程重生成基线后 `visual:qa compare` **80/80 PASS、0 变更图**（自洽）。
+  若未来要求「与旧基线 compare 直接通过」，需把 UV 定点精度从 1e-5 提到 1e-7（rig JSON 约 +60KB，rig.bin 不变）。
+- 资产版本 **v24→v25**、页面模块 **v27→v28**。
+
+### 已知限制 / 下一步
+- 首屏收益依赖 brotli（不支持 br 的旧浏览器回退 gzip 后 chibi ≈1.2MiB，仍低于 v3.1.1）。
+- 真机仍未测（D-008）；hi tier 首屏仍为后台升级（lo 先出帧不变）；其余遗留同 v3.1.1
+  （服装 hi 仍 1x D-005/P3、D-011 袖口 inpaint 白雾、D-010 皮肤亮度待确认等）。
+- P1 剩余：解码/上传 offload（createImageBitmap/Worker）、性能门禁进 CI（GitHub Actions）。
+
 ## 3.1.1 — 2026-11-12
 
 「P1 性能工程第一步：图集打包器升级（VRAM -36% / 上传量 -36%，像素零回归）」

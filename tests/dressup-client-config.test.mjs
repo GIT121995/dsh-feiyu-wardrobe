@@ -68,16 +68,16 @@ test('config.dressUp 不再有 render 字段（v2 2.5D-only）', () => {
 
 /* ---------------- client-config 端点 ---------------- */
 
-test('client-config：版本 3 + interaction（无 render 字段）+ 版本化资产清单 + no-store', async () => {
+test('client-config：版本 4 + interaction（无 render 字段）+ 版本化资产清单（rig.bin + 懒加载页）+ no-store', async () => {
 	assert.equal(DRESS_UP_CLIENT_CONFIG, `${DRESS_UP_ENTRY}client-config.json`);
-	assert.equal(DRESS_UP_CONFIG_VERSION, 3);
+	assert.equal(DRESS_UP_CONFIG_VERSION, 4);
 	const handler = makeHandler();
 	const res = await hit(handler, DRESS_UP_CLIENT_CONFIG);
 	assert.equal(res.statusCode, 200);
 	assert.match(res.headers['content-type'], /application\/json/);
 	assert.equal(res.headers['cache-control'], 'no-store');
 	const body = JSON.parse(String(res.body));
-	assert.equal(body.version, 3);
+	assert.equal(body.version, 4);
 	assert.equal('render' in body, false, 'v2 起不再下发渲染模式');
 	assert.deepEqual(body.interaction, {
 		enabled: true,
@@ -91,7 +91,10 @@ test('client-config：版本 3 + interaction（无 render 字段）+ 版本化�
 		version: expectedAsset,
 		base: `${DRESS_UP_ENTRY}art/2d5/`,
 		shapes: ['chibi', 'girl'],
-		files: { lo: ['rig.json', 'atlas.webp'], hi: ['rig.json', 'atlas.webp', 'atlas-2.webp'] },
+		files: {
+			lo: ['rig.bin', 'atlas.webp', 'atlas-2.webp', 'atlas-3.webp', 'atlas-4.webp', 'atlas-5.webp'],
+			hi: ['rig.bin', 'atlas.webp'],
+		},
 	});
 });
 
