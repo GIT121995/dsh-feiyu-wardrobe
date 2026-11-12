@@ -259,10 +259,18 @@ test('2.5D 资产体积预算：单身形 ≤3MB、双身形合计 ≤6MB、rig 
 		assert.ok(gzip.byteLength <= 400 * 1024, `${shape} rig gzip ${(gzip.byteLength / 1024).toFixed(0)}KB 超出预算`);
 	}
 	assert.ok(total <= 9 * 1024 * 1024, `2.5D 资产合计 ${(total / 1048576).toFixed(2)}MB 超出预算`);
-	// 首屏 payload（单身形，gzip rig + 图集）：应 ≤2MB 传输
+	// 首屏 payload（单身形，gzip rig + 图集）：v3.1.1 基线 ≈1.47MiB；锁 ≤1.6MiB 防回归
 	const chibiRig = readFileSync(join(ASSET_ROOT, 'chibi/rig.json'));
 	const firstScreen = gzipSync(chibiRig, { level: 9 }).byteLength + statSync(join(ASSET_ROOT, 'chibi/atlas.webp')).size;
-	assert.ok(firstScreen <= 3 * 1024 * 1024, `2.5D 首屏 payload ${(firstScreen / 1048576).toFixed(2)}MB 超出 3MB`);
+	assert.ok(firstScreen <= 1.6 * 1024 * 1024, `2.5D 首屏 payload ${(firstScreen / 1048576).toFixed(2)}MB 超 1.6MiB`);
+	const breakdown = Object.fromEntries(SHAPES.map((shape) => {
+		const rig = readFileSync(join(ASSET_ROOT, `${shape}/rig.json`));
+		return [shape, {
+			rigGzipKiB: Math.round(gzipSync(rig, { level: 9 }).byteLength / 1024),
+			atlasKiB: Math.round(statSync(join(ASSET_ROOT, `${shape}/atlas.webp`)).size / 1024),
+		}];
+	}));
+	assert.ok(breakdown.chibi.rigGzipKiB < breakdown.chibi.atlasKiB, '首屏应以图集为主（体积占比诊断）');
 });
 
 test('2.5D 资产无绝对路径/无构建机依赖（可移植到 npm 包）', () => {
@@ -314,7 +322,8 @@ test('2.5D 资产：显存估算与构建报告一致（含 mipmap）且 ≤40Mi
 		);
 		assert.equal(memory.texMiB, report.textureTotal.texMiB, `${shape} texMiB 与构建报告不一致`);
 		assert.equal(memory.texMiBwithMipmap, report.textureTotal.texMiBwithMipmap, `${shape} mipmap texMiB 不一致`);
-		assert.ok(memory.texMiBwithMipmap <= 40, `${shape} mipmap 显存 ${memory.texMiBwithMipmap}MiB 超出 40MiB`);
+		// v3.1.1 MaxRects 紧凑图集：lo tier mipmap 显存实测 ~16.8MiB（v3.1.0 为 25.7–26.4MiB）；锁 ≤20MiB
+		assert.ok(memory.texMiBwithMipmap <= 20, `${shape} mipmap 显存 ${memory.texMiBwithMipmap}MiB 超出 20MiB`);
 		assert.equal(report.atlas.pixelEqual, true, `${shape} pixelEqual 应为 true`);
 	}
 });
@@ -370,6 +379,7 @@ test('v2.6.1 hi tier：2 页图集可被 runtime 契约消费（normalize/resolv
 		// 3) 显存估算与构建报告一致（2x 页占大头，仍在预算内）
 		const memory = estimateTextureMemory(normalized.atlases.map((atlas) => ({ width: atlas.width, height: atlas.height })), false);
 		assert.equal(memory.texMiB, report.textureTotal.texMiB, `${shape}-hi texMiB 与构建报告不一致`);
-		assert.ok(memory.texMiB > 40 && memory.texMiB <= 96, `${shape}-hi texMiB 应明显高于 lo 且在预算内：${memory.texMiB}`);
+		// v3.1.1：hi tier mipmap 显存实测 54–56MiB（v3.1.0 ~65）；锁 texMiB ≤60
+		assert.ok(memory.texMiB > 40 && memory.texMiB <= 60, `${shape}-hi texMiB 应明显高于 lo 且在预算内：${memory.texMiB}`);
 	}
 });

@@ -2,6 +2,25 @@
 
 > 文档路径说明（W0，2026-11-05）：下文历史条目中的 `docs/dress-up/LAYER-ARCHITECTURE.md`、`LAYER-MODEL.md`、`PROMPTS.md`、`PLAN-2.5D-RIG.md`、`RENDERING-EFFECT-EVALUATION.md`、`DIY-UPLOAD.md` 均已归档到 [`docs/archive/`](docs/archive/README.md)（原因与现行替代见该索引）。历史条目原文保留不改，仅作当时发布记录。
 
+## 3.1.1 — 2026-11-12
+
+「P1 性能工程第一步：图集打包器升级（VRAM -36% / 上传量 -36%，像素零回归）」
+
+### 改动
+- `tools/art/build_2d5.py::pack_rects` 从「按行 best-fit」升级为**有界 MaxRects-BSSF 确定性打包**：先按内容面积估箱高、逐级放宽直到放得下，返回实际使用边界；纹理不旋转，UV 精度/契约不变。
+- 效果（构建报告实测）：
+  - lo 图集面积 chibi 5.18M→3.29M px、girl 5.05M→3.32M px；打包利用率 **58–60% → 92%**；
+  - **lo mipmap 显存 26.4/25.7 → 16.8/16.9 MiB（-36%）**；hi tier 两页图集 mipmap 显存 **~65 → 54–56MiB（-15–17%）**；
+  - 纹理上传像素量同比例下降 → 首帧上传/移动端内存压力下降；
+  - 图集文件字节基本不变（1217→1222KiB / 1041→1049KiB；透明空白区压缩几乎免费），首屏 transfer 仍 ≈1.47MiB。
+- 视觉：`npm run visual:qa -- --mode compare` 与 v3.1.0 基线对比 **0 张变更图（80/80 通过）**；随后按流程重生成 baseline（资产 v24 / 页面 v27）。
+- 预算门禁收紧：lo mipmap 显存 **≤20MiB**、hi tier **≤60MiB**、首屏 payload **≤1.6MiB**（并输出 rig/atlas 占比诊断）；构建确定性（双跑 md5）由 `verify:full` 继续校验。
+- 资产版本 **v23→v24**、页面模块 **v26→v27**（rig/atlas 内容因打包布局变化必须递增）。
+
+### 已知 / 下一步（P1 剩余）
+- 首屏 transfer ≤1MB 目标**未达**（仍 ~1.47MiB，其中 atlas 1.2MiB）。降 transfer 需要做产品/质量取舍：lo 纹理 0.5x（sidebar 显示足够，立绘卡需 hi 按需加载）/ lo 用 lossy WebP / lazy outfit page（首屏只加载 base+当前套装）——待拍板后作为 3.2.0 处理。
+- rig.json 二进化（1.6MB JSON→binary，parse 提速）仍在 P1 待办。
+
 ## 3.1.0 — 2026-11-12
 
 「首屏加载体验 + 用户反馈三缺陷修复（加载态/lo 先出图、颈部/下巴、服装手心残留）」

@@ -42,6 +42,7 @@ import argparse
 import gzip
 import hashlib
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -126,35 +127,80 @@ def load_texture(texdir: Path, d: dict, trim_alpha: bool = False) -> tuple[Image
     return img, name
 
 
-def pack_rects(sizes: list[tuple[int, int]], pad: int, max_width: int) -> tuple[int, int, list[tuple[int, int]]]:
-    """Best-fit decreasing height 打包（比货架省 ~5% 图集面积）。
-
-    按高度降序逐块放置：在已有「行」里选一个高度足够、剩余高度浪费最小的行；
-    放不下则新开一行。返回图集宽高与每块左上角（含 padding 的外框）。
-    """
-    order = sorted(range(len(sizes)), key=lambda i: (-sizes[i][1], -sizes[i][0], i))
-    rows: list[list[int]] = []          # [y, height, usedWidth]
-    pos: list[tuple[int, int]] = [(0, 0)] * len(sizes)
+def _maxrects_pack(sizes: list[tuple[int, int]], pad: int, bin_w: int, bin_h: int):
+    """MaxRects-BSSF 单箱打包；放不下返回 None。确定性：面积→高→宽→原下标排序 + 定序空闲框。"""
+    n = len(sizes)
+    items = [(w + 2 * pad, h + 2 * pad) for (w, h) in sizes]
+    order = sorted(range(n), key=lambda i: (-items[i][0] * items[i][1], -items[i][1], -items[i][0], i))
+    free: list[tuple[int, int, int, int]] = [(0, 0, bin_w, bin_h)]
+    pos: list[tuple[int, int]] = [(0, 0)] * n
     for i in order:
-        w, h = sizes[i]
-        ww, hh = w + 2 * pad, h + 2 * pad
+        ww, hh = items[i]
         best = None
-        for row in rows:
-            if row[2] + ww > max_width or hh > row[1]:
+        for fx, fy, fw, fh in free:
+            if ww > fw or hh > fh:
                 continue
-            waste = row[1] - hh
-            if best is None or waste < best[0]:
-                best = (waste, row)
+            lw, lh = fw - ww, fh - hh
+            key = (min(lw, lh), max(lw, lh), fy, fx)
+            if best is None or key < best[0]:
+                best = (key, fx, fy)
         if best is None:
-            row = [sum(r[1] for r in rows), hh, 0]
-            rows.append(row)
-        else:
-            row = best[1]
-        pos[i] = (row[2] + pad, row[0] + pad)
-        row[2] += ww
-    width = max((r[2] for r in rows), default=0)
-    height = sum(r[1] for r in rows)
+            return None
+        _, x, y = best
+        pos[i] = (x + pad, y + pad)
+        split: list[tuple[int, int, int, int]] = []
+        for fx, fy, fw, fh in free:
+            if x >= fx + fw or x + ww <= fx or y >= fy + fh or y + hh <= fy:
+                split.append((fx, fy, fw, fh))
+                continue
+            if x > fx:
+                split.append((fx, fy, x - fx, fh))
+            if x + ww < fx + fw:
+                split.append((x + ww, fy, fx + fw - (x + ww), fh))
+            if y > fy:
+                split.append((fx, fy, fw, y - fy))
+            if y + hh < fy + fh:
+                split.append((fx, y + hh, fw, fy + fh - (y + hh)))
+        pruned: list[tuple[int, int, int, int]] = []
+        for a in split:
+            ax, ay, aw, ah = a
+            contained = False
+            for b in split:
+                if b is a:
+                    continue
+                bx, by, bw, bh = b
+                if ax >= bx and ay >= by and ax + aw <= bx + bw and ay + ah <= by + bh:
+                    contained = True
+                    break
+            if not contained:
+                pruned.append(a)
+        free = pruned
+    width = max(pos[i][0] - pad + items[i][0] for i in range(n))
+    height = max(pos[i][1] - pad + items[i][1] for i in range(n))
     return width, height, pos
+
+
+def pack_rects(sizes: list[tuple[int, int]], pad: int, max_width: int) -> tuple[int, int, list[tuple[int, int]]]:
+    """有界 MaxRects-BSSF 确定性图集打包（v3.1.1）。
+
+    v3.0 的「按行 best-fit」利用率仅 ~58–60%（行高对齐浪费大）；本实现：
+      1) 估一个刚够的箱高 H = 内容面积(含 padding)×1.02 / max_width，从该高度开始试；
+      2) 用 MaxRects-BSSF 在 max_width×H 箱内打包；放不下则 H 递增 10% 重试（≤MAX_SIDE）；
+      3) 返回实际使用边界（宽/高通常接近正方形，面积≈内容面积，利用率 ~92%）。
+    确定性：排序/空闲框选择/切分顺序全部固定；纹理不旋转，UV 契约与旧打包保持一致。
+    """
+    n = len(sizes)
+    if n == 0:
+        return 0, 0, []
+    total = sum((w + 2 * pad) * (h + 2 * pad) for (w, h) in sizes)
+    bin_h = max(h + 2 * pad for (w, h) in sizes)
+    bin_h = max(bin_h, int(math.ceil(total * 1.02 / max_width)))
+    while bin_h <= MAX_SIDE:
+        result = _maxrects_pack(sizes, pad, max_width, bin_h)
+        if result is not None:
+            return result
+        bin_h = int(bin_h * 1.1) + 1
+    raise SystemExit(f'图集打包失败：{n} 块放不进 {max_width}x{MAX_SIDE}（padding={pad}）')
 
 
 def round_floats(values: list, ndigits: int) -> list:

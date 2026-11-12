@@ -351,7 +351,7 @@ function buildPlan(options, context) {
 			commands: [
 				command('npm', ['publish', '--tag', 'rc', `--registry=${registry}`]),
 				// publish 后轮询 tarball 可达（registry 传播延迟，最多 ~60s）
-				command('bash', ['-lc', `for i in $(seq 1 20); do code=$(curl -s -o /dev/null -w '%{http_code}' '${tarball}'); echo "tarball HTTP $code (try $i/20)"; [ "$code" = 200 ] && exit 0; sleep 3; done; exit 1`]),
+				command('bash', ['-lc', `for i in $(seq 1 60); do code=$(curl -s -o /dev/null -w '%{http_code}' '${tarball}'); echo "tarball HTTP $code (try $i/60)"; [ "$code" = 200 ] && exit 0; sleep 5; done; exit 1`]),
 			],
 			rollback: `72h 内可撤回：npm unpublish ${PKG_NAME}@${target} --force --registry=${registry}；并撤销 tag（见上一步）。先确认 latest 未被 promote。`,
 		},
