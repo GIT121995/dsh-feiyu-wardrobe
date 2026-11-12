@@ -65,6 +65,15 @@
   若未来要求「与旧基线 compare 直接通过」，需把 UV 定点精度从 1e-5 提到 1e-7（rig JSON 约 +60KB，rig.bin 不变）。
 - 资产版本 **v24→v25**、页面模块 **v27→v28**。
 
+### 版本与发布
+- 资产版本 **v24→v25**、页面模块 **v27→v28**、client-config 协议版本 **3→4**。
+- **main `42d626f`**（功能/资产提交）；tag **`v3.2.0`**；npm **`dsh-feiyu-wardrobe@3.2.0`**（`rc` 先行 → 验证后 promote `latest`）；
+  **GitHub Release v3.2.0**（notes 取自本条）；本机 profile 升级 **3.2.0** + `restart-dsh.sh --deferred 240` 重启生效；
+  重启后线上回归：页面 `?v=28` / 资产 `?v=25`、`rig.bin`/`rig.bin.br`/5 页图集全部 200 且带 `br`/`immutable`、
+  profile=3.2.0。
+- npm 包：**15.9MB** tarball / 24.7MB unpacked / **110 files**（新增 4×`rig.bin` + 4×`rig.bin.br`、
+  `rig-binary.js`、`tests/rig-binary.test.mjs`、`tools/art/rig_binary.py`；`rig.json` 保留作为工具/回退资产）。
+
 ### 已知限制 / 下一步
 - 首屏收益依赖 brotli（不支持 br 的旧浏览器回退 gzip 后 chibi ≈1.2MiB，仍低于 v3.1.1）。
 - 真机仍未测（D-008）；hi tier 首屏仍为后台升级（lo 先出帧不变）；其余遗留同 v3.1.1
