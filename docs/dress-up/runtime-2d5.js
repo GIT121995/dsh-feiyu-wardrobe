@@ -58,8 +58,8 @@ import {
 	LEGACY_OUTFIT_SLOTS,
 	unregisterDiyPack,
 	visibleDrawables,
-} from './runtime-2d5-core.js?v=28';
-import { decodeRigBinary, toRuntimeRig } from './rig-binary.js?v=28';
+} from './runtime-2d5-core.js?v=29';
+import { decodeRigBinary, toRuntimeRig } from './rig-binary.js?v=29';
 
 /** 单个 spring 链节点相对 rest 的最大偏移（px，安全包络，POC 同值）。 */
 const CHAIN_OFFSET_LIMIT = 42;
@@ -1324,6 +1324,10 @@ async function loadSceneAtTier(rt, shape, tier, options = {}) {
 	const assetQuery = rt.assetVersion ? `?v=${encodeURIComponent(rt.assetVersion)}` : '';
 	const rigUrl = `${rt.assetRoot}${assetDir}/rig.json${assetQuery}`;
 	reportLoadProgress(rt, { shape, tier, phase: 'rig', index: 1, total: 4, upgrade });
+	// v3.2.1 首屏提速：base 页（第 0 页文件名恒为 atlas.webp）与 rig 并行开始 fetch+解码 offload；
+	// 若该页不存在/加载失败，这里吞掉错误，后续按正常页加载路径报错（不改变失败语义）。
+	const basePagePromise = beginTextureImageLoad(`${rt.assetRoot}${assetDir}/atlas.webp${assetQuery}`, rt)
+		.catch(() => null);
 	// v3.2.0 rig 二进化：rig.bin（二进制，零拷贝解码）优先；404/解码失败回退 rig.json
 	const rigAsset = await loadRigAsset(rt, assetDir, assetQuery, rigUrl);
 	const rig = rigAsset.rig;
@@ -1355,7 +1359,8 @@ async function loadSceneAtTier(rt, shape, tier, options = {}) {
 			const def = atlasSet.atlases[pageIndex];
 			stageIndex += 1;
 			reportLoadProgress(rt, { shape, tier, phase: `atlas${stageIndex - 1}`, index: stageIndex, total: totalStages, upgrade });
-			await loadAtlasPage(rt, shape, rig, def, assetDir, assetQuery, atlases, atlasByIndex);
+			const preloaded = pageIndex === 0 && def.file === 'atlas.webp' ? basePagePromise : undefined;
+			await loadAtlasPage(rt, shape, rig, def, assetDir, assetQuery, atlases, atlasByIndex, preloaded);
 		}
 		rig.atlasDefs = atlasSet.atlases.map((def) => ({ ...def }));
 		rig.atlasByIndex = atlasByIndex;
@@ -1463,13 +1468,15 @@ const ATLAS_PREFETCH_DELAY_MS = 220;
  * @param {Map<number, any>} atlasByIndex
  * @returns {Promise<any>}
  */
-async function loadAtlasPage(rt, shape, scene, def, assetDir, assetQuery, atlases, atlasByIndex) {
+async function loadAtlasPage(rt, shape, scene, def, assetDir, assetQuery, atlases, atlasByIndex, preloadedImage) {
 	const atlasUrl = `${rt.assetRoot}${assetDir}/${def.file}${assetQuery}`;
-	const image = await loadImage(atlasUrl);
-	const width = def.width || image.naturalWidth;
-	const height = def.height || image.naturalHeight;
-	if (image.naturalWidth !== width || image.naturalHeight !== height) {
-		throw new Error(`图集尺寸不符：${atlasUrl} ${image.naturalWidth}x${image.naturalHeight} != ${width}x${height}`);
+	// v3.2.1：base 页可在 rig 加载期间并行预解码（preloadedImage 为 loadTextureImage 的 promise）
+	const loaded = preloadedImage ? await preloadedImage : await beginTextureImageLoad(atlasUrl, rt);
+	const image = loaded.image;
+	const width = def.width || loaded.width;
+	const height = def.height || loaded.height;
+	if (loaded.width !== width || loaded.height !== height) {
+		throw new Error(`图集尺寸不符：${atlasUrl} ${loaded.width}x${loaded.height} != ${width}x${height}`);
 	}
 	const atlas = {
 		id: def.id, file: def.file, index: def.index, url: atlasUrl, image,
@@ -1803,6 +1810,43 @@ async function hotSwapTier(rt, shape, result) {
 	rt.releaseMs[`${shape}_lo`] = destroyScene(rt, previous, { keepDiy: true });
 	scheduleAtlasPrefetch(rt, result.scene);
 	settleTierUpgrade(rt, 'ready', { loadMs: Math.round(result.loadMs), swapMs: Math.round(swapMs) });
+}
+
+/**
+ * 图集/纹理源尺寸（HTMLImageElement 用 naturalWidth；ImageBitmap 用 width）。
+ * @param {any} image
+ * @returns {{ width: number, height: number }}
+ */
+function textureImageSize(image) {
+	const width = Number(image && (image.naturalWidth || image.width)) || 0;
+	const height = Number(image && (image.naturalHeight || image.height)) || 0;
+	return { width, height };
+}
+
+/**
+ * v3.2.1 首屏解码/上传优化：启动图集的 **fetch + 异步 decode** 并返回 promise，调用方可提前
+ * 并行发起（base 页与 rig.bin 同时下载/解码），等需要上传纹理时再 await，从而把图集网络+解码
+ * 延迟藏进 rig 加载/网格上传耗时里。
+ *
+ * 为什么不用 createImageBitmap：实测（2026-11-13，headless SwANGLE）它虽然能搬到 worker 解码，
+ * 但预乘（premultiply）舍入路径与 HTMLImage + UNPACK_PREMULTIPLY_ALPHA_WEBGL 不同，导致
+ * 80 张视觉基线中 16 张出现 ≤17/255 的亚阈值像素差异（约 0.008% 像素）；与项目「像素零回归」
+ * 纪律冲突，故本版选择保持原解码/上传路径不变，只做并行化（像素逐字节不变）。
+ *
+ * @param {string} url
+ * @param {any} rt
+ * @returns {Promise<{ image: HTMLImageElement, width: number, height: number, decodeMs: number, method: 'htmlImage' }>}
+ */
+async function beginTextureImageLoad(url, rt) {
+	const t0 = performance.now();
+	const image = await loadImage(url);
+	const decodeMs = performance.now() - t0;
+	if (rt && rt.timeline) {
+		rt.timeline.textureDecodeMs = (rt.timeline.textureDecodeMs || 0) + decodeMs;
+		rt.timeline.textureDecodeCount = (rt.timeline.textureDecodeCount || 0) + 1;
+	}
+	const size = textureImageSize(image);
+	return { image, width: size.width, height: size.height, decodeMs, method: 'htmlImage' };
 }
 
 /**

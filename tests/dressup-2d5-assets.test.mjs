@@ -219,7 +219,7 @@ test('2.5D rig：drawable/mesh 数据完整（顶点/UV/权重/索引/图集矩�
 				const py = v * atlasH;
 				assert.ok(px >= ax - 0.51 && px <= ax + tw + 0.51, `${label} uv x 不在图集矩形内`);
 				assert.ok(py >= ay - 0.51 && py <= ay + th + 0.51, `${label} uv y 不在图集矩形内`);
-				assert.ok(decimals(mesh.uvs[i][0]) <= 5 && decimals(mesh.uvs[i][1]) <= 5, `${label} uv 精度应 ≤5 位`);
+				assert.ok(decimals(mesh.uvs[i][0]) <= 7 && decimals(mesh.uvs[i][1]) <= 7, `${label} uv 精度应 ≤7 位（v3.2.1 UV 定点 1e-7）`);
 				assert.ok(decimals(mesh.positions[i][0]) <= 2 && decimals(mesh.positions[i][1]) <= 2, `${label} position 精度应 ≤2 位`);
 				const weights = mesh.weights[i];
 				assert.equal(weights.length, 4, `${label} 每顶点 4 权重`);

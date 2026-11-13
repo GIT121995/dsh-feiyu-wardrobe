@@ -27,7 +27,7 @@
 | D-010 | 素体皮肤整体亮度较 v2.5 提高（脚/腿/手臂统一到母版肤色） | P2 | open（v2.6.0 已知，待用户确认是否回调） | v2.6.0 | 1x 600–900px 显示下皮肤不显「发白/发灰」；如回调，视觉门禁对比通过 | 视觉门禁 1x 全身 + 用户确认；Lab 系数见 v26-art 报告 | v2.6 用户确认 / v2.6.x |
 | D-018 | 领口露出的「脖子」是服装上烘入的假脖子皮肤（头动时颈不随头；真素体颈不可见） | P1 | **fixed（v3.0.0）** | v2.2.0–v2.7.0（cutout 分件起） | 全部 8 套服装贴图（top/bottom）烘入皮肤像素=0；运行时头动 ±20° 下颈部随头动（owner=body-head）；领口内可见真实素体颈部与锁骨；`visual:qa` `neck-2x` 无假脖子边界/双色块 | `tests/garment-hygiene.test.mjs`（v3 dist 结构 + 贴图 SkinRule 像素=0 + alpha 孔洞）、`npm run visual:qa` neck-2x、runtime 颈部 owner 图检查 | v3.0.0 paper-doll 整层重构（Phase 0/1；8 套裁切重绘、假脖子清除） |
 | D-019 | 露真实素体颈部后原画重阴影+肌腱亮条，用户反馈「太黑 / 两根肉须 / 没下巴 / 与脸色差」 | P1 | **fixed（v3.0.0）** | v3.0 开发期（G1 反馈） | 颈部无肌腱竖条/肉须/重阴影；下巴用**细线稿**定义（不加投影带；线沿原画下巴轮廓、两端渐隐）；颈肤色与脸连续（Lab ΔL≤6、Δa/Δb≤3）；完全无阴影档（w6）已否决（丢下巴）；lo/hi 双 tier 一致 | `visual:qa` `neck-2x` 基线与 compare；`tests/garment-hygiene.test.mjs`；素体资产补丁 `art/body-fix/{shape}/neck-overlay.png`（W8：AI 局部重绘 + 色相匹配脸 85%） | v3.0.0 素体颈部 overlay（Lead 选定 W8；seed 4502/4602） |
-| D-020 | v3.2.0 lazy 图集拆分引入 UV 子像素重采样差异（与 v3.1.1 旧基线 compare 会超阈值） | P3 | open（已文档化） | v3.2.0 | 若要求「旧基线 compare 直接通过」：UV 精度 1e-5→1e-7 后重跑旧基线 diff，阈值内（1x ≤0.020%、2x ≤0.10%）；否则接受当前差异并保持基线重生成流程 | 旧基线离线 diff（`git show v3.1.1:docs/qa-baseline` vs 当前 jpg）+ `npm run visual:qa -- --mode compare`（须 80/80）；纹理等价校验脚本（逐 drawable 从新旧图集裁切 0px 差异） | v3.2.0 图集 5 页拆分/UV 重映射；v3.2.x 可选修复（rig JSON +≈60KB，rig.bin 不变） |
+| D-020 | v3.2.0 lazy 图集拆分引入 UV 子像素重采样差异（与 v3.1.1 旧基线 compare 会超阈值） | P3 | fixing（v3.2.1 UV 1e-5→1e-7；旧基线 compare 仍非零，流程=重生成基线） | v3.2.0 | 若要求「旧基线 compare 直接通过」：UV 精度 1e-5→1e-7 后重跑旧基线 diff，阈值内（1x ≤0.020%、2x ≤0.10%）；否则接受当前差异并保持基线重生成流程 | 旧基线离线 diff（`git show v3.1.1:docs/qa-baseline` vs 当前 jpg）+ `npm run visual:qa -- --mode compare`（须 80/80）；纹理等价校验脚本（逐 drawable 从新旧图集裁切 0px 差异） | v3.2.0 图集 5 页拆分/UV 重映射；**v3.2.1 已把 UV 定点收紧到 1e-7**（采样位移 ≤0.013/0.014px；旧基线 JPEG diff 5973→4811px、-19%，仍非零：v3.1.1 基线自身带 1e-5 量化误差 + JPEG 放大；rig.json +63–66KB，rig.bin/首屏不变） |
 
 ## v2.6 发版前必查
 
@@ -50,7 +50,7 @@
 3. **D-010 / D-011**：D-010 皮肤亮度仍待用户确认；D-011 袖口 inpaint 白雾 2x 下仍可能轻微可见——两者均保留在 CHANGELOG「已知限制」。
 4. 视觉门禁 baseline 随页面 v23 / 资产 v19 更新（lo 像素应与 v2.6.0 一致），`--mode compare` 必须 PASS 后再发版。
 
-## v3.1.0–v3.2.0 发版前必查（2026-11-12 / 11-13）
+## v3.1.0–v3.2.1 发版前必查（2026-11-12 / 11-13）
 
 1. **视觉门禁**：资产/页面版本变更必须 `--mode baseline` 重生成后 `--mode compare` 80/80 PASS
    （v3.1.1 资产 v24/页面 v27；v3.2.0 资产 v25/页面 v28）；新增/变更区域要同步 `docs/qa-baseline/manifest.json`。
@@ -61,7 +61,12 @@
 4. **首屏预算**：`tests/dressup-2d5-assets.test.mjs` 断言 首屏（rig 传输 + base 页 + 默认套装页）≤1.0MiB；
    v3.2.0 实测 chibi 0.96MiB / girl 0.80MiB。
 5. **D-005 / D-008 / D-010**：服装仍 1x（hi 套装页 1x）、真机未测、皮肤亮度待用户确认——发布说明必须保留三项。
-6. 发版流程用 `scripts/release.mjs`（8 步，rc→promote latest；deferred 重启会打断当前会话，重启后按 HANDOFF §30.3 取 token 复测）。
+6. **UV 定点**（v3.2.1）：`PRECISION['uvs']=7`；重建 dist 后 `rig.json` 会变长（+63–66KB），`rig.bin`/首屏不变；
+   UV 精度断言在 `tests/dressup-2d5-assets.test.mjs`（≤7 位）。
+7. 发版流程用 `scripts/release.mjs`（8 步，rc→promote latest；deferred 重启会打断当前会话，重启后按 HANDOFF §30.3 取 token 复测）。
+8. **CI**（v3.2.1 暂缓，随 3.2.2）：`.github/workflows/verify.yml` 已就绪（本地模拟 329 pass/0 fail/5 skip），
+   但 GitHub OAuth App token 缺 `workflow` scope 无法推送；`gh auth refresh -h github.com -s workflow` 后补提交。
+   发版前本地仍必须 `verify:full`（构建确定性/官方 dist）+ visual:qa + qa:load。
 
 ## 与视觉门禁的关系
 
@@ -80,3 +85,4 @@
 - 2026-11-12（v3.1.0）：D-019 复开并再修（overlay 收窄到真实颈轮廓 + girl 提亮/下颌线软化）；新增服装手心残留修复（8 套 16 层，纳入 garment 检查）；D-015/D-018 保持 fixed。
 - 2026-11-12（v3.1.1）：无新增缺陷；图集打包 MaxRects-BSSF（利用率 92%、lo 显存 -36%），视觉 compare 0 变更图。
 - 2026-11-13（v3.2.0）：新增 **D-020**（lazy 5 页图集拆分引入 UV 子像素重采样差异；P3，open，已文档化；纹理逐 drawable 0px 等价）；D-005 关联备注 4.0 服装/配饰 2x 一并决策；D-008 真机仍未测。
+- 2026-11-13（v3.2.1）：D-020 改 **fixing**——UV 定点 1e-5→1e-7（采样位移 ≤0.013/0.014px；旧基线 JPEG diff 5973→4811px、-19%，仍非零；流程=版本变更后重生成基线）；首屏 base 页解码与 rig 并行（像素零变化；createImageBitmap 方案因预乘舍入差异被否决）；性能门禁进 CI。

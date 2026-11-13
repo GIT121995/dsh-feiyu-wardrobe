@@ -1,7 +1,7 @@
 # 4.0 槽位底座（Slot System）执行计划
 
 > 状态：**Phase 0 计划稿（2026-11-13）**，未开工；新会话按本文档推进。
-> 基线：v3.2.0（main `e1666eb`，tag `v3.2.0`，资产 v25 / 页面 v28）。
+> 基线：v3.2.1（tag `v3.2.1`，资产 v26 / 页面 v29；v3.2.0 的 lazy 5 页 + rig.bin + brotli 不变）。
 > 关联：[CHANGELOG](../CHANGELOG.md) · [2.5D-RUNTIME](dress-up/2.5D-RUNTIME.md) · [QA-REGISTRY](QA-REGISTRY.md) · [ART 管线](../tools/art/README.md)
 > 备注：`.scratch/` 不计入仓库；本文件是 4.0 的唯一执行计划入口。
 
@@ -33,7 +33,7 @@
 | 图集页 | **写死 5 页**：`base` + `maid`/`hoodie-plaid`/`hoodie-pleated`/`sailor-plaid`；`build_prod.build_atlas_pages()` 按 `rig.outfits` 引用分组；每页文件名 `atlas.webp` / `atlas-2..5.webp` |
 | 运行时页选择 | `MAX_ATLASES=6`；`collectLookAtlasIndices(rig, look)`（base 页恒选 + look 用到的套装页）；首帧后 220ms 空闲预取其余页；`setLook` 缺页时延迟应用 |
 | rig 传输 | `rig.bin`（feiyu-rig-binary v1，flat-f32 零拷贝）+ `rig.bin.br`（构建期 q11）；JSON 回退 |
-| 页面/资产版本 | 页面 `?v=28`、资产 `?v=25`（必须随 dist/页面变更递增） |
+| 页面/资产版本 | 页面 `?v=29`、资产 `?v=26`（必须随 dist/页面变更递增；v3.2.1 起 UV 定点 1e-7） |
 | 视觉门禁 | 2 身形 × 5 造型 × (full-1x + 7 个 2x 区域) = 80 张；区域由 rig 骨骼/rect 推导 |
 
 **结论**：4.0 的「多槽位」会同时撞上两处写死设计：`resolveLook` 的 OUTFIT_SLOTS 语义、以及

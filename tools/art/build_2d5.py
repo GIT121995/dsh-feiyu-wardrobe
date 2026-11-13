@@ -56,8 +56,9 @@ HERE = Path(__file__).resolve().parent          # <repo>/tools/art
 ROOT = HERE.parent.parent                       # <repo>
 DEFAULT_OUT = ROOT / 'docs' / 'dress-up' / 'art' / '2d5'
 
-# 定点精度：positions 0.01px、uvs 1e-5（≈0.006px@598px 纹理）、weights 1e-4、deform 1e-3。
-PRECISION = {'positions': 2, 'uvs': 5, 'weights': 4, 'deform': 3, 'skeleton': 2}
+# 定点精度：positions 0.01px、uvs 1e-7（≈0.0001px@1350px 纹理；v3.2.1 从 1e-5 收紧，
+# 消除图集拆页后 UV 重置化引入的亚像素重采样差异，见 CHANGELOG 3.2.1 / D-020）、weights 1e-4、deform 1e-3。
+PRECISION = {'positions': 2, 'uvs': 7, 'weights': 4, 'deform': 3, 'skeleton': 2}
 PAD = 2                  # 图集每 drawable 四周透明 padding（px）
 MAX_WIDTH = 2048         # 单页图集最大宽度（GL ES 3.0 最低保证 2048；cutout 页可 --max-width 4096）
 MAX_SIDE = 4096          # 单页图集最大边长（宽/高；SPEC 约束）

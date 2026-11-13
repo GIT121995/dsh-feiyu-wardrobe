@@ -2,6 +2,52 @@
 
 > 文档路径说明（W0，2026-11-05）：下文历史条目中的 `docs/dress-up/LAYER-ARCHITECTURE.md`、`LAYER-MODEL.md`、`PROMPTS.md`、`PLAN-2.5D-RIG.md`、`RENDERING-EFFECT-EVALUATION.md`、`DIY-UPLOAD.md` 均已归档到 [`docs/archive/`](docs/archive/README.md)（原因与现行替代见该索引）。历史条目原文保留不改，仅作当时发布记录。
 
+## 3.2.1 — 2026-11-13
+
+「3.2.0 收尾补丁：首屏解码并行化 + UV 定点精度 1e-5→1e-7（性能门禁 CI 因 GitHub token scope 暂缓）」
+
+### 改动
+- **首屏解码并行化**（`docs/dress-up/runtime-2d5.js`）：base 页图集（第 0 页文件名恒为 `atlas.webp`）
+  在 `rig.bin` 加载/网格上传期间**并行 fetch + 异步 decode**（新 `beginTextureImageLoad()` 在
+  `loadSceneAtTier` 入口即启动，需上传时再 await），把 base 页网络+解码延迟藏进 rig 加载耗时；
+  `rt.timeline.textureDecodeMs/textureDecodeCount` 记录解码耗时供 QA 归因。
+  渲染/上传路径保持原样（HTMLImage + `UNPACK_PREMULTIPLY_ALPHA_WEBGL`）→ **像素零变化**
+  （`visual:qa compare` 80/80、变更图 0 张）。
+- **评估并否决 `createImageBitmap` 解码 offload**：虽然可把解码搬到 worker，但其 premultiply
+  舍入路径与现有管线不同——实测 80 张基线中 **16 张出现 ≤17/255 的亚阈值像素差异**（约 0.008% 像素），
+  与项目「像素零回归」纪律冲突，本版不采用；若后续要 worker 解码，需先统一预乘口径并重立基线。
+- **性能门禁进 CI（本次暂缓，文件已就绪）**：`.github/workflows/verify.yml` 内容已完成并由本地模拟验证
+  （无 `.cache/assets-src`：329 pass / 0 fail / 5 skip），但推送被 GitHub **OAuth App token scope** 挡住
+  （当前 token scopes: `gist, read:org, repo`，缺 `workflow`；SSH key 未注册），故本版**不含** CI 文件；
+  需在 VPS 执行 `gh auth refresh -h github.com -s workflow` 后随下个补丁（3.2.2）提交。
+- **UV 定点精度 1e-5 → 1e-7**（`tools/art/build_2d5.py`，D-020）：v3.2.0 图集拆 5 页后 UV 归一化
+  到新页尺寸的 1e-5 定点化误差会让旧基线 compare 出现亚像素差异；收紧到 1e-7 后，相对 v3.2.0
+  的 UV 采样位移最大 **0.0129px（chibi）/ 0.0141px（girl）**，图集纹理**逐字节不变**。
+  重建 lo/hi dist：`rig.json` +66,370B（chibi）/+63,314B（girl）（仅 UV 小数位变长，`rig.bin` 二进制
+  大小不变、首屏传输不变：chibi **0.963MiB** / girl **0.795MiB**）。
+  诚实结论：旧基线 JPEG 离线 diff 从 5,973px 降到 4,811px（vs v3.1.1，-19%），但**仍不能**让
+  「旧基线直接 compare」全过——v3.1.1 基线自身也带 1e-5 量化误差，且 JPEG 压缩会放大亚像素差异；
+  发版流程仍是「版本变更后重生成基线 + compare」，D-020 记 `fixing` 并记录该量化结论。
+- 测试/文档：`tests/dressup-2d5-assets.test.mjs` UV 精度断言 ≤7 位；`tools/art/README.md`、
+  `docs/dress-up/2.5D-RUNTIME.md` 定点精度说明更新；QA-REGISTRY D-020 回填；README 版本/路线图更新。
+
+### QA / 版本
+- `npm run verify:full`：**332 pass / 0 fail / 2 skip**（含 lo/hi 双跑确定性 + 官方 dist 逐字节一致：
+  `rig.json`/`rig.bin`/全部 5 页 atlas）。
+- `npm run visual:qa`：基线重生成（资产 v26 / 页面 v29）后 `--mode compare` **80/80 PASS、变更图 0 张**。
+- `npm run qa:load`（3 次 × 2 身形，headless SwANGLE）：**全部 PASS**（结构契约：加载提示可见、
+  首帧 tier=lo、ready 不劣化）；firstDraw chibi 2724/3428/3791ms、girl 1278/1002/1736ms，
+  中位数与 v3.2.0 同环境基线（chibi ≈2.8–3.3s / girl ≈1.0–1.3s）在噪声范围内，**无回归**。
+- 资产版本 **v25→v26**、页面模块 **v28→v29**；`rig.bin.br`：chibi 135,717B / girl 128,023B（首屏不变）。
+- 发布：main 提交 + tag **`v3.2.1`** + npm `dsh-feiyu-wardrobe@3.2.1`（rc→latest）+ **GitHub Release v3.2.1**
+  + 本机 profile 升级 + deferred 重启 dsh。
+
+### 已知限制 / 下一步
+- 真机仍未测（D-008）；服装 hi 仍 1x（D-005）；D-020 残余（旧基线 compare 仍非零，流程=重生成基线）。
+- **性能门禁 CI 未随本版发布**：GitHub token 缺 `workflow` scope（gh OAuth App 限制）；`gh auth refresh -h github.com -s workflow`
+  后补 3.2.2（workflow 文件与本地模拟结果已备好）。
+- CI 计划只跑类型检查+单测，不含 Chrome 门禁与资产源包构建（仍需本地 `verify:full` + `visual:qa` + `qa:load`）。
+
 ## 3.2.0 — 2026-11-12
 
 「P1 性能工程第二步：lazy outfit page（方案 C）+ rig 二进化（rig.bin）+ brotli 传输」

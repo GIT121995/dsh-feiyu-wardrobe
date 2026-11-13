@@ -61,14 +61,14 @@
   }
  ],
  "rig": {
-  "bytes": 1557393,
-  "gzipBytes": 263939,
-  "sha256": "1047704e90f280f773758ada0b628ae96af4f3a1c19528c8d4959ba41743e5a7",
+  "bytes": 1620915,
+  "gzipBytes": 270466,
+  "sha256": "855db545a34b4ec2699c7381561d8478f642b4dcdf32a31436fc6c43c6ad2e0c",
   "binary": {
    "bytes": 945696,
-   "sha256": "0fe55ff82c4f542ce4bbcbdfbb8b791f83519da0f91911b4666a1fee9e294978",
-   "gzipBytes": 255013,
-   "brotliBytes": 128056
+   "sha256": "1f4bb0878d06e1f103eaedb6c8584fa8b6954310f3cce186edad09ec56b8fcb0",
+   "gzipBytes": 254862,
+   "brotliBytes": 128090
   }
  },
  "drawables": [

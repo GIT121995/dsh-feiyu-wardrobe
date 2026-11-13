@@ -107,7 +107,7 @@ python3 tools/art/build_2d5.py --rig <source rig.json> --texdir <纹理目录> \
   slot 引用的 drawable）、`maid`、`hoodie-plaid`、`hoodie-pleated`、`sailor-plaid`；
   文件名依次 `atlas.webp` / `atlas-2.webp` … `atlas-5.webp`。旧输入（无 `atlasPages` 且
   drawable 无 `atlas`）仍走历史单页路径，输出形状不变。
-- lossless WebP RGBA、逐 drawable 透明 padding、UV 重映射到图集空间、定点化（positions 0.01px / uvs 1e-5 / weights 1e-4）。
+- lossless WebP RGBA、逐 drawable 透明 padding、UV 重映射到图集空间、定点化（positions 0.01px / **uvs 1e-7（v3.2.1 起，原 1e-5）** / weights 1e-4）。
 - 默认 `--out docs/dress-up/art/2d5`（独立使用时；builder 会显式传 `--out`）。
 - 校验失败退出码 1；**不要手改产物**，改源/脚本后重跑。
 
@@ -138,9 +138,9 @@ python3 tools/art/build_2d5.py --rig <source rig.json> --texdir <纹理目录> \
 
 | 产物 | 用途 | chibi 实测 |
 |---|---|---|
-| `rig.json` | 工具/QA/运行时 JSON 回退（内容不变） | 1,658,242B / gzip ≈285KiB |
-| `rig.bin` | 运行时实际加载（header JSON + flat-f32 typed array 段） | 1,005,272B（raw 60.6% of JSON） |
-| `rig.bin.br` | 构建期 brotli q11 预压缩（首屏直接发） | 135,914B（≈133KiB） |
+| `rig.json` | 工具/QA/运行时 JSON 回退（v3.2.1 起 UV 1e-7，+≈66KB） | 1,724,612B / gzip ≈264KiB |
+| `rig.bin` | 运行时实际加载（header JSON + flat-f32 typed array 段） | 1,005,272B（大小与 v3.2.0 相同；UV 精度提升不改二进制长度） |
+| `rig.bin.br` | 构建期 brotli q11 预压缩（首屏直接发） | 135,717B（≈133KiB） |
 
 - 格式规范：`.scratch/p1-320/RIG-BINARY.md`；解码器 `docs/dress-up/rig-binary.js`（浏览器+Node 通用，
   零拷贝 flat typed array；JSON 回退 `toRuntimeRig` 归一成同一形状）。

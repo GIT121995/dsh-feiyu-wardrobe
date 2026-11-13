@@ -6,7 +6,7 @@
 
 > 把 DSH 的 token 账单，变成一条鱼的衣柜。
 
-当前版本：`3.2.0`（v3.2.0 **P1 性能工程第二步**：lazy outfit page（首屏只加载 base+当前套装图集页，其余套装页空闲预取）+ rig 二进化（rig.bin 二进制 rig，零拷贝解码 ≈0.7ms vs JSON.parse ≈25ms）+ brotli 传输（rig 首屏 285KiB→133KiB）；**首屏 transfer chibi 1.47MiB→0.96MiB / girl→0.80MiB，P1 ≤1MB 目标达成**；资产 v25 / 页面 v28。此前 v3.1.1 为图集打包 MaxRects-BSSF（显存 -36%、像素零回归），变更见 [CHANGELOG](CHANGELOG.md)）
+当前版本：`3.2.1`（v3.2.1 **3.2.0 收尾补丁**：首屏解码并行化（base 页图集与 rig.bin 并行 fetch+decode，像素零变化）+ UV 定点精度 1e-5→1e-7（消除图集拆页后的亚像素重采样差异；资产 v26 / 页面 v29）。此前 v3.2.0 为 P1 性能第二步（lazy 5 页图集 + rig.bin 二进制 + brotli，首屏 chibi 0.96MiB/girl 0.80MiB），变更见 [CHANGELOG](CHANGELOG.md)）
 
 **🆕 v2.0.0（2.5D-only，破坏性变更）**：装好插件后，DSH 侧边栏会出现 **🎀 换装间**，点开即玩——**左边舞台 + 右边衣柜**的经典换装布局；角色是**自研 WebGL2 2.5D 动态看板娘**（65 骨 / 15 弹簧链、LBS 蒙皮、头部跟随 / 歪头 / 点头、呼吸、发丝与裙摆物理、眨眼 / 笑眼 / 口型、双身形在线切换），**不再有 DOM 分层纸娃娃**（旧 DOM 渲染路径已按用户拍板删除）；**Q版 / 少女版双身形**，上衣 2（卫衣 / 水手服）× 下装 2（格纹 / 深蓝百褶）任意混搭 + 经典女仆长裙，另有 6 张场景背景、4 种粒子特效。养女儿向互动保留：摸摸头、喂食（消耗鱼粮）、心情、亲密度、每日问候、待机台词，与鱼粮经济联动。**需要浏览器支持 WebGL2**；不支持时换装间只显示文字提示（不做静态人物兜底），详见 `docs/dress-up/2.5D-RUNTIME.md`。**真机性能未测。**
 
@@ -237,6 +237,10 @@ npm run verify
 - **v2.6.1**：**高 DPI 2x 资产 hi tier**（DPR≥2 且设备达标自动启用 2x 素体/发/脸/尾 + 两页图集；弱机/DPR1 保持 1x；lo tier 像素零变化；资产 v19 / 页面 v23；量化：DPR2 脸/发/膝/手/腹 Laplacian 锐度 ×2.3–5.9、轮廓 IoU ≥0.997、显存 26→65MiB）
 - **v2.6.2**：修复 chibi 素体隐藏区黑色残留（母版去发残留被写进 body-head/body-torso，发丝摆动/手臂动作时露出黑块；builder 增加隐藏区近黑保护 + 回归测试）
 - **v2.7.0**：**下架白色高领毛衣**（高领不适配短脖子 chibi，用户拍板；上衣项 + `sweater-plaid`/`sweater-pleated` 两组合整体移除，production 组合降为 maid/hoodie-plaid/hoodie-pleated/sailor-plaid，rig drawables 69/70；旧存档 `top=sweater` 经 `normalizeState` 回退 `hoodie`，旧 v2.1 DIY pack 毛衣/裙子引用改映射 hoodie-plaid 部件；资产 v21 / 页面 v24）
+- **v3.2.1**：**3.2.0 收尾补丁**——首屏解码并行化（base 页图集在 rig.bin 加载/网格上传期间并行 fetch+异步 decode；
+  createImageBitmap 方案因预乘舍入产生亚阈值像素差异被否决，保持 HTMLImage 上传路径，像素零变化）
+  + UV 定点精度 1e-5→1e-7（消除 v3.2.0 图集拆页引入的亚像素重采样差异 D-020；
+  rig.bin 不变、rig.json 回退资产 +≈66KB；性能门禁 CI 因 GitHub token 缺 workflow scope 暂缓，待 3.2.2）；资产 v26 / 页面 v29
 - **v3.2.0**：**P1 性能工程第二步**——lazy outfit page（方案 C：lo/hi 各 5 页图集 = base + 4 套装配图页，首屏只拉 base+当前套装，其余页首帧后空闲预取；零质量损失）+ rig 二进化（`rig.bin` 二进制 rig：header JSON + flat-f32 typed array 段，零拷贝解码 ≈0.7ms vs JSON.parse ≈25ms，JSON 回退兼容）+ brotli 静态传输（`.br` 预压缩优先/gzip 回退；rig 首屏 285KiB→133KiB）；首屏 transfer chibi **1.47→0.96MiB** / girl **→0.80MiB**，P1 ≤1MB 目标达成；资产 v25 / 页面 v28）
 - **v3.1.1**：**P1 性能工程第一步**——图集打包 MaxRects-BSSF（利用率 92%、lo 显存 -36%、hi 显存 -15–17%、像素零回归；资产 v24 / 页面 v27）
 - **v3.1.0**：**首屏加载体验 + 三缺陷修复**（自动 hi 设备 lo 先出首帧、hi 后台热切换；加载态提示/预加载/immutable 缓存/后台 prefetch；artfix 颈部 overlay 收窄到真实颈轮廓（girl 提亮+软化下颌线）与 8 套服装 16 层手心残留清除；源包 assets-v4；资产 v23 / 页面 v26）
