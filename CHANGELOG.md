@@ -74,6 +74,16 @@
 - npm 包：**15.9MB** tarball / 24.7MB unpacked / **110 files**（新增 4×`rig.bin` + 4×`rig.bin.br`、
   `rig-binary.js`、`tests/rig-binary.test.mjs`、`tools/art/rig_binary.py`；`rig.json` 保留作为工具/回退资产）。
 
+### 发版后线上实测（2026-11-13 09:33，profile 3.2.0 / dsh restart 20:19:14 生效）
+- 页面：`/feiyu/dress-up/` → `app.js?v=28`、`feiyu-asset-version=25`。
+- `chibi/rig.bin?v=25` → **200 + `content-encoding: br` + `content-length: 135,914`**（= 构建期 `rig.bin.br`
+  字节数，预压缩产物直发）；`chibi/rig.json?v=25`（回退路径）→ br 动态压缩 180,022B。
+- `chibi/atlas.webp`/`atlas-2…5.webp`、`chibi-hi/rig.bin`/`rig.bin.br`/`atlas*.webp` 全部 200、字节数与 dist 一致、
+  `cache-control: public, max-age=31536000, immutable`。
+- headless 实机页检查（Playwright + SwiftShader，真实宿主路由）：**0 pageerror / 0 console error**；首帧 3040ms；
+  首帧后懒加载全部就绪（`atlasesLoaded=[base,maid,hoodie-plaid,hoodie-pleated,sailor-plaid]`、`atlasesPending=[]`）。
+- npm `dist-tags` 复核：`latest=3.2.0`、`rc=3.2.0`；GitHub Release `v3.2.0` 已发布（notes 取自本条目）。
+
 ### 已知限制 / 下一步
 - 首屏收益依赖 brotli（不支持 br 的旧浏览器回退 gzip 后 chibi ≈1.2MiB，仍低于 v3.1.1）。
 - 真机仍未测（D-008）；hi tier 首屏仍为后台升级（lo 先出帧不变）；其余遗留同 v3.1.1
