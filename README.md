@@ -241,8 +241,9 @@ npm run verify
 - **v3.1.1**：**P1 性能工程第一步**——图集打包 MaxRects-BSSF（利用率 92%、lo 显存 -36%、hi 显存 -15–17%、像素零回归；资产 v24 / 页面 v27）
 - **v3.1.0**：**首屏加载体验 + 三缺陷修复**（自动 hi 设备 lo 先出首帧、hi 后台热切换；加载态提示/预加载/immutable 缓存/后台 prefetch；artfix 颈部 overlay 收窄到真实颈轮廓（girl 提亮+软化下颌线）与 8 套服装 16 层手心残留清除；源包 assets-v4；资产 v23 / 页面 v26）
 - **v3.0.0**：**2.5D paper-doll 资产重做**（每套服装 2 个整层 drawable：top z=64 / skirt z=30、全画布单网格；rig drawables chibi 69→48 / girl 70→49；清除服装烘入假脖子、领口露真实素体颈；素体颈部一次性重绘 overlay（W8）lo/hi 双 tier 合成；旧存档/旧 DIY pack 旧分件→整层 id 映射；视觉门禁新增 neck 区域 80 张 baseline；资产 v22 / 页面 v25）
-- **下一步 · v3.1.0（规划）**：槽位体系（配饰层：头饰 / 鞋子 / 手持复用 drawable slot）+ 服装件全量 2x（P3）+ 真机性能矩阵（D-008）；遗留 D-002（服装 2x 拼缝）、D-003（手部线稿）、D-004（tail 垫层）见 [QA 登记表](docs/QA-REGISTRY.md)
-- **之后**：皮肤包社区交换码、DIY 图像分类器补强
+- **v3.2.x（收尾，规划）**：解码/上传 offload（createImageBitmap/Worker）、性能门禁进 CI（GitHub Actions）、可选 UV 精度 1e-7（消除 v3.2.0 图集拆分引入的子像素重采样差异）、真机抽测（D-008，需用户配合）；详见 HANDOFF §30（本机 `/home/ubuntu/dsh/FEIYU-HANDOFF.md`）
+- **下一步 · 4.0.0（槽位底座，规划）**：通用槽位体系（上衣/下装/鞋/袜/头饰/耳饰/项链/手持）+ socket 骨骼锚定 + **lazy 页分组泛化** + 1–2 套验证穿搭（日常通勤 / 水手运动）+ 服装/配饰 2x 一并决策；执行计划 [docs/PLAN-4.0-SLOTS.md](docs/PLAN-4.0-SLOTS.md)；遗留 D-002/D-003/D-004/D-005/D-008/D-010/D-011/D-020 见 [QA 登记表](docs/QA-REGISTRY.md)
+- **之后**：皮肤包社区交换码、DIY 图像分类器补强、**4.1 上传图批量生成穿搭**（依赖 4.0 稳定）
 - 更远：多鱼塘（多会话鱼）、每日小任务；把 `dsh-memory-gate` 的记忆做成「鱼记得你说过什么」，但依然只读聚合摘要
 
 ## 开发
