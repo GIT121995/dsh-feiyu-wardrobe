@@ -1,0 +1,49 @@
+name: verify
+
+# v3.2.1 性能/质量门禁进 CI：每次 push/PR 到 main 跑类型检查 + 全量 node 单测。
+# 说明：
+#   - 资产源包（.cache/assets-src，~150MB）不在仓库里，asset-build 的构建确定性/官方 dist
+#     逐字节校验会自动 skip；完整 `npm run verify:full` 与 Chrome 门禁（visual:qa / qa:load）
+#     需要本地源包与 Chrome，仍按 HANDOFF §30.4 手动执行后再发版。
+#   - python3 依赖（numpy/opencv/Pillow）在 runner 上缺失时，对应测试自带 skip 守卫。
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: typecheck + unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck (tsc --checkJs)
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Summary
+        if: always()
+        run: echo "verify done（视觉/加载门禁见 HANDOFF §30.4：npm run visual:qa / npm run qa:load）"

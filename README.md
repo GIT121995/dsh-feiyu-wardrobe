@@ -226,6 +226,8 @@ npm run verify
 
 - **1x 全身**：页面默认舞台尺寸（600–900px 高）下，角色无肉眼可见的接缝、双色块、白线；关节处允许 AA 过渡。
 - **2x 关键局部**：膝 / 手 / 肩 / 脚 / 腹 / 发 / 颈等区域 2x 放大截图允许 ≤1px AA，不允许 ≥2px 连续白线/接缝/露底；领口露颈区域必须是真实素体颈部（无假脖子/肌腱亮条/重阴影，保留淡下巴影）；隐藏区 ±25° 转头/歪头不得露出背景洞。
+- **CI 门禁**（v3.2.2 chore）：`.github/workflows/verify.yml` 在 push/PR 到 main 时自动跑 `npm ci` + `npm run typecheck` + `npm test`
+  （资产源包不在仓库 → 构建确定性/官方 dist 类测试自动 skip；Chrome 视觉/加载门禁仍需本地 `visual:qa`/`qa:load`）。
 - **视觉门禁**（v2.7.0 起随版本发布生效）：`npm run visual:qa -- --mode compare` 与 `docs/qa-baseline/` 基线做像素对比，超阈值即失败；`--mode baseline` 生成/更新基线。验收清单、baseline 更新流程与缺陷联动见 [`docs/VISUAL-QA.md`](docs/VISUAL-QA.md)。
 - **已知缺陷**登记在 [`docs/QA-REGISTRY.md`](docs/QA-REGISTRY.md)（D-001 起，含 1x/2x 验收标准与回归方式）；视觉门禁通过 ≠ 已知缺陷已关闭。
 

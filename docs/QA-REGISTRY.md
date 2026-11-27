@@ -64,9 +64,8 @@
 6. **UV 定点**（v3.2.1）：`PRECISION['uvs']=7`；重建 dist 后 `rig.json` 会变长（+63–66KB），`rig.bin`/首屏不变；
    UV 精度断言在 `tests/dressup-2d5-assets.test.mjs`（≤7 位）。
 7. 发版流程用 `scripts/release.mjs`（8 步，rc→promote latest；deferred 重启会打断当前会话，重启后按 HANDOFF §30.3 取 token 复测）。
-8. **CI**（v3.2.1 暂缓，随 3.2.2）：`.github/workflows/verify.yml` 已就绪（本地模拟 329 pass/0 fail/5 skip），
-   但 GitHub OAuth App token 缺 `workflow` scope 无法推送；`gh auth refresh -h github.com -s workflow` 后补提交。
-   发版前本地仍必须 `verify:full`（构建确定性/官方 dist）+ visual:qa + qa:load。
+8. **CI**（v3.2.2 chore，2026-11-27 补）：`.github/workflows/verify.yml` 已提交（push/PR 到 main → `npm ci` + typecheck + 单测）；
+   本地模拟无源包 329 pass/0 fail/5 skip。Chrome 视觉/加载门禁仍需本地 `verify:full` + `visual:qa` + `qa:load`。
 
 ## 与视觉门禁的关系
 
