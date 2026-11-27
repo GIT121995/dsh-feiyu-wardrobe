@@ -210,6 +210,16 @@
 - socket 列表用 `/` 分隔，**首个为主动锚点**（主实例）；`pair` 模式第 2 个为对偶锚点。
 - 局部偏移/旋转/缩放属于**资产元数据**（未来 `rig.items.<id>.anchor`），不属于 registry；registry 只锁
   骨名与镜像模式（见 §5）。
+- **`anchor.offset` 语义（Phase 0 spike 澄清，必须按此实现）**：offset 为 **socket 骨干局部 px**，
+  世界坐标 = `bone.base + R(bone.angle) · offset`（与 runtime 骨骼矩阵 `M = T(base)·R(theta)` 同式；
+  参考实现见 `.scratch/p0-slot-spike/run.mjs`）。**几何朝向**默认 `geometryFrame:"canvas"`（配饰全画布层以
+  675×1200 canvas 坐标作者化，运行时绕锚点施加 `R(theta_now − theta_bind)` 旋转，rest 下与 canvas 完全一致）。
+  若把 canvas 坐标偏移 `c = pivot_canvas − bone.base` 当 local 用会错位（head.angle=−90° 时 earring 会落到躯干）——
+  canvas 偏移 → 骨局部 offset 的换算：`offset = R(−angle) · c`（spike 已验往返 0px）。
+  已验证候选值（**骨局部 offset**；pivot canvas 见括号）：chibi 对称内缩 L`[111,−254]`/R`[111,254]`（pivot
+  `(83.5,429)`/`(591.5,429)`）、按侧美术锚定 L`[95,−262.5]`/R`[109,251.5]`（pivot `(75,445)`/`(589,431)`）；
+  girl 对称内缩 L`[76,−173]`/R`[76,173]`（pivot `(164.5,309)`/`(510.5,309)`）、按侧 L`[68,−189.5]`/R`[67,199.5]`
+  （pivot `(148,317)`/`(537,318)`）。
 - 偏移合理性由 Phase 2 门禁校验（§7）：单侧耳饰 ≤18px、项链落锁骨、鞋袜不越出肢体轮廓、头饰不遮眼。
 
 ### 3.2 mirror 语义（两种模式，由 socket 数量决定）
@@ -226,9 +236,10 @@
 > **Phase 0 spike 修正（2026-11-27，见 `.scratch/p0-slot-spike/REPORT.md` + `METRICS.json`）**：真实耳鳍/头部
 > 美术轮廓左右不完全对称（chibi 耳鳍下方轮廓最大 Δ≈27px、耳翼尖 Δx≈8px/Δy≈14px；girl 同区 ~9–11px；
 > 纯镜像变换本身误差为 0px）。纯 symmetry 单 offset 镜像会让一侧耳饰偏离耳鳍。因此 **symmetry 配饰允许按侧
-> 覆盖锚点**：`rig.items.<id>.anchor = { socket:"head", offsetL:[dx,dy], offsetR:[dx,dy] }`（几何仍单侧 +
-> 运行时镜像；位置按侧取 offset；local 坐标 = 骨干局部 px，spike 候选值 chibi L`[-262.5,-95]`/R`[251.5,-109]`、
-> girl L`[-189.5,-68]`/R`[199.5,-67]`；对称内缩摆法作为美术备选）。registry 的 `mirror`/socket 声明不变。
+> 覆盖锚点**：`rig.items.<id>.anchor = { socket:"head", offsetL:[dx,dy], offsetR:[dx,dy], geometryFrame:"canvas" }`
+> （几何仍单侧 + 运行时镜像；位置按侧取 **骨局部** offset，见 §3.1 语义；spike 候选 chibi L`[95,−262.5]`/
+> R`[109,251.5]`、girl L`[68,−189.5]`/R`[67,199.5]`；对称内缩摆法 L/R 完全在轮廓内，作为美术备选）。
+> registry 的 `mirror`/socket 声明不变。
 
 ### 3.3 服装 seat 表（蒙皮锚定）
 
@@ -332,9 +343,12 @@ return [...indices].sort((a, b) => a - b);
   "acc-earring-pearl": {
     "id": "acc-earring-pearl", "name": "珍珠耳钉", "slot": "earring",
     "drawables": ["acc-earring-pearl"],            // 通常 1 个（配饰整层），允许 >1
-    // symmetry 配饰（耳饰）可给左右两套 offset（耳鳍/头部美术左右不完全对称时按侧覆盖；
-    // 单侧资产仍只出 1 个，运行时镜像几何；spike 候选：chibi L[-262.5,-95]/R[251.5,-109]）
-    "anchor": { "socket": "head", "offsetL": [-262.5, -95], "offsetR": [251.5, -109], "rotation": 0, "scale": 1 },
+    // symmetry 配饰（耳饰）可给左右两套 offset（耳鳍/头部美术左右不完全对称时按侧覆盖）；
+    // offset = socket 骨局部 px（world = base + R(angle)·offset）；geometryFrame=canvas 表示几何按
+    // 全画布坐标作者化、运行时绕锚点旋转。spike 候选 chibi L[95,-262.5]/R[109,251.5]。
+    "anchor": { "socket": "head", "offsetL": [95, -262.5], "offsetR": [109, 251.5],
+                "geometryFrame": "canvas", "pivotCanvasL": [75, 445], "pivotCanvasR": [589, 431],
+                "rotation": 0, "scale": 1 },
     "mirror": true, "physics": null,
     "colors": ["white", "gold"], "source": "vector"
   },
@@ -348,8 +362,9 @@ return [...indices].sort((a, b) => a - b);
 ```
 
 - `item.slot` 必须 ∈ registry `kind="accessory"` 槽位；`item.mirror` 必须与 registry 一致（不一致 → 拒绝该 item）。
-- `anchor.offset` 为 socket 骨局部像素偏移；`pair` 模式用 `mirrorSocket` 指定对偶骨；
-  `symmetry` 模式可用 `offsetL/offsetR` 按侧覆盖锚点（耳鳍不对称时；见 §3.2 spike 修正）。
+- `anchor.offset` 为 **socket 骨局部 px**（world = base + R(angle)·offset，见 §3.1）；`pair` 模式用
+  `mirrorSocket` 指定对偶骨；`symmetry` 模式可用 `offsetL/offsetR` 按侧覆盖锚点（耳鳍不对称时；见 §3.2）；
+  `geometryFrame:"canvas"`（默认）表示全画布层几何按 canvas 坐标作者化，运行时绕锚点旋转 `R(θ_now−θ_bind)`。
 - `rig.outfits` **保持不变**（整层服装 = `{combo}: {topBody:[...], bottom:[...]}`）；4.0 不把配饰塞进 outfits。
 
 ### 5.3 向后兼容矩阵（不得破坏 v3 行为）

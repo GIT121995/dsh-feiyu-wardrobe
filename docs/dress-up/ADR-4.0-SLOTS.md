@@ -114,8 +114,10 @@ legacy z 只作文档/新资产契约）。锚定：
 **Phase 0 spike 补充（耳鳍左右不对称）**：真实耳鳍/头部美术轮廓左右不完全对称（chibi 耳鳍下方轮廓最大 Δ≈27px、
 耳翼尖 Δx≈8px/Δy≈14px；girl 同区 ~9–11px；纯镜像变换误差 0px），纯 symmetry 单 offset 镜像会让一侧耳饰偏离。
 因此 **symmetry 配饰允许资产元数据按侧覆盖锚点**
-（`rig.items.<id>.anchor = { socket, offsetL, offsetR }`；几何仍单侧、由运行时镜像，位置按侧取），
-registry 的 `mirror`/socket 声明不变。证据见 §9.3 与 `.scratch/p0-slot-spike/REPORT.md`。
+（`rig.items.<id>.anchor = { socket, offsetL, offsetR, geometryFrame:"canvas" }`；几何仍单侧、由运行时镜像，
+位置按侧取；**offset 为 socket 骨局部 px**（`world = base + R(angle)·offset`），canvas pivot 换算
+`offset = R(−angle)·(pivot−base)`，见 SLOT-REGISTRY §3.1），registry 的 `mirror`/socket 声明不变。
+证据见 §9.3 与 `.scratch/p0-slot-spike/REPORT.md` / `out/RESULTS.md`。
 
 **理由**：① 配饰（<18px 耳饰、鞋袜、项链）不需要蒙皮，socket 绑定实现最小、可复用现有 collider 绑骨几何思路；
 ② 服装整层已稳定（v3.0 起）且 z 由资产烘焙，4.0 不重做权重；③ 两种 mirror 模式覆盖已批准 6 个配饰槽的全部形态，
@@ -224,7 +226,9 @@ Phase 1 出资产后按同口径
 > 独立 spike（不改 tracked 文件、不 commit）：`spike.py` 可复跑；产物 `METRICS.json` / `REPORT.md` /
 > `earring-preview-chibi.png` / `dist/chibi/`（由 `tools/art/build_2d5.py` 真实构建的 6 页图集）。
 
-- **socket 数学**：`parentBoneMatrix(base+angle) × localOffset` 往返误差 0px；与运行时顶点着色器
+- **socket 数学（语义已澄清）**：`anchor.offset` = **socket 骨局部 px**，`world = base + R(angle)·offset`；
+  几何 `geometryFrame:"canvas"`（全画布层 canvas 坐标作者化、运行时绕锚点旋转），canvas pivot 与骨局部 offset
+  严格换算往返 0px；`parentBoneMatrix(base+angle) × localOffset` 往返误差 0px；与运行时顶点着色器
   LBS/headWarp **同式误差 0px**（head roll/yaw/pitch ±25° 下 socket 相对脸锚点漂移 0px）；真实 rig socket 骨
   `head/chest/handR/footL/footR/shinL/shinR` 在 chibi/girl 均存在；耳饰 18×22（宽 ≤18px）左右锚点
   完全落在 body-head alpha 内、眼/眉遮挡 0px、刘海覆盖 ≤2%。独立验证：`.scratch/p0-slot-spike/out/RESULTS.md`

@@ -345,3 +345,29 @@ test('文档交付物落盘：SLOT-REGISTRY.md / ADR-4.0-SLOTS.md 存在且引�
 		assert.ok(content.length > 2000, `${relativePath} 内容过短，契约/决策文档不完整`);
 	}
 });
+
+test('anchoring：offset 语义=骨局部 px，耳饰候选锚点与真实 head 骨一致（canvas pivot 换算往返）', () => {
+	const anchoring = registry.rules.anchoring;
+	assert.ok(typeof anchoring.offsetSemantics === 'string' && anchoring.offsetSemantics.includes('骨局部'), '必须声明 anchor.offset 为骨局部语义');
+	assert.ok(anchoring.offsetSemantics.includes('geometryFrame'), '必须声明 geometryFrame=canvas 几何朝向语义');
+	assert.ok(anchoring.offsetSemantics.includes('R(-angle)') || anchoring.offsetSemantics.includes('R(−angle)'), '必须写明 canvas pivot → 骨局部 offset 换算');
+	const earring = anchoring.earringAnchors;
+	for (const shape of SHAPES) {
+		const head = rigs[shape].skeleton.bones.find((bone) => bone.id === 'head');
+		assert.ok(head, `${shape} head 骨必须存在`);
+		const rad = (head.angle * Math.PI) / 180;
+		const cos = Math.cos(rad);
+		const sin = Math.sin(rad);
+		for (const [mode, expected] of [['symmetryInset', earring[shape].symmetryInset], ['perSideArt', earring[shape].perSideArt]]) {
+			for (const side of ['L', 'R']) {
+				const pivot = expected.pivotCanvas[side === 'L' ? 0 : 1];
+				const cx = pivot[0] - head.base[0];
+				const cy = pivot[1] - head.base[1];
+				// offset = R(-angle)·c = [cos·cx + sin·cy, -sin·cx + cos·cy]
+				const round4 = (v) => Math.round(v * 1e4) / 1e4;
+				const offset = [round4(cos * cx + sin * cy), round4(-sin * cx + cos * cy)];
+				assert.deepEqual(expected[side], offset, `${shape}/${mode}/${side} 骨局部 offset 与 canvas pivot 换算不一致`);
+			}
+		}
+	}
+});

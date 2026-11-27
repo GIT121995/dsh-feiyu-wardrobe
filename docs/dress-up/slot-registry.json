@@ -319,7 +319,95 @@
         "pair": "2 个 socket + mirror:true → 每个 socket 一个实例，第二实例 X 镜像（如鞋/袜）。"
       },
       "seatSyntax": "服装槽 seat = 主蒙皮锚定骨骼（斜杠分隔多个）；实际权重由资产烘焙，seat 只用于文档/适配校验。",
-      "perSideAnchor": "symmetry 配饰（耳饰）允许 item.anchor.offsetL/offsetR 按侧覆盖锚点：真实耳鳍/头部美术轮廓左右不完全对称（chibi 耳鳍下方轮廓最大 Δ≈27px、耳翼尖 Δx≈8/Δy≈14；girl 同区 ~9–11px；镜像变换误差 0px），纯单 offset 镜像会让一侧耳饰偏离。几何仍单侧资产+运行时镜像，位置按侧取 offset；spike 候选 chibi L[-262.5,-95]/R[251.5,-109]、girl L[-189.5,-68]/R[199.5,-67]。证据：.scratch/p0-slot-spike/REPORT.md（35/35）+ out/RESULTS.md（独立 run.mjs 验证）。"
+      "perSideAnchor": "symmetry 配饰（耳饰）允许 item.anchor.offsetL/offsetR 按侧覆盖锚点：真实耳鳍/头部美术轮廓左右不完全对称（chibi 耳鳍下方轮廓最大 Δ≈27px、耳翼尖 Δx≈8/Δy≈14；girl 同区 ~9–11px），纯单 offset 镜像会让一侧耳饰偏离。几何仍单侧资产+运行时镜像，位置按侧取 offset；offset 语义见 anchoring.offsetSemantics。证据：.scratch/p0-slot-spike/REPORT.md（35/35）+ out/RESULTS.md（独立 run.mjs 验证）。",
+      "offsetSemantics": "anchor.offset = socket 骨局部 px；世界坐标 = bone.base + R(bone.angle)·offset（与 runtime 骨骼矩阵 M=T(base)·R(theta) 同式）。几何默认 geometryFrame=\"canvas\"（配饰全画布层按 675×1200 canvas 坐标作者化，运行时绕锚点施加 R(theta_now-theta_bind) 旋转，rest 与 canvas 完全一致）。canvas 偏移 c=pivot-base → 骨局部 offset = R(-angle)·c（spike 往返 0px）。禁止把 canvas 偏移直接当 local 使用（head.angle=-90° 会错位到躯干）。",
+      "earringAnchors": {
+        "note": "Phase 0 spike 已验证候选（骨局部 offset；pivot canvas）。对称内缩摆法 L/R 完全在头部轮廓内、不遮眼；按侧摆法贴合左右耳鳍（美术不对称）",
+        "chibi": {
+          "symmetryInset": {
+            "L": [
+              111,
+              -254
+            ],
+            "R": [
+              111,
+              254
+            ],
+            "pivotCanvas": [
+              [
+                83.5,
+                429
+              ],
+              [
+                591.5,
+                429
+              ]
+            ]
+          },
+          "perSideArt": {
+            "L": [
+              95,
+              -262.5
+            ],
+            "R": [
+              109,
+              251.5
+            ],
+            "pivotCanvas": [
+              [
+                75,
+                445
+              ],
+              [
+                589,
+                431
+              ]
+            ]
+          }
+        },
+        "girl": {
+          "symmetryInset": {
+            "L": [
+              76,
+              -173
+            ],
+            "R": [
+              76,
+              173
+            ],
+            "pivotCanvas": [
+              [
+                164.5,
+                309
+              ],
+              [
+                510.5,
+                309
+              ]
+            ]
+          },
+          "perSideArt": {
+            "L": [
+              68,
+              -189.5
+            ],
+            "R": [
+              67,
+              199.5
+            ],
+            "pivotCanvas": [
+              [
+                148,
+                317
+              ],
+              [
+                537,
+                318
+              ]
+            ]
+          }
+        }
+      }
     }
   },
   "outfitPageBudgetNote": "5 = 4.0 combo 页预算：现有 4 套 pre-composed outfit（maid/hoodie-plaid/hoodie-pleated/sailor-plaid）+ 4.0 新增 1 套（日常通勤，白衬衫+藏青裙作为一套组合资产出一页）。只为 pre-composed combo 各出一页，**不为上衣×下装交叉组合自动生成页**——任意混搭在运行期由「当前造型各槽位 drawable 所属页的并集」实现（泛化后的 collectLookAtlasIndices 天然支持，同页放不下就加载多页）。容量：1(base) + ≤5(combo) + ≤6(accessory) = 12 = maxPages，4.0 用满 12 页、无空闲页；4.1 批量穿搭/更多组合需扩 maxPages（另立 ADR）。",
