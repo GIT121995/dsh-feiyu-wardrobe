@@ -127,8 +127,35 @@ python3 tools/art/build_2d5.py --rig <source rig.json> --texdir <纹理目录> \
 - 分组**不看源包版本**：v3 整层路径（每套 2 个整层 drawable）与旧分件路径（每套 6–9 个分件）都按
   `outfits[combo]` 的服装 slot 引用归类；每个 drawable 恰好归属一页（构建期断言，违反直接退出码 1）。
 - `seam-fill` 不被任何 outfit 引用且必须常驻（素体填充），归 base 页；hi base 页因此含 1 个 1x 图块。
-- 页数上限 `MAX_PAGES=6`（`build_2d5.py`）；增加/调整套装顺序要同步 `LAZY_OUTFIT_COMBOS`、
-  runtime `MAX_ATLASES` 与 `index.html`/client-config preload。
+- 页数上限 `MAX_PAGES=6`（`build_2d5.py`；4.0 Phase 0 契约上限 **12**、3.3.0 实施，见下节）；增加/调整套装顺序要同步
+  `LAZY_OUTFIT_COMBOS`、runtime `MAX_ATLASES` 与 `index.html`/client-config preload。
+
+### 4.0 页分组泛化契约（Phase 0 定稿，3.3.0 实施；当前代码未改）
+
+> 单一真相：`docs/dress-up/slot-registry.json`（`format=feiyu-slot-registry`，v1）。契约全文
+> [`docs/dress-up/SLOT-REGISTRY.md`](../../docs/dress-up/SLOT-REGISTRY.md)，决策 [`ADR-4.0-SLOTS.md`](../../docs/dress-up/ADR-4.0-SLOTS.md)。
+> **状态**：Phase 0 只定契约；当前 `build_prod.build_atlas_pages()` 仍是「写死 base+4 套」、`MAX_PAGES=6`。
+
+3.3.0 起构建分组改由 registry 驱动（方案 A），目标规则：
+
+1. **base 页** = 不被任何 outfit/accessory 引用的 drawable；`basePage.slots` 显式声明素体层槽位
+   （body/legs/armUpper/armFore/hand/hairBack/strands/hairFront/face），避免配饰误归 base；
+2. **outfit 页** = 按 `rig.outfits` 声明顺序、每套非空 **pre-composed combo** 一页（页 id=combo，跳过 `base`/空套；
+   4.0 combo 页预算 = 5（现有 4 套 + 新增日常通勤 1 套）；**不生成上衣×下装交叉组合页**——任意混搭在运行期
+   取各槽位 drawable 所属页的并集；页数超 registry `outfitPageBudget` → 构建直接报错（扩页需另立 ADR）；
+3. **accessory 页** = 按 registry `pageGroups` 声明顺序，每个非空页组一页（页 id=页组 id；
+   当前页序 shoes→socks→necklace→earring→headwear→handheld，空组不占页）；
+4. 页文件 = registry `pageFiles[已发出页计数]`（`atlas.webp` / `atlas-{i+1}.webp`）；`maxPages=12`
+   （`MAX_PAGES` / runtime `MAX_ATLASES` 3.3.0 同步 6→12）；容量 `1(base)+≤5(combo)+≤6(accessory)=12`，
+   4.0 用满 12 页、无空闲/预留页（4.1 批量穿搭需扩 `maxPages`，另立 ADR）；
+5. 校验：`drawable.slot` ∈ `basePage.slots ∪ slots[].id`；accessory slot 的 pageGroup 必须已声明；
+   每 drawable 恰好一页、每页非空、单页 ≤4096、页数 ≤ MAX_PAGES；registry 缺失时优雅回退「仅 outfit 页」
+   （旧源包/旧测试可用）；`format`/`pageFiles` 命名/`maxPages` 与 `build_2d5.MAX_PAGES` 不同步 → 直接退出码 1；
+6. **零变化硬要求**：对当前官方 4 个 rig（chibi/girl × lo/hi），泛化后页 id/file/顺序/逐 drawable 归属必须与
+   v3.2.1 逐字节一致（官方 5 页、不升资产版本）；hi tier 复用同一分组（页 id/file/顺序一致）。
+
+> Phase 0 可行性原型（`.scratch/phase0-prototype/build/`）已用合成 rig 验证上述分组/12 页上限/全部校验面，
+> 且 registry 模式与回退模式对 4 个官方 rig 的输出与现实现逐字节一致（117/117 断言）。
 
 ## v3.2.0 rig 二进化（rig.bin 二进制 rig）
 
@@ -235,8 +262,10 @@ python3 tools/art/build_prod.py --build-atlas --clean-garment-skin \
 - **构建环境**：python3 + numpy/opencv/Pillow；图集编码依赖 Pillow 的 lossless WebP（Pillow/libwebp 版本理论上可能影响
   编码字节；v2.5 基线与本机 Pillow 10.2.0 对齐）。生产环境固定依赖版本（`tools/requirements.txt` 只给下限）。
 - **单页 4096 限制**：单张图集 ≤4096×4096；v3.2.0 起 production 为 **5 页懒加载套装页**
-  （base + 4 套装），不再把所有 drawable 塞进单页。页数上限 `MAX_PAGES=6`（build_2d5）；
-  增加套装时须同步页序表（`build_prod.LAZY_OUTFIT_COMBOS`）与运行时 `MAX_ATLASES`。
+  （base + 4 套装），不再把所有 drawable 塞进单页。当前页数上限 `MAX_PAGES=6`（build_2d5）；
+  **4.0 Phase 0 契约上限 12、3.3.0 实施**（见「4.0 页分组泛化契约」小节），届时页序由
+  `docs/dress-up/slot-registry.json` 的 `pageGroups` 驱动（不再写死 `LAZY_OUTFIT_COMBOS`），
+  运行时 `MAX_ATLASES` 同步 12。
 - **实验开关不保证基线一致**：`--skip-hair-split/--skip-hands/--hands-2x` 产出的 A/C/A2 变体是 QA/归因产物，
   不代表官方 dist。
 - **2x 手部**：T2 的 refined2x 数据保留在源包中（实验），默认构建不使用；收益未证实。
