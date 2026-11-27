@@ -1,6 +1,7 @@
 # 4.0 槽位底座（Slot System）执行计划
 
-> 状态：**Phase 0 计划稿（2026-11-13）**，未开工；新会话按本文档推进。
+> 状态：**Phase 0 已完成（2026-11-27）**；契约见 [SLOT-REGISTRY.md](dress-up/SLOT-REGISTRY.md) +
+> [ADR-4.0-SLOTS.md](dress-up/ADR-4.0-SLOTS.md)（代码实施在 3.3.0，未改 main）；**Phase 1 进行中**（美术 brief + 两套验证穿搭）。
 > 基线：v3.2.1（tag `v3.2.1`，资产 v26 / 页面 v29；v3.2.0 的 lazy 5 页 + rig.bin + brotli 不变）。
 > 关联：[CHANGELOG](../CHANGELOG.md) · [2.5D-RUNTIME](dress-up/2.5D-RUNTIME.md) · [QA-REGISTRY](QA-REGISTRY.md) · [ART 管线](../tools/art/README.md)
 > 备注：`.scratch/` 不计入仓库；本文件是 4.0 的唯一执行计划入口。
@@ -181,12 +182,28 @@
 | 4 | 槽位品类边界 | **头饰 / 耳饰 / 项链 / 鞋 / 袜 / 手持先行；裤装后置** | 仍守内容保守基调（不出现超短裙/露肩露背；短脖子 chibi 禁高领 D-017）；裤装列 4.1+ 候选 |
 | 5 | 真机验证 D-008 | **用户决定不做真机数据测试**（wontfix） | 所有性能/显存数字以 headless SwANGLE 为准；发布说明保留「未真机验证」措辞，不再阻塞版本 |
 
-## 12. 下一步执行清单（新会话 Phase 0）
+## 12. 执行清单
 
-1. 读本文档 + `docs/dress-up/2.5D-RUNTIME.md` §2/§6.5 + `tools/art/README.md`；
-2. 读现有：`docs/dress-up/runtime-2d5-core.js`（resolveLook/visibleDrawables/collectLookAtlasIndices）、
-   `runtime-2d5.js`（loadSceneAtTier/ensureAtlasPage/applyLook/uploadDrawable）、`tools/art/build_prod.py`
-   （build_atlas_pages/build_v3_outfit）、`tests/dressup-2d5-assets.test.mjs`；
-3. 产出 Phase 0 文档：`docs/dress-up/SLOT-REGISTRY.md`（契约定稿 + z 表 + socket 表 + 页组表）+ 决策记录（ADR）；
-4. 小实验（不改 main）：用 1 个假耳饰 drawable（复用现有 body/face 纹理）验证 socket 绑定 + mirror + 页选择；
-5. §11 决策已于 2026-11-27 批准（见上表），Phase 0 产出 SLOT-REGISTRY/ADR + 实验通过后直接进 Phase 1（美术 brief + 两套验证穿搭）。
+### 12.1 Phase 0（✅ 已完成 2026-11-27，commit `906a268`）
+
+1. ✅ 读本文档 + `docs/dress-up/2.5D-RUNTIME.md` §2/§6.5 + `tools/art/README.md`；
+2. ✅ 读现有运行期/构建期代码与测试（hardcodes 清单见 ADR §1，12 项 file:line）；
+3. ✅ `docs/dress-up/SLOT-REGISTRY.md`（z 表 + socket 表 + 页组表 + registry schema）+ `slot-registry.json`
+   （单一真相）+ `docs/dress-up/ADR-4.0-SLOTS.md`（决策记录）；
+4. ✅ 假耳饰 spike（不改 main）：`.scratch/p0-slot-spike/`（35/35：socket 数学/mirror/真实 6 页构建/页选择；
+   另见 `out/RESULTS.md` 独立验证）；
+5. ✅ §11 决策已批准（2026-11-27）；Phase 0 契约与验证完成。
+
+### 12.2 Phase 1（进行中）
+
+1. `docs/dress-up/ART-BRIEF.md`：配饰/服装 brief（耳饰 18×22 且落「耳鳍底缘/耳翼露出带」并按侧 anchor；
+   鞋/袜/项链/头饰/手持按 registry socket 表；沿用内容保守基调/D-017）；每件需用户 G1 确认；成本预估见 §7；
+2. 两套验证穿搭资产：日常通勤（新白衬衫+藏青及膝裙作为 1 套 pre-composed combo + 乐福鞋/白短袜/珍珠耳钉/
+   细项链）+ 水手运动（复用 sailor-plaid combo + 帆布鞋/发带/手持小鲸鱼）；
+3. 资产完成后按 SLOT-REGISTRY §7/§4.2 实测首屏 payload（1.2MB 硬门禁）与 hi 2x 显存估算校准。
+
+### 12.3 后续
+
+- **3.3.0**：lazy 页分组泛化实施（ADR §10，≈2 人日，官方 5 页逐字节不变、不发 npm）；
+- **Phase 2**：runtime socket/配饰/2x + UI/存档/DIY；
+- **Phase 3**：门禁扩展（baseline 80→~120）+ headless 显存实测 + 发版（三处同步 + 真机措辞）。

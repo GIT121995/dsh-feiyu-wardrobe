@@ -1,0 +1,330 @@
+{
+  "format": "feiyu-slot-registry",
+  "version": 1,
+  "status": "phase0-contract",
+  "updated": "2026-11-27",
+  "scope": "4.0 槽位底座 Phase 0 契约定稿（2026-11-27）。构建期 tools/art 与运行期/文档共用的单一真相；3.3.0 起由 build_prod.py / build_2d5.py / runtime-2d5-core.js 读取。契约说明见 docs/dress-up/SLOT-REGISTRY.md，决策记录见 docs/dress-up/ADR-4.0-SLOTS.md。",
+  "maxPages": 12,
+  "outfitPageBudget": 5,
+  "pageFiles": [
+    "atlas.webp",
+    "atlas-2.webp",
+    "atlas-3.webp",
+    "atlas-4.webp",
+    "atlas-5.webp",
+    "atlas-6.webp",
+    "atlas-7.webp",
+    "atlas-8.webp",
+    "atlas-9.webp",
+    "atlas-10.webp",
+    "atlas-11.webp",
+    "atlas-12.webp"
+  ],
+  "basePage": {
+    "id": "base",
+    "file": "atlas.webp",
+    "pageGroup": "base",
+    "slots": [
+      "body",
+      "legs",
+      "armUpper",
+      "armFore",
+      "hand",
+      "hairBack",
+      "strands",
+      "hairFront",
+      "face"
+    ],
+    "rule": "base 页 = 不被任何 outfit/accessory 引用的常驻 drawable（含 seam-fill，其 slot=body）。slot 列在 basePage.slots 的 drawable 一律归 base 页，不占配饰页。"
+  },
+  "pageGroups": [
+    {
+      "id": "base",
+      "order": 0,
+      "kind": "base",
+      "selection": "always",
+      "pageId": "base",
+      "slots": []
+    },
+    {
+      "id": "outfit",
+      "order": 1,
+      "kind": "outfit",
+      "selection": "by-outfit-combo",
+      "pageIdSource": "rig.outfits",
+      "slots": [
+        "topBody",
+        "bottom",
+        "topUnder",
+        "sleeve",
+        "sleeveUpper",
+        "sleeveFore",
+        "collar"
+      ],
+      "rule": "每套非空 pre-composed outfit 一页；页 id = outfit combo id；页序 = rig.outfits 声明顺序（跳过 base/无 drawable 的 outfit）；页文件 = pageFiles[当前已发出页数]。**不生成上衣×下装交叉组合页**（4.0 combo 页预算 5 = 现有 4 套 + 新增日常通勤 1 套）；任意混搭由运行期取「当前造型各槽位 drawable 所属页的并集」，同页放不下则加载多页。",
+      "crossCombinationPages": false
+    },
+    {
+      "id": "shoes",
+      "order": 2,
+      "kind": "accessory",
+      "selection": "by-non-empty-slot",
+      "pageId": "shoes",
+      "slots": [
+        "shoes"
+      ]
+    },
+    {
+      "id": "socks",
+      "order": 3,
+      "kind": "accessory",
+      "selection": "by-non-empty-slot",
+      "pageId": "socks",
+      "slots": [
+        "socks"
+      ]
+    },
+    {
+      "id": "necklace",
+      "order": 4,
+      "kind": "accessory",
+      "selection": "by-non-empty-slot",
+      "pageId": "necklace",
+      "slots": [
+        "necklace"
+      ]
+    },
+    {
+      "id": "earring",
+      "order": 5,
+      "kind": "accessory",
+      "selection": "by-non-empty-slot",
+      "pageId": "earring",
+      "slots": [
+        "earring"
+      ]
+    },
+    {
+      "id": "headwear",
+      "order": 6,
+      "kind": "accessory",
+      "selection": "by-non-empty-slot",
+      "pageId": "headwear",
+      "slots": [
+        "headwear"
+      ]
+    },
+    {
+      "id": "handheld",
+      "order": 7,
+      "kind": "accessory",
+      "selection": "by-non-empty-slot",
+      "pageId": "handheld",
+      "slots": [
+        "handheld"
+      ]
+    }
+  ],
+  "futureSlots": [
+    "headwearLarge",
+    "earringLarge"
+  ],
+  "slots": [
+    {
+      "id": "topUnder",
+      "z": 20.5,
+      "kind": "legacy",
+      "group": "under",
+      "pageGroup": "outfit",
+      "seat": "chest",
+      "mirror": false,
+      "required": false,
+      "maxPerSlot": 1
+    },
+    {
+      "id": "bottom",
+      "z": 30,
+      "kind": "outfit",
+      "group": "bottom",
+      "pageGroup": "outfit",
+      "seat": "hips",
+      "mirror": false,
+      "physics": "skirt",
+      "required": false,
+      "maxPerSlot": 1
+    },
+    {
+      "id": "topBody",
+      "z": 64,
+      "kind": "outfit",
+      "group": "top",
+      "pageGroup": "outfit",
+      "seat": "chest",
+      "mirror": false,
+      "required": false,
+      "maxPerSlot": 1
+    },
+    {
+      "id": "sleeve",
+      "z": 50,
+      "kind": "legacy",
+      "group": "sleeve",
+      "pageGroup": "outfit",
+      "seat": "upperArmL/upperArmR",
+      "mirror": false,
+      "required": false,
+      "maxPerSlot": 1
+    },
+    {
+      "id": "sleeveUpper",
+      "z": 60,
+      "kind": "legacy",
+      "group": "sleeve",
+      "pageGroup": "outfit",
+      "seat": "upperArmL/upperArmR",
+      "mirror": false,
+      "required": false,
+      "maxPerSlot": 1
+    },
+    {
+      "id": "sleeveFore",
+      "z": 62,
+      "kind": "legacy",
+      "group": "sleeve",
+      "pageGroup": "outfit",
+      "seat": "forearmL/forearmR",
+      "mirror": false,
+      "required": false,
+      "maxPerSlot": 1
+    },
+    {
+      "id": "collar",
+      "z": 56,
+      "kind": "legacy",
+      "group": "collar",
+      "pageGroup": "outfit",
+      "seat": "neck",
+      "mirror": false,
+      "required": false,
+      "maxPerSlot": 1
+    },
+    {
+      "id": "shoes",
+      "z": 20,
+      "kind": "accessory",
+      "group": "shoes",
+      "pageGroup": "shoes",
+      "socket": "footL/footR",
+      "mirror": true,
+      "required": false,
+      "maxPerSlot": 1
+    },
+    {
+      "id": "socks",
+      "z": 18,
+      "kind": "accessory",
+      "group": "socks",
+      "pageGroup": "socks",
+      "socket": "shinL/shinR",
+      "mirror": true,
+      "required": false,
+      "maxPerSlot": 1
+    },
+    {
+      "id": "necklace",
+      "z": 64.5,
+      "kind": "accessory",
+      "group": "necklace",
+      "pageGroup": "necklace",
+      "socket": "chest",
+      "mirror": false,
+      "required": false,
+      "maxPerSlot": 1
+    },
+    {
+      "id": "earring",
+      "z": 68,
+      "kind": "accessory",
+      "group": "earring",
+      "pageGroup": "earring",
+      "socket": "head",
+      "mirror": true,
+      "required": false,
+      "maxPerSlot": 1
+    },
+    {
+      "id": "headwear",
+      "z": 72,
+      "kind": "accessory",
+      "group": "headwear",
+      "pageGroup": "headwear",
+      "socket": "head",
+      "mirror": false,
+      "required": false,
+      "maxPerSlot": 1
+    },
+    {
+      "id": "handheld",
+      "z": 66,
+      "kind": "accessory",
+      "group": "handheld",
+      "pageGroup": "handheld",
+      "socket": "handR",
+      "mirror": false,
+      "required": false,
+      "maxPerSlot": 1
+    }
+  ],
+  "rules": {
+    "maxPerSlot": 1,
+    "conflict": [
+      [
+        "headwear",
+        "headwearLarge"
+      ],
+      [
+        "earring",
+        "earringLarge"
+      ]
+    ],
+    "hideBase": [],
+    "slotAliases": {
+      "arms": "sleeve",
+      "arm": "sleeve",
+      "sleeves": "sleeve"
+    },
+    "pageSelection": {
+      "firstFrame": "base 页 + 当前造型各槽位 drawable 所属页（combo 页 + 非空配饰槽的页组页）的并集；默认造型按 accessoryPriority 加载，预算硬门禁 ≤1.2MB＝1,200,000B（十进制，≈1.14MiB）；参照基线 ≈0.96MiB（1,009,691B），4.0 预计 ≈1.0MiB（1,048,576B）；缺页时延迟呈现/淡入，不得先裸装。",
+      "outfitPage": "resolved look 命中的 pre-composed combo → rig.outfits[combo] 所在页；未命中 → rig.defaults.outfit 所在页；上衣×下装任意混搭 = 各槽位 drawable 所属页并集（不生成交叉组合页）。",
+      "accessoryPage": "槽位有 item → 该槽 pageGroup 对应页；空槽不选。",
+      "accessoryPriority": [
+        "shoes",
+        "socks",
+        "necklace",
+        "earring",
+        "headwear",
+        "handheld"
+      ],
+      "accessoryDelayMs": 200,
+      "accessoryFadeInMs": 200,
+      "prefetchDelayMs": 220,
+      "prefetch": "首帧后空闲预取当前身形全部剩余页（现有逻辑泛化，不逐页写死）。",
+      "missingPage": "setLook 命中未加载页时保留旧造型，后台补页完成后自动应用（v3.2.0 行为不变）。",
+      "noBareFirstFrame": "首帧呈现前不得出现裸脚/无配饰画面；缺页时延迟呈现并淡入，不得先裸再补。"
+    },
+    "anchoring": {
+      "socketSyntax": "骨骼名，或多个骨骼用 / 分隔（如 footL/footR）。",
+      "mirrorModes": {
+        "symmetry": "1 个 socket + mirror:true → 绕锚点 X 轴对称生成对偶（如耳饰）。",
+        "pair": "2 个 socket + mirror:true → 每个 socket 一个实例，第二实例 X 镜像（如鞋/袜）。"
+      },
+      "seatSyntax": "服装槽 seat = 主蒙皮锚定骨骼（斜杠分隔多个）；实际权重由资产烘焙，seat 只用于文档/适配校验。",
+      "perSideAnchor": "symmetry 配饰（耳饰）允许 item.anchor.offsetL/offsetR 按侧覆盖锚点：真实耳鳍/头部美术轮廓左右不完全对称（chibi 耳鳍下方轮廓最大 Δ≈27px、耳翼尖 Δx≈8/Δy≈14；girl 同区 ~9–11px；镜像变换误差 0px），纯单 offset 镜像会让一侧耳饰偏离。几何仍单侧资产+运行时镜像，位置按侧取 offset；spike 候选 chibi L[-262.5,-95]/R[251.5,-109]、girl L[-189.5,-68]/R[199.5,-67]。证据：.scratch/p0-slot-spike/REPORT.md（35/35）+ out/RESULTS.md（独立 run.mjs 验证）。"
+    }
+  },
+  "outfitPageBudgetNote": "5 = 4.0 combo 页预算：现有 4 套 pre-composed outfit（maid/hoodie-plaid/hoodie-pleated/sailor-plaid）+ 4.0 新增 1 套（日常通勤，白衬衫+藏青裙作为一套组合资产出一页）。只为 pre-composed combo 各出一页，**不为上衣×下装交叉组合自动生成页**——任意混搭在运行期由「当前造型各槽位 drawable 所属页的并集」实现（泛化后的 collectLookAtlasIndices 天然支持，同页放不下就加载多页）。容量：1(base) + ≤5(combo) + ≤6(accessory) = 12 = maxPages，4.0 用满 12 页、无空闲页；4.1 批量穿搭/更多组合需扩 maxPages（另立 ADR）。",
+  "zTableNote": "4.0 canonical z 表：配饰 z 为已批准口径（socks18/shoes20/necklace64.5/handheld66/earring68/headwear72）；legacy 槽（topUnder/sleeve/sleeveUpper/sleeveFore/collar）在 v3 production rig 已无 drawable，其 registry z 仅是文档/新资产契约，旧 rig 实际渲染层级以 drawable.z 为准（registry 不反改旧资产）。历史对齐：collar56/sleeveUpper60/sleeveFore62/bottom30 = 2.5D-RUNTIME §6.5 历史值；topUnder 历史 20 与 4.0 shoes=20 冲突，canonical 取 20.5；topBody 历史 cutout 40 → v3 起整层 canonical 64；sleeve 历史无独立 z，canonical 取 50（armFore48 之上、collar56 之下）。",
+  "pageBudgetNote": "4.0 容量：1 base + 5 combo + 6 accessory 页组 = 12 = maxPages（用满，无 reserve 页）。reservedPages 置空；4.1 若需更多 combo/配饰页组，必须先扩 maxPages 并重估显存/设备门槛（另立 ADR），不得靠挤占既有页。",
+  "reservedPages": [],
+  "reservedPagesNote": "4.0 无空闲页（atlas-12 是第 12 页=handheld 配饰页）。4.1 批量穿搭/裤装 preset 组合不新增页组（bottom 槽位/preset 组合），如需扩页另立 ADR。"
+}
