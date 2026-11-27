@@ -184,7 +184,7 @@
 
 ## 12. 执行清单
 
-### 12.1 Phase 0（✅ 已完成 2026-11-27，commit `906a268`）
+### 12.1 Phase 0（✅ 已完成 2026-11-27，PR #1 → main `5bc025a`）
 
 1. ✅ 读本文档 + `docs/dress-up/2.5D-RUNTIME.md` §2/§6.5 + `tools/art/README.md`；
 2. ✅ 读现有运行期/构建期代码与测试（hardcodes 清单见 ADR §1，12 项 file:line）；
