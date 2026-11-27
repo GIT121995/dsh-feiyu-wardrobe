@@ -237,6 +237,12 @@ Phase 1 出资产后按同口径
   成功产出 6 页（base+4 outfit+earring，每页非空、pixelEqual True、UV/atlasRect 正确），**当前 6 页上限即可容纳**。
 - **页选择缺口实测**：look 含配饰槽时参考泛化实现选 `[0,1,5]`，当前 v3.2.1 tracked 只选 `[0,1]`（漏配饰页）；
   跨 combo 混搭 `[0,1,2]` = 页并集（验证 ADR-002「不生成交叉组合页」成立）；旧单图集 rig 回退 `[0]`。
+- **独立第二路验证**（`REPORT-runmjs.md` + `out/RESULTS.md`，run.mjs，36 checks/35 PASS/0 hard fail）：
+  另以冻结 HEAD core 为对照验证 20/20 look 页选择一致；18×22 耳饰对称内缩摆法两侧 100% 在轮廓内、
+  眼/眉遮挡 0px、hairFront 覆盖 0/0.25%；:3080 headless Chromium E2E 基线 0 pageerror（线上 v3.2.1）；
+  **修正 girl 耳饰候选锚点**（本地 spike 的耳鳍底缘检出落在侧发丝层，不可用；采用其推荐 pivot
+  `(164.5,309)/(510.5,309)` 对称 / `(148,317)/(537,318)` 按侧）；并给出 4.0 首屏预算余量测算
+  （chibi 1,200,000B 门禁下余 190.3KB，4 个配饰页需 ≤47.6KB/页 → Phase 1 必须实测）。
 - **发现并处置**：① 耳鳍左右美术不对称（chibi Δx=27px）→ symmetry 配饰需 per-side anchor（§5，Phase 2 落地）；
   ② 耳饰 z68 < hairFront z70，但实测 bangs 在耳鳍/耳翼锚点区域 alpha 覆盖 ≤2% → 可见性可用，Phase 1 需把耳饰
   画在「耳鳍底缘外侧露出带」，Phase 3 门禁加「bangs 高覆盖区禁止放耳饰」像素断言；③ GL socket 绑定/逐帧矩阵
