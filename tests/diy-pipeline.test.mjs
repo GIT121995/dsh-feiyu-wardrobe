@@ -126,7 +126,12 @@ test('run：默认关闭时拒绝；预算不足时 generate 失败且不产生�
 			record: () => ({}),
 			snapshot: () => ({ images: 40 }),
 		};
-		const limited = makePipeline({ enabledOverride: true, ledger });
+		// CI 环境没有本机 ARK key：显式注入 provider，避免在预算检查前走 missing_api_key 分支
+		const stubProvider = {
+			configured: true, model: 'stub-model', size: '1152x2048',
+			async generate() { throw new Error('预算不足时不应调用 provider'); },
+		};
+		const limited = makePipeline({ enabledOverride: true, ledger, provider: stubProvider });
 		const job2 = limited.pipeline.plan({ image, category: 'top' });
 		assert.equal(job2.budget.ok, false);
 		const result = await limited.pipeline.run({ job: job2.job, stage: 'generate' });
